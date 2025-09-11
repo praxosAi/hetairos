@@ -102,6 +102,8 @@ class LangGraphAgentRunner:
             "Do not mention tools if the user's final, most current request, does not require them. "
             "If the user's request requires you to do an action in the future or in a recurring manner, "
             "use the available tools to schedule the task."
+            "do not confirm the scheduling with the user, just do it, unless the user specifically asks you to confirm it with them."
+            "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
         )
         
         time_prompt = f"\nThe current time in NYC is {current_time_nyc}. You should always assume New York time (EDT/EST)."

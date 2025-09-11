@@ -1,0 +1,94 @@
+src/services/__pycache__/__init__.cpython-310.pyc
+*.pyc
+.DS_Store
+__pycache__/
+.env
+.env.example
+.venv/
+venv/
+
+/tests/
+
+# Test files and debug scripts
+test_discord.py
+test_discord_*.py
+test_slack_integration.py
+test_whatsapp.py
+test_praxos_integration.py
+debug_discord_webhooks.py
+
+# Gmail webhook test files
+test_gmail_webhook.py
+test_gmail_integration.py
+test_production_readiness.py
+
+*.json
+
+# Unit test artifacts
+tests/__pycache__/
+tests/*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache/
+*.db
+*.sqlite
+*.sqlite3
+test_*.db
+
+# Documentation and notes
+*.md
+REFACTOR.md
+base_implementation.md
+memory_update.md
+
+# Gmail webhook documentation
+gmail_webhooks.md
+GMAIL_WEBHOOK_SETUP.md
+
+# Scripts
+scripts/migrate_integrations.py
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.backup
+*.bak
+*.orig
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Database files
+conversations.db
+*.db-journal
+
+test_*.py
+hooks.crt
+hooks.key
+inspect_db.py
+k8s/cert-hooks.yaml
+k8s/clusterissuer-http01-prod.yaml
+k8s/clusterissuer-letsencrypt-prod.yaml
+k8s/hooks-tls.yaml
+src/utils/conversation_database.py
+inspect_db.py
+k8s/keda-scaler.yaml
+k8s/certificate.yaml
+k8s/secret.yaml

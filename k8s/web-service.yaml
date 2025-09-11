@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hetairoi-web-service
+  namespace: hetairoi
+spec:
+  selector:
+    app: hetairoi-web # This selector correctly matches your hetairoi-web-deployment
+  ports:
+    - protocol: TCP
+      port: 80 # The service exposes port 80
+      targetPort: 8000 # And forwards traffic to port 8000 on the pods
+  type: ClusterIP

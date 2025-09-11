@@ -66,8 +66,6 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                         integration_record = await integration_service.is_authorized_user('whatsapp',phone_number)
                         if not integration_record:
                             webhook_logger.warning(f"Unauthorized user: {phone_number}")
-                            ### send a message to the user, informing them that they are not authorized to use the bot.
-                            ### @TODO this should really be in egress.
                             await whatsapp_client.send_message(phone_number, "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com")
                             continue
 

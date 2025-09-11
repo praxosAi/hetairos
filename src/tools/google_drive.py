@@ -6,7 +6,7 @@ from src.utils.logging import setup_logger
 
 logger = setup_logger(__name__)
 
-def create_drive_tools(gdrive_integration: GoogleDriveIntegration, user_email: str) -> List:
+def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
     """Creates all Google Drive related tools."""
 
     @tool

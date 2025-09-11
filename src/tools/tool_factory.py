@@ -63,7 +63,7 @@ class AgentToolsFactory:
 
         gdrive_integration = GoogleDriveIntegration(user_id)
         if await gdrive_integration.authenticate():
-            tools.extend(create_drive_tools(gdrive_integration, user_email))
+            tools.extend(create_drive_tools(gdrive_integration))
         
         # --- Microsoft Integration ---
         outlook_integration = MicrosoftGraphIntegration(user_id)

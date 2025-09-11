@@ -1,0 +1,47 @@
+name: Deploy to Production kubernetes
+
+on:
+  push:
+    branches: 
+      - main
+
+env:
+  REGISTRY: praxosagentcontainers.azurecr.io
+  AKS_RESOURCE_GROUP: praxosKubernetes
+  AKS_CLUSTER_NAME: praxosCluster
+  DOCKER_IMAGE_NAME: hetairoi-worker
+  DEPLOYMENT_NAME: hetairoi-worker-deployment
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+    - name: 'Checkout GitHub Action'
+      uses: actions/checkout@v3
+
+    - name: 'Login via Azure CLI'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_PRAXOS_KUBERNETES_CREDENTIALS }}
+
+    - name: Azure Container Registry Login
+      run: |
+        az acr login --name praxosagentcontainers
+
+    
+    - name: Build and Push Docker Image
+      run: |
+        docker buildx create --use
+        docker buildx build --platform linux/amd64 -t ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest --push .
+
+    - name: Set AKS context
+      uses: azure/aks-set-context@v3
+      with:
+        resource-group: ${{ env.AKS_RESOURCE_GROUP }}
+        cluster-name: ${{ env.AKS_CLUSTER_NAME }}
+
+    - name: Restart Kubernetes Deployment
+      run: |
+        kubectl rollout restart -n hetairoi deployment

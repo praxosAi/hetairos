@@ -26,7 +26,12 @@ class EgressService:
             return
 
         logger.info(f"Routing response for source: {source}, output_type: {event.get('output_type')}")
-    
+        if event.get('output_type') not in ['email','websocket','telegram','whatsapp'] and event.get('source') in ['scheduled','recurring']:
+            logger.info('incorrect output type for scheduled or recurring event')
+            if event.get('metadata',{}).get('original_source', None):
+                logger.info(f"Overriding event source from {event['output_type']} to {event['metadata']['original_source']}")
+                event['output_type'] = event['metadata']['original_source']
+
         try:
             if event.get("output_type") == "email" or (event.get("source") == "email" and event.get("output_type") is None):
                 if event.get("email_type") == "unauthorised_user":

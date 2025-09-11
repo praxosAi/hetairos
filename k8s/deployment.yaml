@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hetairoi-web-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hetairoi-web
+  template:
+    metadata:
+      labels:
+        app: hetairoi-web
+    spec:
+      containers:
+      - name: hetairoi-web
+        image: praxosagentcontainers.azurecr.io/hetairoi-worker:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - secretRef:
+            name: hetairoi-secrets
+        command: ["/app/entrypoint.sh", "web"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hetairoi-worker-deployment
+spec:
+  replicas: 1 # Usually start with one worker, can be scaled based on load
+  selector:
+    matchLabels:
+      app: hetairoi-worker
+  template:
+    metadata:
+      labels:
+        app: hetairoi-worker
+    spec:
+      containers:
+      - name: hetairoi-worker
+        image: praxosagentcontainers.azurecr.io/hetairoi-worker:latest
+        imagePullPolicy: Always
+        envFrom:
+        - secretRef:
+            name: hetairoi-secrets
+        # This command tells the container to run the background workers
+        command: ["/app/entrypoint.sh", "worker"]
+        # ports:
+        # - containerPort: 8001
+        #   name: metrics
+        # resources:
+        #   requests:
+        #     cpu: "250m" # Start with 1/4 of a CPU core
+        #     memory: "512Mi" # Start with 512 MB of RAM
+        #   limits:
+        #     cpu: "1" # Allow up to 1 full CPU core
+        #     memory: "2Gi" # Allow up to 2 GB of RAM
+
+

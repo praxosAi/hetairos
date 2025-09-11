@@ -11,7 +11,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
 
     @tool
     async def send_email(recipient: str, subject: str, body: str) -> ToolExecutionResponse:
-        f"""Sends an email using Gmail API, from the user's Gmail ({user_email})."""
+        """Sends an email using Gmail API, from the user's Gmail ({user_email})."""
         try:
             singed_body = (body if body else "") + '\n\nEmail directive handled by <a href="https://app.mypraxos.com/log-in">My Praxos</a>'
             result = await gmail_integration.send_email(recipient, subject, singed_body)

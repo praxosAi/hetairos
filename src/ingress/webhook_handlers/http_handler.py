@@ -46,14 +46,7 @@ async def handle_chat_request(
     """
     Handles a conversational request from HTTP client with optional files/audio.
     Supports both JSON and multipart/form-data requests.
-    
-    For JSON requests:
-    {
-        "user_id": "string",
-        "input_text": "string", 
-        "token": "string"
-    }
-    
+
     For FormData requests:
     - user_id: form field
     - input_text: form field
@@ -129,6 +122,7 @@ async def handle_chat_request(
     if request_obj.files:
         payload["files"] = []
         for f in request_obj.files:
+            logger.info(f"Processing uploaded file: {f.filename} of type {f.content_type} and size {f.size}")
             blob_name = f"{user_id}/telegram/{f.filename.replace(' ', '_')}"
             blob_name = await upload_bytes_to_blob_storage(f.content, blob_name)
             payload["files"].append(

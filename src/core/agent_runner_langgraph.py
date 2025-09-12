@@ -175,6 +175,17 @@ class LangGraphAgentRunner:
                     ])
                 logger.info(f"Generated file message, the current length of the messages list is {len(messages)}")
                 messages.append(message)
+            if file['type'] == 'image':
+                file_content_b64 = await download_from_blob_storage_and_encode_to_base64(file['blob_path'])
+                message = HumanMessage(content=[
+                        {
+                            "type": "media",
+                            "source_type": "base64",
+                            "data": file_content_b64,
+                            "mime_type": file['mime_type'],
+                        },
+                    ])
+                messages.append(message)
         return messages
     async def run(self, user_context: UserContext, input: Dict, source: str, metadata: Optional[Dict] = None) -> AgentFinalResponse:
         execution_id = str(uuid.uuid4())

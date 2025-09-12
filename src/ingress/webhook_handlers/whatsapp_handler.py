@@ -54,7 +54,7 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
         raise HTTPException(status_code=403, detail="Invalid signature")
     
     body = await request.json()
-    # webhook_logger.info(f"WhatsApp webhook body: {body}")
+    webhook_logger.info(f"WhatsApp webhook body: {body}")
     if "entry" in body and body["entry"]:
         for entry in body["entry"]:
             for change in entry.get("changes", []):

@@ -11,7 +11,9 @@ from src.services.user_service import user_service
 from src.integrations.whatsapp.client import WhatsAppClient
 from src.utils.blob_utils import upload_to_blob_storage, send_to_service_bus
 from src.services.integration_service import integration_service
+from src.utils.database import db_manager
 import mimetypes
+from bson import ObjectId
 
 router = APIRouter()
 
@@ -102,17 +104,30 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                         blob_name = f"{str(user_record['_id'])}/whatsapp/{media_id or job_id}.{extension.lstrip('.')}"
                                         caption = message.get(message_type, {}).get("caption", "")
                                         file_path_blob = await upload_to_blob_storage(file_path, blob_name)
-                                        
+                                        document_entry = {
+                                            "user_id": ObjectId(user_record["_id"]),
+                                            "platform_file_id": media_id,
+                                            "platform_message_id": message["id"],
+                                            "platform": "whatsapp",
+                                            'file_type': message_type,
+                                            "blob_name": blob_name,
+                                            "mime_type": mime_type[0],
+                                            "caption": caption,
+
+                                        }
+                                        inserted_id = await db_manager.add_document(document_entry)
                                         event = {
                                             "user_id": str(user_record["_id"]),
                                             'output_type': 'whatsapp',
                                             'output_phone_number': phone_number,
                                             "source": "whatsapp",
-                                            "payload": {"files": [{'type': message_type, 'blob_path': file_path_blob, 'mime_type': mime_type[0],'caption': caption}]},
+                                            "payload": {"files": [{'type': message_type, 'blob_path': file_path_blob, 'mime_type': mime_type[0],'caption': caption,'inserted_id': inserted_id}]},
                                             "metadata": {"message_id": message["id"],'source':'whatsapp'}
                                         }
 
+
                                         await event_queue.publish(event)
+                                        
                                         webhook_logger.info(f"Queued transcription job {job_id} for user {user_record['_id']}")
                                     finally:
                                         os.unlink(file_path) # Clean up the local file

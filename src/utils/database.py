@@ -119,13 +119,14 @@ class ConversationDatabase:
             {"$set": {"last_activity": datetime.utcnow()}}
         )
         return str(result.inserted_id)
-
     async def get_conversation_messages(self, conversation_id: str, limit: int = 50) -> List[Dict]:
         """Get messages for a conversation, ordered by timestamp."""
         cursor = self.messages.find(
             {"conversation_id": conversation_id}
         ).sort("timestamp", 1)
         return await cursor.to_list()
+
+    
 
     async def record_search_attempt(self, conversation_id: str, query: str, search_type: str, 
                                      success: bool, error_type: Optional[str] = None, 
@@ -412,9 +413,10 @@ class DatabaseManager:
             {"$set": update_data}
         )
 
-    async def add_document(self, document_record: Dict):
-        """Adds a document record to the documents collection."""
-        await self.documents.insert_one(document_record)
+    async def add_document(self, document_record: Dict) -> str:
+        """Adds a document record to the documents collection and returns the inserted _id as a string."""
+        result = await self.documents.insert_one(document_record)
+        return str(result.inserted_id)
 
 # Global database instance
 db_manager = DatabaseManager()

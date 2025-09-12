@@ -62,7 +62,7 @@ class LangGraphAgentRunner:
         self.llm = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
         if has_media:
             self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
+            model="gemini-2.5-pro",
             api_key=settings.GEMINI_API_KEY,
             temperature=0.2,
             )
@@ -156,6 +156,8 @@ class LangGraphAgentRunner:
         input_files: List[Dict],
         messages: List[BaseMessage],
         model: str = None,  # kept for backward compatibility; unused
+        conversation_id: str = None,
+        message_prefix: str = ""
     ) -> List[BaseMessage]:
         """Generates file messages from the input files."""
         logger.info(f"Generating file messages; current messages length: {len(messages)}")
@@ -164,7 +166,7 @@ class LangGraphAgentRunner:
             ftype = file.get("type")
             blob_path = file.get("blob_path")
             mime_type = file.get("mime_type")
-
+            file_inserted_id = file.get("inserted_id")
             if not ftype or not blob_path:
                 logger.warning(f"Skipping file with missing type/blob_path: {file}")
                 continue
@@ -203,7 +205,13 @@ class LangGraphAgentRunner:
             else:
                 logger.warning(f"Unknown file type '{ftype}'; skipping: {file}")
                 continue
-
+            ### a sync is needed. this is because otherwise, the message is lost for later iterations.
+            if file_inserted_id and conversation_id:
+                
+                ### we add a media message.
+                self.conversation_manager.add_user_media_message(conversation_id,message_prefix, file_inserted_id, message_type=ftype, metadata={'inserted_id': file_inserted_id,'timestamp': datetime.utcnow().isoformat()})
+                if caption:
+                    self.conversation_manager.add_user_message(conversation_id, message_prefix + " as caption for media in the previous message: " + caption, metadata={'inserted_id': file_inserted_id,'timestamp': datetime.utcnow().isoformat()})
             message = HumanMessage(content=new_message_contents + [payload])
             messages.append(message)
             logger.info(f"Added '{ftype}' message; messages length now {len(messages)}")
@@ -229,9 +237,6 @@ class LangGraphAgentRunner:
             input_files = input.get("files")
             if input_text:
                 logger.info(f"Running LangGraph agent runner for user {user_context.user_id} with input {input_text} and source {source}")
-            elif input_files and not input_text:
-                logger.info(f"Running LangGraph agent runner for user {user_context.user_id} with input {input_files} and source {source}")
-                input_text = "SYSTEM NOTE: the user sent a multimedia message. the files are attached to the message."
             tools = await self.tools_factory.create_tools(user_context, metadata)
             logger.info(f"Tools created: {tools}")
             tool_executor = ToolNode(tools)
@@ -246,7 +251,7 @@ class LangGraphAgentRunner:
                 praxos_api_key = user_context.user_record.get("praxos_api_key")
 
             try:
-                if input_text and praxos_api_key:
+                if input_text and len(input_text) > 5 and praxos_api_key:
                     praxos_client = PraxosClient(f"env_for_{user_context.user_record.get('email')}", api_key=praxos_api_key)
 
                     long_term_memory_context = await self._get_long_term_memory(praxos_client, input_text)
@@ -298,10 +303,12 @@ class LangGraphAgentRunner:
             current_time_nyc = datetime.now(nyc_tz).isoformat()
             # --- Execution ---
             conversation_id = metadata.get("conversation_id") or await self.conversation_manager.get_or_create_conversation(user_context.user_id, source)
-            await self.conversation_manager.add_user_message(conversation_id, 'message sent on date ' + current_time_nyc + ' by ' + user_context.user_record.get('first_name', '') + ' ' + user_context.user_record.get('last_name', '') + ': ' + input_text, metadata)
+            message_prefix = 'message sent on date ' + current_time_nyc + ' by ' + user_context.user_record.get('first_name', '') + ' ' + user_context.user_record.get('last_name', '') + ': ' 
+            if input_text:
+                await self.conversation_manager.add_user_message(conversation_id, message_prefix + input_text, metadata)
             history = await self._get_conversation_history(conversation_id)
             if input_files:
-                history = await self._generate_file_messages(input_files,history,model='gemini')
+                history = await self._generate_file_messages(input_files,history,model='gemini', conversation_id=conversation_id,message_prefix=message_prefix)
             initial_state: AgentState = {
                 "messages": history,
                 "user_context": user_context,

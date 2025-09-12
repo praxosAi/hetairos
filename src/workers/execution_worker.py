@@ -40,7 +40,7 @@ class ExecutionWorker:
                     # Ingestion tasks typically don't have a direct response to the user.
                     # We could potentially send a notification via the egress service if needed.
                 
-                elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp"]:
+                elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram"]:
                     # --- Handle Agent Task ---
                     if source == "recurring":
                         try:

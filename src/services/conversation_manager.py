@@ -33,7 +33,10 @@ class ConversationManager:
     async def add_user_message(self, conversation_id: str, content: str, metadata: Dict = None) -> str:
         """Add user message to conversation"""
         return await self.db.add_message(conversation_id, 'user', content, 'text', metadata)
-    
+
+    async def add_user_media_message(self, conversation_id: str, content: str, inserted_id: str, message_type: str = 'media', metadata: Dict = None) -> str:
+        """Add user media message to conversation"""
+        return await self.db.add_message(conversation_id, 'user', content + f" PLACEHOLDER FOR {inserted_id}", message_type, {'document_id': inserted_id})
     async def add_assistant_message(self, conversation_id: str, content: str, 
                              message_type: str = 'text', metadata: Dict = None) -> str:
         """Add assistant message to conversation"""

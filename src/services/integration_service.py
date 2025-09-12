@@ -74,6 +74,26 @@ class IntegrationService:
 
     async def get_integration_token(self, user_id: str, name: str) -> Optional[Dict[str, Any]]:
         """Get the decrypted token for a specific user and provider."""
+        if settings.OPERATING_MODE == "local":
+            logger.info(f"Operating in local mode. Fetching token for {name} from settings.")
+            if name == "google_calendar" or name == "gmail":
+                return {
+                    "access_token": "local_google_access_token",  # This would be fetched or refreshed
+                    "refresh_token": settings.GOOGLE_REFRESH_TOKEN,
+                    "token_expiry": None,  # Local tokens might not have an expiry or are long-lived
+                    "scopes": ["https://www.googleapis.com/auth/calendar", "https://www.googleapis.com/auth/gmail.readonly"]
+                }
+            elif name == "microsoft":
+                 return {
+                    "access_token": "local_microsoft_access_token",
+                    "refresh_token": settings.MICROSOFT_REFRESH_TOKEN,
+                    "token_expiry": None,
+                    "scopes": ["user.read", "mail.read"]
+                }
+            # Add other integrations here as needed
+            logger.warning(f"No local token configuration for provider {name}")
+            return None
+
         token_doc = await self.db_manager.db["integration_tokens"].find_one({
             "user_id": ObjectId(user_id),
             "integration_name": name

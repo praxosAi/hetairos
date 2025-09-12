@@ -43,7 +43,7 @@ async def handle_telegram_webhook(request: Request):
                 "metadata": {'message_id': message["message_id"],'chat_id': chat_id, 'source':'Telegram'}
             }
             await event_queue.publish(event)
-        elif 'voice' in message and message["voice"]:
+        if 'voice' in message and message["voice"]:
             voice = message["voice"]
             file_id = voice["file_id"]
             file_path_data = await telegram_client.get_file_path(file_id)
@@ -63,6 +63,37 @@ async def handle_telegram_webhook(request: Request):
                 'output_chat_id': chat_id,
                 "source": "telegram",
                 "payload": {"files": [{'type': 'voice', 'blob_path': blob_name, 'mime_type': mime_type[0]}]},
+                "metadata": {'message_id': message["message_id"],'chat_id': chat_id,'source':'Telegram'}
+            }
+            await event_queue.publish(event)
+        for key in ['video','document','sticker']:
+            if not key in message or not message[key]:
+                continue
+            
+            document = message[key]
+            file_id = document["file_id"]
+            mime_type = document.get("mime_type")
+            file_path_data = await telegram_client.get_file_path(file_id)
+            file_path = file_path_data["result"]["file_path"]
+            file_unique_id = file_path_data["result"]["file_unique_id"]
+            caption = message.get("caption","")
+            logger.info(f"Received voice message from Telegram: {file_path}")
+            file_path_local = await telegram_client.download_file_to_temp_path(file_path, file_unique_id)
+            logger.info(f"Downloaded voice message from Telegram: {file_path_local}")
+            if not mime_type:
+                mime_type = mimetypes.guess_type(file_path_local)
+            else:
+                mime_type = [mime_type]
+            logger.info(f"Mime type of the voice message: {mime_type}")
+            if mime_type[0] is None and ('oga' in file_path_local or 'ogg' in file_path_local):
+                mime_type = ['audio/ogg']
+            blob_name =await upload_to_blob_storage(file_path_local, f"{user_id}/telegram/{file_path_local}")
+            event = {
+                "user_id": user_id,
+                'output_type': 'telegram',
+                'output_chat_id': chat_id,
+                "source": "telegram",
+                "payload": {"files": [{'type': key, 'blob_path': blob_name, 'mime_type': mime_type[0],'caption': caption}]},
                 "metadata": {'message_id': message["message_id"],'chat_id': chat_id,'source':'Telegram'}
             }
             await event_queue.publish(event)

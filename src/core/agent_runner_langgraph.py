@@ -50,7 +50,7 @@ class AgentState(MessagesState):
 
 # --- 2. Define the Agent Runner Class ---
 class LangGraphAgentRunner:
-    def __init__(self,trace_id: str, has_audio: bool = False):
+    def __init__(self,trace_id: str, has_media: bool = False):
         
         self.tools_factory = AgentToolsFactory(config=settings, db_manager=db_manager)
         self.conversation_manager = ConversationManager(db_manager.db, integration_service)
@@ -60,7 +60,7 @@ class LangGraphAgentRunner:
         portkey_headers , portkey_gateway_url = create_port_key_headers(trace_id=trace_id)
         ### note that this is not OpenAI, this is azure. we will use portkey to access OAI Azure.
         self.llm = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
-        if has_audio:
+        if has_media:
             self.llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",
             api_key=settings.GEMINI_API_KEY,
@@ -151,41 +151,63 @@ class LangGraphAgentRunner:
 
         return history
 
-    async def _generate_file_messages(self, input_files: List[Dict],messages: List[BaseMessage],model:str='openai') -> List[BaseMessage]:
+    async def _generate_file_messages(
+        self,
+        input_files: List[Dict],
+        messages: List[BaseMessage],
+        model: str = None,  # kept for backward compatibility; unused
+    ) -> List[BaseMessage]:
         """Generates file messages from the input files."""
-        logger.info(f"Generating file messages, the current length of the messages list is {len(messages)}")
-        for file in input_files:
-            if file['type'] == 'voice':
-                file_content_b64 = await download_from_blob_storage_and_encode_to_base64(file['blob_path'])
-                logger.info(f'file is {file}')
-                file_type_to_use = 'audio' if model == 'openai' else 'media'
-                mime_type_to_use = 'audio/wav' if model == 'openai' else file['mime_type']
-                if model == 'openai':
-                    file_content_b64 = convert_ogg_b64_to_wav_b64(file_content_b64)
+        logger.info(f"Generating file messages; current messages length: {len(messages)}")
 
-                logger.info(f"mime_type_to_use is {mime_type_to_use} and file_type_to_use is {file_type_to_use}")
-                message = HumanMessage(content=[
-                        {
-                            # "type": "media",
-                            'type'  : file_type_to_use,
-                            "source_type": "base64",
-                            "data": file_content_b64,
-                            "mime_type": mime_type_to_use,
-                        },
-                    ])
-                logger.info(f"Generated file message, the current length of the messages list is {len(messages)}")
-                messages.append(message)
-            if file['type'] == 'image':
-                file_content_b64 = await download_from_blob_storage_and_encode_to_base64(file['blob_path'])
-                message = HumanMessage(content=[
-                        {
-                            "type": "media",
-                            "source_type": "base64",
-                            "data": file_content_b64,
-                            "mime_type": file['mime_type'],
-                        },
-                    ])
-                messages.append(message)
+        for file in input_files:
+            ftype = file.get("type")
+            blob_path = file.get("blob_path")
+            mime_type = file.get("mime_type")
+
+            if not ftype or not blob_path:
+                logger.warning(f"Skipping file with missing type/blob_path: {file}")
+                continue
+
+            # Always: download file and prepare caption (if any)
+            file_content_b64 = await download_from_blob_storage_and_encode_to_base64(blob_path)
+            logger.info(f"Processing file entry: {file}")
+
+            new_message_contents = []
+            caption = file.get("caption")
+            if caption:
+                new_message_contents.append({"type": "text", "text": caption})
+
+            # Per-type payload
+            payload = None
+            if ftype in {"voice", "audio", "video"}:
+                
+                payload = {
+                    "type": "media",
+                    "data": file_content_b64,
+                    "mime_type": mime_type,
+                }
+            elif ftype == "image":
+                # Use data URL for images
+                payload = {
+                    "type": "image_url",
+                    "image_url": f"data:{mime_type};base64,{file_content_b64}",
+                }
+            elif ftype in {"document", "file"}:
+                payload = {
+                    "type": "file",
+                    "source_type": "base64",
+                    "mime_type": mime_type,
+                    "data": file_content_b64,
+                }
+            else:
+                logger.warning(f"Unknown file type '{ftype}'; skipping: {file}")
+                continue
+
+            message = HumanMessage(content=new_message_contents + [payload])
+            messages.append(message)
+            logger.info(f"Added '{ftype}' message; messages length now {len(messages)}")
+
         return messages
     async def run(self, user_context: UserContext, input: Dict, source: str, metadata: Optional[Dict] = None) -> AgentFinalResponse:
         execution_id = str(uuid.uuid4())

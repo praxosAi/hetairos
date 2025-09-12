@@ -4,6 +4,8 @@ from typing import Dict, List, Optional
 from src.utils.database import ConversationDatabase
 from src.core.praxos_client import PraxosClient
 from src.services.user_service import user_service
+from src.services.ai_service import ai_service
+
 class ConversationConsolidator:
     """Consolidates conversations from short-term to long-term memory"""
     def __init__(self, db_manager: ConversationDatabase):
@@ -20,7 +22,23 @@ class ConversationConsolidator:
                 return False
             print('found conversation')
             # Get all messages and search attempts
+                       
             messages = await self.db.get_conversation_messages(conversation_id)
+            try:
+                file_message_idx = []
+                tasks = []
+                for idx, message in enumerate(messages):
+                    if message.get('metadata', {}).get('inserted_id'):
+                        file_message_idx.append(idx)
+                        tasks.append(asyncio.create_task(ai_service.multi_modal_by_doc_id('provide a full description of this media. prefix it with "description of media type: , where media type is the type of the media, for example, audio, video, etc."', message['metadata']['inserted_id'])))
+                descriptions = await asyncio.gather(*tasks)
+                for i, idx in enumerate(file_message_idx):
+                    message_idx = file_message_idx[i]
+                    message = messages[message_idx]
+                    description = descriptions[i]
+                    messages[message_idx]['content'] = f'Description of media type with id: {message["metadata"]["inserted_id"]}: {description}'
+            except Exception as e:
+                print(f"Error generating media descriptions: {e}", exc_info=True)
             print('found messages')
             search_attempts = await self.db.get_recent_search_attempts(conversation_id, limit=100)
             print('found search attempts')
@@ -49,7 +67,7 @@ class ConversationConsolidator:
             if not praxos_api_key:
                 raise ValueError("Praxos API key not found.")
 
-            praxos_client = PraxosClient(env_name,api_key=praxos_api_key)
+            praxos_client = PraxosClient(env_name, api_key=praxos_api_key)
             source_data = await praxos_client.add_conversation(
                     user_id=conversation_user_id,
                     source='conversation_summary',

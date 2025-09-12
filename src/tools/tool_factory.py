@@ -83,13 +83,32 @@ class AgentToolsFactory:
             tools.extend(create_dropbox_tools(dropbox_integration))
 
         # --- Praxos & Other Core Tools ---
-        praxos_client = PraxosClient(f"env_for_{user_email}", api_key=user_context.user_record.get("praxos_api_key"))
-        tools.extend(create_praxos_memory_tool(praxos_client))
+        from src.config.settings import settings
+        if settings.OPERATING_MODE == "local":
+            praxos_api_key = settings.PRAXOS_API_KEY
+        else:
+            praxos_api_key = user_context.user_record.get("praxos_api_key")
+
+        if praxos_api_key:
+            praxos_client = PraxosClient(f"env_for_{user_email}", api_key=praxos_api_key)
+            tools.extend(create_praxos_memory_tool(praxos_client))
+        else:
+            logger.warning("Praxos API key not found, memory tools will be unavailable.")
+
         tools.extend(create_bot_communication_tools(metadata, user_id))
-        tools.extend(create_scheduling_tools(user_id,metadata['source']))
-        tools.extend(create_basic_tools())
-        tools.extend(create_web_tools())
-        
+        try:
+            tools.extend(create_scheduling_tools(user_id, metadata.get('source')))
+        except Exception as e:
+            logger.error(f"Error creating scheduling tools: {e}", exc_info=True)
+        try:
+            tools.extend(create_basic_tools())
+        except Exception as e:
+            logger.error(f"Error creating basic tools: {e}", exc_info=True)
+        try:
+            tools.extend(create_web_tools())
+        except Exception as e:
+            logger.error(f"Error creating web tools: {e}", exc_info=True)
+
         # --- Browser Tools ---
         try:
             tools.extend(create_playwright_tools())

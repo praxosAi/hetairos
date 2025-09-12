@@ -109,8 +109,8 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                             "platform_file_id": media_id,
                                             "platform_message_id": message["id"],
                                             "platform": "whatsapp",
-                                            'file_type': message_type,
-                                            "blob_name": blob_name,
+                                            'type': message_type,
+                                            "blob_path": blob_name,
                                             "mime_type": mime_type[0],
                                             "caption": caption,
 
@@ -121,7 +121,7 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                             'output_type': 'whatsapp',
                                             'output_phone_number': phone_number,
                                             "source": "whatsapp",
-                                            "payload": {"files": [{'type': message_type, 'blob_path': file_path_blob, 'mime_type': mime_type[0],'caption': caption,'inserted_id': inserted_id}]},
+                                            "payload": {"files": [{'type': message_type, 'blob_path': file_path_blob, 'mime_type': mime_type[0],'caption': caption,'inserted_id': str(inserted_id)}]},
                                             "metadata": {"message_id": message["id"],'source':'whatsapp'}
                                         }
 

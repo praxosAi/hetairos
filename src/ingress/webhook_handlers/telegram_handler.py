@@ -71,8 +71,8 @@ async def handle_telegram_webhook(request: Request):
                 "platform_file_id": file_unique_id,
                 "platform_message_id": chat_id,
                 "platform": "telegram",
-                'file_type': key,
-                "blob_name": blob_name,
+                'type': key,
+                "blob_path": blob_name,
                 "mime_type": mime_type[0],
                 "caption": caption,
 
@@ -83,7 +83,7 @@ async def handle_telegram_webhook(request: Request):
                 'output_type': 'telegram',
                 'output_chat_id': chat_id,
                 "source": "telegram",
-                "payload": {"files": [{'type': key, 'blob_path': blob_name, 'mime_type': mime_type[0],'caption': caption,'inserted_id': inserted_id}]},
+                "payload": {"files": [{'type': key, 'blob_path': blob_name, 'mime_type': mime_type[0],'caption': caption,'inserted_id': str(inserted_id)}]},
                 "metadata": {'message_id': message["message_id"],'chat_id': chat_id,'source':'Telegram'}
             }
             await event_queue.publish(event)

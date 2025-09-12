@@ -417,6 +417,11 @@ class DatabaseManager:
         """Adds a document record to the documents collection and returns the inserted _id as a string."""
         result = await self.documents.insert_one(document_record)
         return str(result.inserted_id)
-
+    async def get_document_by_id(self, document_id: str) -> Optional[Dict]:
+        """Get a document by its ID."""
+        document = await self.documents.find_one({"_id": ObjectId(document_id)})
+        if document:
+            return document
+        return None
 # Global database instance
 db_manager = DatabaseManager()

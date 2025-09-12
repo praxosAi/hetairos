@@ -19,7 +19,6 @@ from langchain_core.utils.function_calling import convert_to_openai_function
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chat_models import init_chat_model
 import uuid
-
 from bson import ObjectId
 from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64
 from src.utils.audio import convert_ogg_b64_to_wav_b64
@@ -206,9 +205,15 @@ class LangGraphAgentRunner:
             llm_with_tools = self.llm.bind_tools(tools)
 
             system_prompt = self._create_system_prompt(user_context, source, metadata)
-            praxos_api_key = user_context.user_record.get("praxos_api_key")
+            
+            from src.config.settings import settings
+            if settings.OPERATING_MODE == "local":
+                praxos_api_key = settings.PRAXOS_API_KEY
+            else:
+                praxos_api_key = user_context.user_record.get("praxos_api_key")
+
             try:
-                if input_text:
+                if input_text and praxos_api_key:
                     praxos_client = PraxosClient(f"env_for_{user_context.user_record.get('email')}", api_key=praxos_api_key)
 
                     long_term_memory_context = await self._get_long_term_memory(praxos_client, input_text)

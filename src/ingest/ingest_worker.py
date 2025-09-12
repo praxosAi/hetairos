@@ -39,7 +39,17 @@ class IngestWorker:
         ingestion_results = []
         user_record = user_service.get_user_by_id(user_id)
         env_name = f"env_for_{user_record['email']}"
-        praxos_client = PraxosClient(env_name, api_key=user_record.get("praxos_api_key"))
+        
+        from src.config.settings import settings
+        if settings.OPERATING_MODE == "local":
+            praxos_api_key = settings.PRAXOS_API_KEY
+        else:
+            praxos_api_key = user_record.get("praxos_api_key")
+
+        if not praxos_api_key:
+            raise ValueError("Praxos API key not found.")
+
+        praxos_client = PraxosClient(env_name, api_key=praxos_api_key)
 
         for file_data in files:
             try:

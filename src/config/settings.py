@@ -9,6 +9,10 @@ class Settings:
     PRAXOS_BASE_URL = "https://api.praxos.ai"
     PRAXOS_ENVIRONMENT_NAME = os.getenv("PRAXOS_ENVIRONMENT_NAME")
     PORTKEY_API_KEY = os.getenv("PORTKEY_API_KEY")
+
+    # Operating Mode: 'cloud' for production, 'local' for open-source
+    OPERATING_MODE = os.getenv("OPERATING_MODE", "cloud")
+
     # WhatsApp Business API
     WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
     WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET")
@@ -74,20 +78,20 @@ class Settings:
     REDIS_URL = "praxosforms.redis.cache.windows.net"
     REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
     REDIS_QUEUE_NAME = "mypraxos"
+    
+    # Queue Mode: 'azure' for production, 'in_memory' for local development
+    QUEUE_MODE = os.getenv("QUEUE_MODE", "azure")
+
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     # Rate limits for webhooks
     MAX_GMAIL_WEBHOOKS_PER_HOUR = 1000
     MAX_HISTORY_CALLS_PER_HOUR = 500
     
-    # Voice transcription settings
-    TRANSCRIPTION_METHOD = os.getenv("TRANSCRIPTION_METHOD", "gemini")  # "gemini" or "local"
-    GEMINI_TRANSCRIPTION_MODEL = os.getenv("GEMINI_TRANSCRIPTION_MODEL", "gemini-2.5-pro")
-    WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base")  # "tiny", "base", "small", "medium", "large"
     AUDIO_MAX_DURATION_SECONDS = int(os.getenv("AUDIO_MAX_DURATION_SECONDS", "300"))  # 5 minutes
     ENABLE_FALLBACK_TO_LOCAL = os.getenv("ENABLE_FALLBACK_TO_LOCAL", "true").lower() == "true"
     
     # Bot Identity
     BOT_EMAIL_ADDRESS = "my@praxos.ai"
-    SENDER_SERVICE_URL = "https://prod-49.eastus2.logic.azure.com:443/workflows/aeaeb778b54549e0af5af99fd41d3594/triggers/When_an_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_an_HTTP_request_is_received%2Frun&sv=1.0&sig=Mg2ug-r_lbgNi1MClKfs5cOQAWE-DhIv3ycPAuHtnOQ"
+    SENDER_SERVICE_URL = os.getenv('SENDER_SERVICE_URL')
     
 settings = Settings()

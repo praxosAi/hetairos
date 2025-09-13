@@ -29,6 +29,7 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             page = await notion_client.create_page(parent_page_id, title, content)
             return ToolExecutionResponse(status="success", result={"page_link": page.get('url')})
         except Exception as e:
+            logger.error(f"Error creating Notion page: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
 
     @tool
@@ -43,6 +44,7 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             results = await notion_client.search_pages(query)
             return json.dumps(results)
         except Exception as e:
+            logger.error(f"Error searching Notion pages: {e}", exc_info=True)
             return f"Error searching Notion pages: {e}"
 
     @tool

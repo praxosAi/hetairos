@@ -127,6 +127,58 @@ class NotionIntegration(BaseIntegration):
                 block["children"] = await self._get_all_blocks(block["id"])
         return blocks
 
+    async def search_pages(self, query: str) -> List[Dict[str, Any]]:
+        """
+        Searches for pages in Notion using a text query.
+
+        Args:
+            query: The search query string.
+
+        Returns:
+            A list of page objects matching the search query.
+        """
+        if not self.api_key:
+            raise Exception("Notion client not authenticated.")
+
+        url = f"{self.base_url}/search"
+        data = {
+            "query": query,
+            "filter": {
+                "value": "page",
+                "property": "object"
+            },
+            "sort": {
+                "direction": "descending",
+                "timestamp": "last_edited_time"
+            }
+        }
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(url, headers=self.headers, json=data) as response:
+                    response.raise_for_status()
+                    search_results = await response.json()
+                    
+                    pages = []
+                    for result in search_results.get("results", []):
+                        if result.get("object") == "page":
+                            title = "Untitled"
+                            if result.get("properties", {}).get("title", {}).get("title"):
+                                title = result["properties"]["title"]["title"][0].get("plain_text", "Untitled")
+                            
+                            pages.append({
+                                "id": result["id"],
+                                "title": title,
+                                "url": result.get("url"),
+                                "last_edited_time": result.get("last_edited_time"),
+                                "created_time": result.get("created_time")
+                            })
+                    
+                    return pages
+            except aiohttp.ClientError as e:
+                logger.error(f"Error searching Notion pages: {e}")
+                raise
+
     async def create_page(self, parent_page_id: str, title: str, content: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Creates a new page in Notion.

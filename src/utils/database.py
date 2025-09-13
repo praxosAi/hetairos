@@ -434,7 +434,7 @@ class DatabaseManager:
 
     async def add_document(self, document_record: Dict) -> str:
         """Adds a document record to the documents collection and returns the inserted _id as a string."""
-        document_record['created_at'] = datetime.utcnow.isoformat()
+        document_record['created_at'] = datetime.utcnow().isoformat()
         result = await self.documents.insert_one(document_record)
         return str(result.inserted_id)
     async def get_document_by_id(self, document_id: str) -> Optional[Dict]:

@@ -10,7 +10,7 @@ from bson import ObjectId
 from src.utils.logging.base_logger import setup_logger
 logger = setup_logger(__name__)
 from src.utils.blob_utils import upload_bytes_to_blob_storage, upload_to_blob_storage
-from fastapi import UploadFile,Request, Form, UploadFile, File
+from fastapi import UploadFile,Request, Form, File
 from src.utils.database import db_manager
 from typing import List, Optional
 import json
@@ -102,6 +102,7 @@ async def handle_chat_request(
     # Process uploaded files
     file_data = []
     for file in files:
+        logger.info(f"Received file: {file.filename} of type {file.content_type} and size {file.spool_max_size}")  
         if file.filename:  
             content = await file.read()
             file_data.append(FileInfo(
@@ -226,7 +227,7 @@ async def handle_chat_request(
 
 @router.post("/file_import", status_code=status.HTTP_202_ACCEPTED)
 async def handle_file_upload_request(
-    request_body: Optional[HttpIngressRequest] = None,
+    request_body: Optional[IngestionRequest] = None,
     raw_request: Request = None,
     user_id: str = Form(None),
     files: List[UploadFile] = File(default=[]),
@@ -251,7 +252,9 @@ async def handle_file_upload_request(
         
     # Process uploaded files
     file_data = []
+    logger.info(f"Number of files received: {len(files)}")
     for file in files:
+        logger.info(f"Received file: {file.filename} of type {file.content_type} and size")
         if file.filename:  
             content = await file.read()
             file_data.append(FileInfo(
@@ -267,7 +270,7 @@ async def handle_file_upload_request(
         user_id=user_id,
         files=file_data
     )
-
+    
 
 
     # Build payload with files and audio
@@ -290,6 +293,7 @@ async def handle_file_upload_request(
                 'file_name': f.filename
 
             }
+            
             inserted_id = await db_manager.add_document(doc_entry)
             payload["files"].append(
                 {
@@ -298,6 +302,7 @@ async def handle_file_upload_request(
                     "blob_path": blob_name,
                     'inserted_id': inserted_id
                 } )
+            logger.info(f"Inserted document record with ID: {inserted_id}")
         payload["file_count"] = len(request_obj.files)
     
 

@@ -13,7 +13,7 @@ async def run_consolidator():
     while True:
         logger.info("Running conversation consolidator...")
         await consolidator.consolidate_all_ready_conversations()
-        await asyncio.sleep(60 * 3) # Run every 15 minutes
+        await asyncio.sleep(60 * 15) # Run every 15 minutes
 
 async def main():
     """

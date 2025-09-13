@@ -11,7 +11,7 @@ from langchain.chat_models import init_chat_model
 from ai_service_models import *
 logger = setup_logger(__name__)
 class AIService:
-    def __init__(self, model_name: str = "gemini-2.5-pro-latest"):
+    def __init__(self, model_name: str = "gemini-2.5-pro"):
         self.model_gemini_pro = ChatGoogleGenerativeAI(model=model_name, google_api_key=settings.GEMINI_API_KEY)
         llm = init_chat_model("gpt-4o", model_provider="openai")
         from src.utils.portkey_headers_isolation import create_port_key_headers
@@ -27,6 +27,7 @@ class AIService:
     async def boolean_call(self, prompt: str) -> bool:
         structured_llm = self.model_gemini_flash.with_structured_output(BooleanResponse)
         response = await structured_llm.ainvoke(prompt)
+        logger.info(f"Boolean call response: {response}")
         return response.response
 
     async def normal_call(self, prompt: str):

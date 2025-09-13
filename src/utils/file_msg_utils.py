@@ -3,7 +3,6 @@
 from ast import Dict
 
 from typing import Any, List, Optional,Dict
-from src.utils.database import db_manager
 from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64
 async def build_payload_entry(file: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Create a single payload dict for a file entry."""
@@ -30,5 +29,6 @@ async def build_payload_entry(file: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 async def build_payload_entry_from_inserted_id(inserted_id: str) -> Optional[Dict[str, Any]]:
+    from src.utils.database import db_manager
     file = await db_manager.get_document_by_id(inserted_id)
     return await build_payload_entry(file) if file else None

@@ -44,7 +44,7 @@ async def handle_telegram_webhook(request: Request):
                 "metadata": {'message_id': message["message_id"],'chat_id': chat_id, 'source':'Telegram'}
             }
             await event_queue.publish(event)
-        for key in ['video','document','sticker','voice','audio']:
+        for key in ['video','document','sticker','voice','audio','sticker']:
             if not key in message or not message[key]:
                 continue
             
@@ -67,12 +67,15 @@ async def handle_telegram_webhook(request: Request):
                 mime_type = ['audio/ogg']
             blob_name =await upload_to_blob_storage(file_path_local, f"{user_id}/telegram/{file_path_local}")
             file_name_og = document.get("file_name",'Original filename not accessible')
+            type_to_use = key
+            if key == 'sticker':
+                type_to_use = 'image'
             document_entry = {
                 "user_id": ObjectId(user_id),
                 "platform_file_id": file_unique_id,
                 "platform_message_id": chat_id,
                 "platform": "telegram",
-                'type': key,
+                'type': type_to_use,
                 "blob_path": blob_name,
                 "mime_type": mime_type[0],
                 "caption": caption,
@@ -85,7 +88,7 @@ async def handle_telegram_webhook(request: Request):
                 'output_type': 'telegram',
                 'output_chat_id': chat_id,
                 "source": "telegram",
-                "payload": {"files": [{'type': key, 'blob_path': blob_name, 'mime_type': mime_type[0],'caption': caption,'inserted_id': str(inserted_id)}]},
+                "payload": {"files": [{'type': type_to_use, 'blob_path': blob_name, 'mime_type': mime_type[0],'caption': caption,'inserted_id': str(inserted_id)}]},
                 "metadata": {'message_id': message["message_id"],'chat_id': chat_id,'source':'Telegram'}
             }
             await event_queue.publish(event)

@@ -11,7 +11,9 @@ from src.services.user_service import user_service
 from src.integrations.whatsapp.client import WhatsAppClient
 from src.utils.blob_utils import upload_to_blob_storage, send_to_service_bus
 from src.services.integration_service import integration_service
+from src.utils.database import db_manager
 import mimetypes
+from bson import ObjectId
 
 router = APIRouter()
 
@@ -88,34 +90,48 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                             }
                             await event_queue.publish(event)
                         
-                        elif message_type in ["audio", "voice"]:
+                        elif message_type in ["audio", "voice","document",'image','video']:
                             media_id = message.get(message_type, {}).get("id")
                             if media_id:
-                                file_path, _ = await whatsapp_client.download_media_by_id_to_file(media_id)
+                                mime_type = [message.get(message_type, {}).get("mime_type").split(';')[0]]
+                                extension = mimetypes.guess_extension(mime_type[0]) or ''
+                                webhook_logger.info(f"Downloading media {media_id} of type {message_type} with extension {extension} and mime type {mime_type} for user {user_record['_id']}")
+                                file_path, _ = await whatsapp_client.download_media_by_id_to_file(media_id,extension)
                                 if file_path:
                                     try:
                                         job_id = str(uuid.uuid4())
-                                        blob_name = f"{str(user_record['_id'])}/whatsapp/{media_id or job_id}.ogg"
-                                        
-                                        file_path_blob = await upload_to_blob_storage(file_path, blob_name)
-                                        mime_type = mimetypes.guess_type(file_path)
-                                        if mime_type[0] is None and ('oga' in file_path or 'ogg' in file_path):
-                                            mime_type = ['audio/ogg']
 
+                                        blob_name = f"{str(user_record['_id'])}/whatsapp/{media_id or job_id}.{extension.lstrip('.')}"
+                                        caption = message.get(message_type, {}).get("caption", "")
+                                        file_path_blob = await upload_to_blob_storage(file_path, blob_name)
+                                        document_entry = {
+                                            "user_id": ObjectId(user_record["_id"]),
+                                            "platform_file_id": media_id,
+                                            "platform_message_id": message["id"],
+                                            "platform": "whatsapp",
+                                            'type': message_type,
+                                            "blob_path": blob_name,
+                                            "mime_type": mime_type[0],
+                                            "caption": caption,
+                                            "file_name": 'whatsapp files do not have original file names'
+
+                                        }
+                                        inserted_id = await db_manager.add_document(document_entry)
                                         event = {
                                             "user_id": str(user_record["_id"]),
                                             'output_type': 'whatsapp',
                                             'output_phone_number': phone_number,
                                             "source": "whatsapp",
-                                            "payload": {"files": [{'type': 'voice', 'blob_path': file_path_blob, 'mime_type': mime_type[0]}]},
+                                            "payload": {"files": [{'type': message_type, 'blob_path': file_path_blob, 'mime_type': mime_type[0],'caption': caption,'inserted_id': str(inserted_id)}]},
                                             "metadata": {"message_id": message["id"],'source':'whatsapp'}
                                         }
 
+
                                         await event_queue.publish(event)
+                                        
                                         webhook_logger.info(f"Queued transcription job {job_id} for user {user_record['_id']}")
                                     finally:
                                         os.unlink(file_path) # Clean up the local file
-                        else:
-                            webhook_logger.info(f"Unsupported message type: {message_type}")
+
 
     return {"status": "ok"}

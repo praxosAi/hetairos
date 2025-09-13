@@ -33,16 +33,20 @@ class ExecutionWorker:
                 source = event.get("source")
 
                 if source == "ingestion":
-                    # --- Handle Ingestion Task ---
-                    
                     await self.ingestion_coordinator.perform_initial_ingestion(
                         user_id=event["user_id"],
                         integration_type=event["payload"]["integration_type"]
                     )
                     # Ingestion tasks typically don't have a direct response to the user.
                     # We could potentially send a notification via the egress service if needed.
-                
-                elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp"]:
+                elif source == "file_ingestion":
+                    await self.ingestion_coordinator.ingest_uploaded_files(
+                        user_id=event["user_id"],
+                        files=event["payload"]["files"],
+
+                    )
+
+                elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram"]:
                     # --- Handle Agent Task ---
                     if source == "recurring":
                         try:
@@ -61,13 +65,13 @@ class ExecutionWorker:
                     if not user_context:
                         logger.error(f"Could not create user context for user {event['user_id']}. Skipping event.")
                         continue
-                    has_audio = False
+                    has_media = False
                     for file in event.get('payload', {}).get('files', []):
-                        if file.get('type') == 'voice':
-                            has_audio = True
-                            logger.info(f"Event has audio file, setting has_audio to True so we use gemini-2.5-pro model")
+                        if file.get('type') in ['voice','video','audio','image','file','document']:
+                            has_media = True
+                            logger.info(f"Event has media file, setting has_audio to True so we use gemini-2.5-pro model")
                             break
-                    self.langgraph_agent_runner = LangGraphAgentRunner(trace_id=f"exec-{str(event['user_id'])}-{datetime.utcnow().isoformat()}", has_audio=has_audio)
+                    self.langgraph_agent_runner = LangGraphAgentRunner(trace_id=f"exec-{str(event['user_id'])}-{datetime.utcnow().isoformat()}", has_media=has_media)
                     result = await self.langgraph_agent_runner.run(
                         user_context=user_context,
                         input=event["payload"],
@@ -82,14 +86,6 @@ class ExecutionWorker:
             except Exception as e:
                 logger.error(f"Error processing event {event}: {e}", exc_info=True)
 
-
-    # async def post_process_response(self, result: dict, event: dict):
-    #     """Handles the response, including error handling and routing to the Egress Service."""
-    #     if "error" in result:
-    #         logger.error(f"Error processing event {event}: {result['error']}", exc_info=True)
-    #         result["response"] = "I'm sorry, I'm having trouble processing your request. Please try again later."
-
-    #     await egress_service.send_response(event, result)
     async def post_process_langgraph_response(self, result: dict, event: dict):
         event["output_type"] = result.delivery_modality
         await egress_service.send_response(event, {"response": result.response})

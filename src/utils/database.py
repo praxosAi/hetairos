@@ -9,6 +9,7 @@ from bson import ObjectId
 from pymongo.errors import OperationFailure
 from src.config.settings import settings
 from src.utils.logging.base_logger import setup_logger
+from src.services.ai_service.ai_service import ai_service
 class ConversationDatabase:
     def __init__(self, connection_string: str = settings.MONGO_CONNECTION_STRING, db_name: str = settings.MONGO_DB_NAME):
         self.client = motor.motor_asyncio.AsyncIOMotorClient(connection_string)
@@ -119,13 +120,14 @@ class ConversationDatabase:
             {"$set": {"last_activity": datetime.utcnow()}}
         )
         return str(result.inserted_id)
-
     async def get_conversation_messages(self, conversation_id: str, limit: int = 50) -> List[Dict]:
         """Get messages for a conversation, ordered by timestamp."""
         cursor = self.messages.find(
             {"conversation_id": conversation_id}
         ).sort("timestamp", 1)
         return await cursor.to_list()
+
+    
 
     async def record_search_attempt(self, conversation_id: str, query: str, search_type: str, 
                                      success: bool, error_type: Optional[str] = None, 
@@ -187,16 +189,34 @@ class ConversationDatabase:
         """Get a user by phone number."""
         return await self.users.find_one({"phone_number": phone_number})
     
-    async def is_conversation_expired(self, conversation_id: str, timeout_minutes: int = 15) -> bool:
+    async def is_conversation_expired(self, conversation_id: str, timeout_minutes:int,payload:dict) -> bool:
         """Check if a conversation has exceeded the inactivity timeout."""
         conversation = await self.get_conversation_info(conversation_id)
+
         if not conversation:
             return True
         
         last_activity = conversation['last_activity']
         timeout_delta = timedelta(minutes=timeout_minutes)
-        
-        return (datetime.utcnow() - last_activity) > timeout_delta
+        messages = await self.get_conversation_messages(conversation_id,6)
+        if (datetime.utcnow() - last_activity) > timeout_delta:
+            if not payload:
+                return True
+            ## here, we will add further intelligence.
+            prompt = f"User has been inactive for {timeout_minutes} minutes."
+            if messages:
+                prompt += " Recent messages include: "
+                for msg in messages:
+                    prompt += f"{msg['role']}: {msg['content']}\n"
+            prompt += f" New incoming message: {json.dumps(payload)}"
+
+            prompt += " Based on the recent conversation context, determine if this new message is a continuation of the previous conversation or a new topic. If it's a continuation, return False. If it's a new topic, return True."
+            prompt += "Consider the time, as well as the relation between the recent previous messages and the new message."
+            response = await ai_service.boolean_call(prompt)
+            return response
+            
+            # You can use the prompt for further processing or logging
+        return False
 
     async def cleanup_old_conversations(self, days_old: int = 30):
         """Clean up conversations older than specified days."""
@@ -412,9 +432,22 @@ class DatabaseManager:
             {"$set": update_data}
         )
 
-    async def add_document(self, document_record: Dict):
-        """Adds a document record to the documents collection."""
-        await self.documents.insert_one(document_record)
-
+    async def add_document(self, document_record: Dict) -> str:
+        """Adds a document record to the documents collection and returns the inserted _id as a string."""
+        document_record['created_at'] = datetime.utcnow().isoformat()
+        result = await self.documents.insert_one(document_record)
+        return str(result.inserted_id)
+    async def get_document_by_id(self, document_id: str) -> Optional[Dict]:
+        """Get a document by its ID."""
+        document = await self.documents.find_one({"_id": ObjectId(document_id)})
+        if document:
+            return document
+        return None
+    async def update_document_source_id(self, document_id: str, source_id: str):    
+        """Update the source_id of a document."""
+        await self.documents.update_one(
+            {"_id": ObjectId(document_id)},
+            {"$set": {"source_id": source_id}}
+        )
 # Global database instance
 db_manager = DatabaseManager()

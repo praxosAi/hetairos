@@ -39,6 +39,22 @@ async def download_from_blob_storage_and_encode_to_base64(blob_name: str) -> str
         
         # Encode to base64
         return base64.b64encode(data).decode("utf-8")
+async def download_from_blob_storage(blob_name: str) -> str:
+    """Downloads a file from Azure Blob Storage and encodes it to base64."""
+    blob_service_client = BlobServiceClient.from_connection_string(
+        settings.AZURE_STORAGE_CONNECTION_STRING
+    )
+    async with blob_service_client:
+        container_client = blob_service_client.get_container_client(
+            settings.AZURE_BLOB_CONTAINER_NAME
+        )
+        blob_client = container_client.get_blob_client(blob_name)
+        
+        # Download the blob as bytes
+        downloader = await blob_client.download_blob()
+        data = await downloader.readall()
+        ## return bytes
+        return data
 async def send_to_service_bus(message_body: str):
     """Sends a message to Azure Service Bus."""
     async with ServiceBusClient.from_connection_string(settings.AZURE_SERVICEBUS_CONNECTION_STRING) as client:

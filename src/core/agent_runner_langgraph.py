@@ -1,6 +1,6 @@
 import pytz
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
@@ -35,7 +35,16 @@ LANGUAGE_MAP = {
     'de': 'German',
     'ja': 'Japanese'
 }
+import asyncio
+async def _gather_bounded(coros: List[Any], limit: int = 8):
+    sem = asyncio.Semaphore(limit)
 
+    async def _run(coro):
+        async with sem:
+            return await coro
+
+    # Order of results matches order of coros
+    return await asyncio.gather(*(_run(c) for c in coros), return_exceptions=True)
 # --- 1. Define the Structured Output and State ---
 class AgentFinalResponse(BaseModel):
     """The final structured response from the agent."""
@@ -50,7 +59,7 @@ class AgentState(MessagesState):
 
 # --- 2. Define the Agent Runner Class ---
 class LangGraphAgentRunner:
-    def __init__(self,trace_id: str, has_audio: bool = False):
+    def __init__(self,trace_id: str, has_media: bool = False):
         
         self.tools_factory = AgentToolsFactory(config=settings, db_manager=db_manager)
         self.conversation_manager = ConversationManager(db_manager.db, integration_service)
@@ -60,12 +69,13 @@ class LangGraphAgentRunner:
         portkey_headers , portkey_gateway_url = create_port_key_headers(trace_id=trace_id)
         ### note that this is not OpenAI, this is azure. we will use portkey to access OAI Azure.
         self.llm = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
-        if has_audio:
-            self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
+        self.media_llm =ChatGoogleGenerativeAI(
+            model="gemini-2.5-pro",
             api_key=settings.GEMINI_API_KEY,
             temperature=0.2,
             )
+        if has_media:
+            self.llm = self.media_llm   
         self.structured_llm = self.llm.with_structured_output(AgentFinalResponse)
 
 
@@ -136,57 +146,148 @@ class LangGraphAgentRunner:
 
         return base_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt
 
-    async def _get_conversation_history(self, conversation_id: str) -> List[BaseMessage]:
-        """Fetches and formats the conversation history."""
-        context = await self.conversation_manager.get_conversation_context(conversation_id)
-        history = []
-        for msg in context.get("messages", []):
-            if msg["role"] == "user":
-                history.append(HumanMessage(content=msg["content"]))
-            elif msg["role"] == "assistant":
-                history.append(AIMessage(content=msg["content"]))
+    async def _build_payload_entry(self, file: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Create a single payload dict for a file entry."""
+        ftype = file.get("type")
+        mime_type = file.get("mime_type")
+        blob_path = file.get("blob_path")
+        if not blob_path or not ftype:
+            return None
 
-        ## now, fetch relevant info from praxos. 
+        data_b64 = await download_from_blob_storage_and_encode_to_base64(blob_path)
+
+        if ftype in {"voice", "audio", "video"}:
+            return {"type": "media", "data": data_b64, "mime_type": mime_type}
+        if ftype == "image":
+            return {"type": "image_url", "image_url": f"data:{mime_type};base64,{data_b64}"}
+        if ftype in {"document", "file"}:
+            return {
+                "type": "file",
+                "source_type": "base64",
+                "mime_type": mime_type,
+                "data": data_b64,
+            }
+        return None
 
 
-        return history
+    async def _build_payload_entry_from_inserted_id(self, inserted_id: str) -> Optional[Dict[str, Any]]:
+        file = await db_manager.get_document_by_id(inserted_id)
+        return await self._build_payload_entry(file) if file else None
 
-    async def _generate_file_messages(self, input_files: List[Dict],messages: List[BaseMessage],model:str='openai') -> List[BaseMessage]:
-        """Generates file messages from the input files."""
-        logger.info(f"Generating file messages, the current length of the messages list is {len(messages)}")
-        for file in input_files:
-            if file['type'] == 'voice':
-                file_content_b64 = await download_from_blob_storage_and_encode_to_base64(file['blob_path'])
-                logger.info(f'file is {file}')
-                file_type_to_use = 'audio' if model == 'openai' else 'media'
-                mime_type_to_use = 'audio/wav' if model == 'openai' else file['mime_type']
-                if model == 'openai':
-                    file_content_b64 = convert_ogg_b64_to_wav_b64(file_content_b64)
 
-                logger.info(f"mime_type_to_use is {mime_type_to_use} and file_type_to_use is {file_type_to_use}")
-                message = HumanMessage(content=[
-                        {
-                            # "type": "media",
-                            'type'  : file_type_to_use,
-                            "source_type": "base64",
-                            "data": file_content_b64,
-                            "mime_type": mime_type_to_use,
-                        },
-                    ])
-                logger.info(f"Generated file message, the current length of the messages list is {len(messages)}")
-                messages.append(message)
-            if file['type'] == 'image':
-                file_content_b64 = await download_from_blob_storage_and_encode_to_base64(file['blob_path'])
-                message = HumanMessage(content=[
-                        {
-                            "type": "media",
-                            "source_type": "base64",
-                            "data": file_content_b64,
-                            "mime_type": file['mime_type'],
-                        },
-                    ])
-                messages.append(message)
+    # ---------------------------------------------------
+    # Generate file messages (parallel, order preserved)
+    # ---------------------------------------------------
+    async def _generate_file_messages(
+        self,
+        input_files: List[Dict],
+        messages: List[BaseMessage],
+        model: str = None,           # kept for compatibility; unused
+        conversation_id: str = None,
+        message_prefix: str = "",
+        max_concurrency: int = 8,
+    ) -> List[BaseMessage]:
+        logger.info(f"Generating file messages; current messages length: {len(messages)}")
+
+        # Build captions list and payload tasks in the same order as input_files
+        captions: List[Optional[str]] = [f.get("caption") for f in input_files]
+        file_types: List[Optional[str]] = [f.get("type") for f in input_files]
+        inserted_ids: List[Optional[str]] = [f.get("inserted_id") for f in input_files]
+
+        payload_tasks = [self._build_payload_entry(f) for f in input_files]
+        payloads = await _gather_bounded(payload_tasks, limit=max_concurrency)
+
+        # Assemble messages & persist conversation log in order
+        for idx, (ftype, cap, payload, ins_id) in enumerate(zip(file_types, captions, payloads, inserted_ids)):
+            if isinstance(payload, Exception) or payload is None:
+                logger.warning(f"Skipping file at index {idx} due to payload error/None")
+                continue
+
+            # Persist to conversation log first, in-order
+            if ins_id and conversation_id:
+                await self.conversation_manager.add_user_media_message(
+                    conversation_id,
+                    message_prefix,
+                    ins_id,
+                    message_type=ftype,
+                    metadata={"inserted_id": ins_id, "timestamp": datetime.utcnow().isoformat()},
+                )
+                if cap:
+                    await self.conversation_manager.add_user_message(
+                        conversation_id,
+                        message_prefix + " as caption for media in the previous message: " + cap,
+                        metadata={"inserted_id": ins_id, "timestamp": datetime.utcnow().isoformat()},
+                    )
+
+            # Build LLM-facing message (caption first, then payload), in-order
+            content = ([{"type": "text", "text": cap}] if cap else []) + [payload]
+            messages.append(HumanMessage(content=content))
+            logger.info(f"Added '{ftype}' message; messages length now {len(messages)}")
+
         return messages
+
+
+    # ------------------------------------------------------------
+    # Conversation history reconstruction (parallel, ordered)
+    # ------------------------------------------------------------
+    async def _get_conversation_history(
+        self,
+        conversation_id: str,
+        max_concurrency: int = 8,
+    ) -> List[BaseMessage]:
+        """Fetches and formats the conversation history with concurrent media fetches."""
+        context = await self.conversation_manager.get_conversation_context(conversation_id)
+        raw_msgs: List[Dict[str, Any]] = context.get("messages", [])
+        n = len(raw_msgs)
+        has_media = False
+        history_slots: List[Optional[BaseMessage]] = [None] * n
+        fetch_tasks: List[Any] = []
+        task_meta: List[Tuple[int, str]] = []  # (index, role)
+        cache: Dict[str, Any] = {}  # inserted_id -> task to dedupe identical media
+
+        media_types = {"voice", "audio", "video", "image", "document", "file"}
+
+        for i, msg in enumerate(raw_msgs):
+            msg_type = msg.get("message_type")
+            role = msg.get("role")
+
+            if msg_type == "text":
+                content = msg.get("content", "")
+                history_slots[i] = HumanMessage(content=content) if role == "user" else AIMessage(content=content)
+                continue
+
+            if msg_type in media_types:
+                has_media = True
+                inserted_id = (msg.get("metadata") or {}).get("inserted_id")
+                if not inserted_id:
+                    logger.warning(f"Media message missing inserted_id at index {i}")
+                    continue
+
+                # De-duplicate downloads for the same inserted_id
+                task = cache.get(inserted_id)
+                if task is None:
+                    task = self._build_payload_entry_from_inserted_id(inserted_id)
+                    cache[inserted_id] = task
+
+                fetch_tasks.append(task)
+                task_meta.append((i, role))
+                continue
+
+            logger.warning(f"Unknown message_type '{msg_type}' at index {i}")
+
+        # Run all media fetches concurrently, keeping order by input task list
+        results = await _gather_bounded(fetch_tasks, limit=max_concurrency)
+
+        # Place media messages back into the original positions
+        for (i, role), payload in zip(task_meta, results):
+            if isinstance(payload, Exception) or payload is None:
+                logger.warning(f"Failed to build payload for message at index {i}")
+                continue
+            msg_obj = HumanMessage(content=[payload]) if role == "user" else AIMessage(content=[payload])
+            history_slots[i] = msg_obj
+
+        # Return in original order, skipping any None (e.g., malformed entries)
+        return [m for m in history_slots if m is not None],has_media
     async def run(self, user_context: UserContext, input: Dict, source: str, metadata: Optional[Dict] = None) -> AgentFinalResponse:
         execution_id = str(uuid.uuid4())
         start_time = datetime.utcnow()
@@ -207,9 +308,21 @@ class LangGraphAgentRunner:
             input_files = input.get("files")
             if input_text:
                 logger.info(f"Running LangGraph agent runner for user {user_context.user_id} with input {input_text} and source {source}")
-            elif input_files and not input_text:
-                logger.info(f"Running LangGraph agent runner for user {user_context.user_id} with input {input_files} and source {source}")
-                input_text = "SYSTEM NOTE: the user sent a multimedia message. the files are attached to the message."
+            
+            nyc_tz = pytz.timezone('America/New_York')
+            current_time_nyc = datetime.now(nyc_tz).isoformat()
+            # --- Execution ---
+            conversation_id = metadata.get("conversation_id") or await self.conversation_manager.get_or_create_conversation(user_context.user_id, source, input)
+            message_prefix = 'message sent on date ' + current_time_nyc + ' by ' + user_context.user_record.get('first_name', '') + ' ' + user_context.user_record.get('last_name', '') + ': ' 
+            if input_text:
+                await self.conversation_manager.add_user_message(conversation_id, message_prefix + input_text, metadata)
+            history, has_media = await self._get_conversation_history(conversation_id)
+            if has_media:
+                logger.info(f"Conversation {conversation_id} has media; switching to media-capable LLM")
+                self.llm = self.media_llm
+            if input_files:
+                history = await self._generate_file_messages(input_files,history,model='gemini', conversation_id=conversation_id,message_prefix=message_prefix)            
+                
             tools = await self.tools_factory.create_tools(user_context, metadata)
             logger.info(f"Tools created: {tools}")
             tool_executor = ToolNode(tools)
@@ -224,7 +337,7 @@ class LangGraphAgentRunner:
                 praxos_api_key = user_context.user_record.get("praxos_api_key")
 
             try:
-                if input_text and praxos_api_key:
+                if input_text and len(input_text) > 5 and praxos_api_key:
                     praxos_client = PraxosClient(f"env_for_{user_context.user_record.get('email')}", api_key=praxos_api_key)
 
                     long_term_memory_context = await self._get_long_term_memory(praxos_client, input_text)
@@ -272,14 +385,7 @@ class LangGraphAgentRunner:
             workflow.add_edge('finalize', END)
             
             app = workflow.compile()
-            nyc_tz = pytz.timezone('America/New_York')
-            current_time_nyc = datetime.now(nyc_tz).isoformat()
-            # --- Execution ---
-            conversation_id = metadata.get("conversation_id") or await self.conversation_manager.get_or_create_conversation(user_context.user_id, source)
-            await self.conversation_manager.add_user_message(conversation_id, 'message sent on date ' + current_time_nyc + ' by ' + user_context.user_record.get('first_name', '') + ' ' + user_context.user_record.get('last_name', '') + ': ' + input_text, metadata)
-            history = await self._get_conversation_history(conversation_id)
-            if input_files:
-                history = await self._generate_file_messages(input_files,history,model='gemini')
+
             initial_state: AgentState = {
                 "messages": history,
                 "user_context": user_context,

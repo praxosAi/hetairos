@@ -10,7 +10,8 @@ from bson import ObjectId
 from src.utils.logging.base_logger import setup_logger
 logger = setup_logger(__name__)
 from src.utils.blob_utils import upload_bytes_to_blob_storage, upload_to_blob_storage
-from fastapi import UploadFile,Request, Form, UploadFile, File
+from fastapi import UploadFile,Request, Form, File
+from src.utils.database import db_manager
 from typing import List, Optional
 import json
 class FileInfo(BaseModel):
@@ -27,11 +28,43 @@ class HttpIngressRequest(BaseModel):
     files: Optional[List[FileInfo]] = []
     audio: Optional[FileInfo] = None
 
+
+class FileUploadRequest(BaseModel):
+    user_id: str
+    files: Optional[List[FileInfo]] = []
+
+
+
 class IngestionRequest(BaseModel):
     user_id: str
     integration_type: str
 
 
+
+def content_type_to_praxos_name(content_type: str) -> str:
+    """Maps common MIME types to Praxos document type names."""
+    if content_type.startswith("image/"):
+        return "image"
+    elif content_type.startswith("video/"):
+        return "video"
+    elif content_type.startswith("audio/"):
+        return "audio"
+    elif content_type in ["application/pdf"]:
+        return "document"
+    elif content_type in ["application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]:
+        return "document"
+    elif content_type in ["application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]:
+        return "document"
+    elif content_type in ["application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation"]:
+        return "document"
+    elif content_type in ["text/plain"]:
+        return "document"
+    elif content_type in ["text/csv"]:
+        return "document"
+    elif content_type in ["application/zip", "application/x-7z-compressed", "application/x-rar-compressed"]:
+        return "document"
+    else:
+        return "file"  # Generic file type
 
 @router.post("/http", status_code=status.HTTP_202_ACCEPTED)
 async def handle_chat_request(
@@ -69,6 +102,7 @@ async def handle_chat_request(
     # Process uploaded files
     file_data = []
     for file in files:
+        logger.info(f"Received file: {file.filename} of type {file.content_type} and size {file.spool_max_size}")  
         if file.filename:  
             content = await file.read()
             file_data.append(FileInfo(
@@ -97,26 +131,13 @@ async def handle_chat_request(
         files=file_data,
         audio=audio_data
     )
-    # else:
 
-    #     if not request_body:
-    #         raise HTTPException(
-    #             status_code=400, 
-    #             detail="Request body required for JSON requests"
-    #         )
-    #     request_obj = request_body
-    
-    # Initialize conversation (assuming you have these imports/services)
-    conversation_manager = ConversationManager(conversation_db, integration_service)
-    conversation_id = await conversation_manager.get_or_create_conversation(request_obj.user_id, "websocket")
-    
 
 
     # Build payload with files and audio
     payload = {
         "text": request_obj.input_text
     }
-    # "payload": {"files": [{'type': 'voice', 'blob_path': blob_name, 'mime_type': mime_type[0]}]},
 
     # Add files to payload if present
     if request_obj.files:
@@ -125,11 +146,22 @@ async def handle_chat_request(
             logger.info(f"Processing uploaded file: {f.filename} of type {f.content_type} and size {f.size}")
             blob_name = f"{user_id}/telegram/{f.filename.replace(' ', '_')}"
             blob_name = await upload_bytes_to_blob_storage(f.content, blob_name)
+            doc_entry = {
+                'user_id': ObjectId(request_obj.user_id),
+                'blob_path': blob_name,
+                'type': content_type_to_praxos_name(f.content_type),
+                'mimetype': f.content_type,
+                "platform": "praxos_web",
+                'file_name': f.filename
+
+            }
+            inserted_id = await db_manager.add_document(doc_entry)
             payload["files"].append(
                 {
-                    "type": f.content_type,
+                    "type": content_type_to_praxos_name(f.content_type),
                     'mime_type': f.content_type,
-                    "blob_path": blob_name
+                    "blob_path": blob_name,
+                    'inserted_id': inserted_id
                 } )
         payload["file_count"] = len(request_obj.files)
     
@@ -137,13 +169,28 @@ async def handle_chat_request(
     if request_obj.audio:
         if "files" not in payload:
             payload["files"] = []
+        blob_path = await upload_bytes_to_blob_storage(request_obj.audio.content, f"{user_id}/telegram/{request_obj.audio.filename.replace(' ', '_')}")
+        doc_entry = {
+            'user_id': ObjectId(request_obj.user_id),
+            'blob_path': blob_name,
+            'type': content_type_to_praxos_name(f.content_type),
+            'mimetype': f.content_type,
+            "platform": "praxos_web",
+            'file_name': request_obj.audio.filename
+
+        }
+        inserted_id = await db_manager.add_document(doc_entry)
         
         payload["files"].append({
             "type": "voice",
             'mime_type': request_obj.audio.content_type,
-            "blob_path": await upload_bytes_to_blob_storage(request_obj.audio.content, f"{user_id}/telegram/{request_obj.audio.filename.replace(' ', '_')}")
+            "blob_path": blob_path,
+            'inserted_id': inserted_id
         })
 
+    conversation_manager = ConversationManager(conversation_db, integration_service)
+    conversation_id = await conversation_manager.get_or_create_conversation(request_obj.user_id, "websocket", payload)
+    
 
     event = {
         "user_id": request_obj.user_id,
@@ -177,6 +224,109 @@ async def handle_chat_request(
         "audio_received": bool(request_obj.audio)
     }
 
+
+@router.post("/file_import", status_code=status.HTTP_202_ACCEPTED)
+async def handle_file_upload_request(
+    request_body: Optional[IngestionRequest] = None,
+    raw_request: Request = None,
+    user_id: str = Form(None),
+    files: List[UploadFile] = File(default=[]),
+):
+    """
+    Handles a conversational request from HTTP client with optional files/audio.
+    Supports both JSON and multipart/form-data requests.
+
+    For FormData requests:
+    - user_id: form field
+    - input_text: form field
+    - token: form field
+    - file_0, file_1, etc.: uploaded files
+    - audio: uploaded audio file
+    """
+   
+    if not all([user_id]):
+        raise HTTPException(
+            status_code=400, 
+            detail="Missing required fields: user_id and token are required"
+        )
+        
+    # Process uploaded files
+    file_data = []
+    logger.info(f"Number of files received: {len(files)}")
+    for file in files:
+        logger.info(f"Received file: {file.filename} of type {file.content_type} and size")
+        if file.filename:  
+            content = await file.read()
+            file_data.append(FileInfo(
+                filename=file.filename,
+                content_type=file.content_type or "application/octet-stream",
+                size=len(content),
+                content=content
+            ))
+    
+    # Process audio
+    # Create request object
+    request_obj = FileUploadRequest(
+        user_id=user_id,
+        files=file_data
+    )
+    
+
+
+    # Build payload with files and audio
+    payload = {
+    }
+
+    # Add files to payload if present
+    if request_obj.files:
+        payload["files"] = []
+        for f in request_obj.files:
+            logger.info(f"Processing uploaded file: {f.filename} of type {f.content_type} and size {f.size}")
+            blob_name = f"{user_id}/telegram/{f.filename.replace(' ', '_')}"
+            blob_name = await upload_bytes_to_blob_storage(f.content, blob_name)
+            doc_entry = {
+                'user_id': ObjectId(request_obj.user_id),
+                'blob_path': blob_name,
+                'type': content_type_to_praxos_name(f.content_type),
+                'mimetype': f.content_type,
+                "platform": "import_file_upload",
+                'file_name': f.filename
+
+            }
+            
+            inserted_id = await db_manager.add_document(doc_entry)
+            payload["files"].append(
+                {
+                    "type": content_type_to_praxos_name(f.content_type),
+                    'mime_type': f.content_type,
+                    "blob_path": blob_name,
+                    'inserted_id': inserted_id,
+                    'file_name': f.filename
+                } )
+            logger.info(f"Inserted document record with ID: {inserted_id}")
+        payload["file_count"] = len(request_obj.files)
+    
+
+
+    ### TODO: Ingest into praxos. 
+    try:
+        ingestion_event = {
+            "user_id": request_obj.user_id,
+            "source": "file_ingestion", # A new source type for our worker to identify
+            "payload": payload,
+            "metadata": {'ingest_type':'file_upload','source':'file_upload_api'}
+        }
+        await event_queue.publish(ingestion_event)
+    except Exception as e:
+        logger.error(f"Error publishing ingestion event for user {request_obj.user_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to queue ingestion event."
+        )
+    return {
+        "status": "accepted", 
+        "message": "Upload queued", 
+    }
 @router.post("/ingest", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_ingestion(request: IngestionRequest):
     """

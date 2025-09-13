@@ -147,16 +147,72 @@ class GoogleDriveIntegration(BaseIntegration):
         file = self.service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
         return file
 
+    async def search_files(self, query: str, max_results: int = 20) -> List[Dict]:
+        """Search for files in Google Drive."""
+        if not self.service:
+            raise Exception("Google Drive service not initialized. Call authenticate() first.")
+        
+        try:
+            results = self.service.files().list(
+                q=query,
+                pageSize=max_results,
+                fields="files(id, name, mimeType, modifiedTime, size, webViewLink, parents)"
+            ).execute()
+            
+            return results.get('files', [])
+        except Exception as e:
+            logger.error(f"Error searching Google Drive files: {e}")
+            raise Exception(f"Failed to search files: {e}")
+
+    async def read_document_content(self, file_id: str, mime_type: str) -> str:
+        """Read content from Google Docs, Sheets, or other document types."""
+        if not self.service:
+            raise Exception("Google Drive service not initialized. Call authenticate() first.")
+        
+        try:
+            # Handle Google Docs, Sheets, and Slides by exporting to plain text
+            if mime_type == 'application/vnd.google-apps.document':
+                # Google Docs - export as plain text
+                request = self.service.files().export_media(fileId=file_id, mimeType='text/plain')
+            elif mime_type == 'application/vnd.google-apps.spreadsheet':
+                # Google Sheets - export as CSV
+                request = self.service.files().export_media(fileId=file_id, mimeType='text/csv')
+            elif mime_type == 'application/vnd.google-apps.presentation':
+                # Google Slides - export as plain text
+                request = self.service.files().export_media(fileId=file_id, mimeType='text/plain')
+            else:
+                # For other file types, try regular download
+                request = self.service.files().get_media(fileId=file_id)
+            
+            fh = BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while done is False:
+                status, done = downloader.next_chunk()
+            
+            fh.seek(0)
+            content = fh.read()
+            
+            # Try to decode as UTF-8, fall back to latin-1 if needed
+            try:
+                return content.decode('utf-8')
+            except UnicodeDecodeError:
+                return content.decode('latin-1', errors='replace')
+                
+        except Exception as e:
+            logger.error(f"Error reading document content for file {file_id}: {e}")
+            raise Exception(f"Failed to read document content: {e}")
+
     async def read_file_from_drive(self, file_name: str) -> str:
-        """Reads the content of a text file from Google Drive by its name."""
+        """Reads the content of a file from Google Drive by its name."""
         if not self.service:
             raise Exception("Google Drive service not initialized. Call authenticate() first.")
 
-        # Find the file by name
+        # Search for the file by name (expanded to handle various file types)
         results = self.service.files().list(
-            q=f"name='{file_name}' and mimeType='text/plain'",
+            q=f"name='{file_name}'",
             pageSize=1,
-            fields="files(id, name)"
+            fields="files(id, name, mimeType)"
         ).execute()
         
         items = results.get('files', [])
@@ -164,7 +220,19 @@ class GoogleDriveIntegration(BaseIntegration):
             raise Exception(f"File not found: {file_name}")
         
         file_id = items[0]['id']
+        mime_type = items[0]['mimeType']
         
-        # Download and read the file content
-        content = await self.download_file(file_id)
-        return content.decode('utf-8')
+        # Handle different file types
+        if mime_type in ['application/vnd.google-apps.document', 
+                        'application/vnd.google-apps.spreadsheet',
+                        'application/vnd.google-apps.presentation']:
+            return await self.read_document_content(file_id, mime_type)
+        elif mime_type == 'text/plain' or mime_type.startswith('text/'):
+            # Handle text files
+            content = await self.download_file(file_id)
+            if content:
+                return content.decode('utf-8')
+            else:
+                raise Exception(f"Failed to download file: {file_name}")
+        else:
+            raise Exception(f"Unsupported file type for reading: {mime_type}. Supported types: Google Docs, Sheets, Slides, and text files.")

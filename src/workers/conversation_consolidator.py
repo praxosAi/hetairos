@@ -6,7 +6,7 @@ from src.core.praxos_client import PraxosClient
 from src.services.user_service import user_service
 from src.services.ai_service.ai_service import ai_service
 from src.utils.logging import setup_logger
-
+logger = setup_logger(__name__)
 class ConversationConsolidator:
     """Consolidates conversations from short-term to long-term memory"""
     def __init__(self, db_manager: ConversationDatabase):
@@ -20,11 +20,11 @@ class ConversationConsolidator:
             conversation = await self.db.get_conversation_info(conversation_id)
             ### now that we have this, we can 
             if not conversation:
-                self.logger.warning(f"Conversation {conversation_id} not found")
+                logger.warning(f"Conversation {conversation_id} not found")
                 return False
-            self.logger.info('Found conversation for consolidation')
+            logger.info(f"Found conversation {conversation_id}")
             # Get all messages and search attempts
-                       
+            message_dict = {} 
             messages = await self.db.get_conversation_messages(conversation_id)
             try:
                 file_message_idx = []
@@ -38,21 +38,26 @@ class ConversationConsolidator:
                     message_idx = file_message_idx[i]
                     message = messages[message_idx]
                     description = descriptions[i]
-                    messages[message_idx]['content'] = f'Description of media type with id: {message["metadata"]["inserted_id"]}: {description}'
+                    message['content'] = f'Description of media type with id: {message["metadata"]["inserted_id"]}: {description}'
+                    message_dict[str(message['_id'])] = {'content': message['content']}
+
             except Exception as e:
-                self.logger.error(f"Error generating media descriptions: {e}", exc_info=True)
-            self.logger.info('Found messages for conversation')
+                logger.error(f"Error generating media descriptions: {e}", exc_info=True)
+
+            ### now, let's update messages
+            update_messages = await self.db.bulk_update_messages(list(message_dict.values()))
+            logger.info(f"Updated {update_messages.modified_count} messages with media descriptions")
             search_attempts = await self.db.get_recent_search_attempts(conversation_id, limit=100)
-            self.logger.info('Found search attempts for conversation')
+            logger.info(f"Found {len(search_attempts)} search attempts")
             if not messages:
-                self.logger.warning(f"No messages found for conversation {conversation_id}")
+                logger.warning(f"No messages found for conversation {conversation_id}")
                 await self.db.mark_conversation_consolidated(conversation_id)
                 return True
             # summary = self.create_conversation_summary(conversation, messages, search_attempts)
             
             new_consolidation = await self.db.mark_conversation_consolidated(conversation_id)
             if not new_consolidation:
-                self.logger.info(f"Conversation {conversation_id} already consolidated")
+                logger.info(f"Conversation {conversation_id} already consolidated")
                 return True
             # Send to Praxos
             conversation_user_id = conversation['user_id']
@@ -88,13 +93,13 @@ class ConversationConsolidator:
             source_id = source_data.get('id', '')
             await self.db.update_conversation_praxos_source_id(conversation_id, source_id)
             # Mark as consolidated
-            
-            
-            self.logger.info(f"Successfully consolidated conversation {conversation_id} with {len(messages)} messages")
+
+
+            logger.info(f"Successfully consolidated conversation {conversation_id} with {len(messages)} messages")
             return True
             
         except Exception as e:
-            self.logger.error(f"Error consolidating conversation {conversation_id}: {e}")
+            logger.error(f"Error consolidating conversation {conversation_id}: {e}")
             # Optionally, mark the conversation as failed to prevent retries
             # await self.db.mark_conversation_failed(conversation_id, str(e))
             return False

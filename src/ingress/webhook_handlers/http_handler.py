@@ -28,6 +28,13 @@ class HttpIngressRequest(BaseModel):
     files: Optional[List[FileInfo]] = []
     audio: Optional[FileInfo] = None
 
+
+class FileUploadRequest(BaseModel):
+    user_id: str
+    files: Optional[List[FileInfo]] = []
+
+
+
 class IngestionRequest(BaseModel):
     user_id: str
     integration_type: str
@@ -123,23 +130,13 @@ async def handle_chat_request(
         files=file_data,
         audio=audio_data
     )
-    # else:
 
-    #     if not request_body:
-    #         raise HTTPException(
-    #             status_code=400, 
-    #             detail="Request body required for JSON requests"
-    #         )
-    #     request_obj = request_body
-    
-    # Initialize conversation (assuming you have these imports/services)
 
 
     # Build payload with files and audio
     payload = {
         "text": request_obj.input_text
     }
-    # "payload": {"files": [{'type': 'voice', 'blob_path': blob_name, 'mime_type': mime_type[0]}]},
 
     # Add files to payload if present
     if request_obj.files:
@@ -224,6 +221,103 @@ async def handle_chat_request(
         "audio_received": bool(request_obj.audio)
     }
 
+
+@router.post("/file_import", status_code=status.HTTP_202_ACCEPTED)
+async def handle_file_upload_request(
+    request_body: Optional[HttpIngressRequest] = None,
+    raw_request: Request = None,
+    user_id: str = Form(None),
+    files: List[UploadFile] = File(default=[]),
+):
+    """
+    Handles a conversational request from HTTP client with optional files/audio.
+    Supports both JSON and multipart/form-data requests.
+
+    For FormData requests:
+    - user_id: form field
+    - input_text: form field
+    - token: form field
+    - file_0, file_1, etc.: uploaded files
+    - audio: uploaded audio file
+    """
+   
+    if not all([user_id]):
+        raise HTTPException(
+            status_code=400, 
+            detail="Missing required fields: user_id and token are required"
+        )
+        
+    # Process uploaded files
+    file_data = []
+    for file in files:
+        if file.filename:  
+            content = await file.read()
+            file_data.append(FileInfo(
+                filename=file.filename,
+                content_type=file.content_type or "application/octet-stream",
+                size=len(content),
+                content=content
+            ))
+    
+    # Process audio
+    # Create request object
+    request_obj = FileUploadRequest(
+        user_id=user_id,
+        files=file_data
+    )
+
+
+
+    # Build payload with files and audio
+    payload = {
+    }
+
+    # Add files to payload if present
+    if request_obj.files:
+        payload["files"] = []
+        for f in request_obj.files:
+            logger.info(f"Processing uploaded file: {f.filename} of type {f.content_type} and size {f.size}")
+            blob_name = f"{user_id}/telegram/{f.filename.replace(' ', '_')}"
+            blob_name = await upload_bytes_to_blob_storage(f.content, blob_name)
+            doc_entry = {
+                'user_id': ObjectId(request_obj.user_id),
+                'blob_path': blob_name,
+                'type': content_type_to_praxos_name(f.content_type),
+                'mimetype': f.content_type,
+                "platform": "praxos_web",
+
+            }
+            inserted_id = await db_manager.add_document(doc_entry)
+            payload["files"].append(
+                {
+                    "type": content_type_to_praxos_name(f.content_type),
+                    'mime_type': f.content_type,
+                    "blob_path": blob_name,
+                    'inserted_id': inserted_id
+                } )
+        payload["file_count"] = len(request_obj.files)
+    
+
+
+    ### TODO: Ingest into praxos. 
+    try:
+        ingestion_event = {
+            "user_id": request_obj.user_id,
+            "source": "ingestion", # A new source type for our worker to identify
+            "payload": payload,
+            "metadata": {}
+        }
+        await event_queue.publish(ingestion_event)
+    except Exception as e:
+        logger.error(f"Error publishing ingestion event for user {request_obj.user_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to queue ingestion event."
+        )
+    return {
+        "status": "accepted", 
+        "message": "Upload queued", 
+    }
 @router.post("/ingest", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_ingestion(request: IngestionRequest):
     """

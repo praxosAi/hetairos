@@ -113,6 +113,7 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                             "blob_path": blob_name,
                                             "mime_type": mime_type[0],
                                             "caption": caption,
+                                            "file_name": 'whatsapp files do not have original file names'
 
                                         }
                                         inserted_id = await db_manager.add_document(document_entry)

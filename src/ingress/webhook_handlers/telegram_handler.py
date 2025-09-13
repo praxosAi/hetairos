@@ -66,6 +66,7 @@ async def handle_telegram_webhook(request: Request):
             if mime_type[0] is None and ('oga' in file_path_local or 'ogg' in file_path_local):
                 mime_type = ['audio/ogg']
             blob_name =await upload_to_blob_storage(file_path_local, f"{user_id}/telegram/{file_path_local}")
+            file_name_og = document.get("file_name",'Original filename not accessible')
             document_entry = {
                 "user_id": ObjectId(user_id),
                 "platform_file_id": file_unique_id,
@@ -75,6 +76,7 @@ async def handle_telegram_webhook(request: Request):
                 "blob_path": blob_name,
                 "mime_type": mime_type[0],
                 "caption": caption,
+                'file_name': file_name_og
 
             }
             inserted_id = await db_manager.add_document(document_entry)

@@ -151,6 +151,7 @@ async def handle_chat_request(
                 'type': content_type_to_praxos_name(f.content_type),
                 'mimetype': f.content_type,
                 "platform": "praxos_web",
+                'file_name': f.filename
 
             }
             inserted_id = await db_manager.add_document(doc_entry)
@@ -174,6 +175,7 @@ async def handle_chat_request(
             'type': content_type_to_praxos_name(f.content_type),
             'mimetype': f.content_type,
             "platform": "praxos_web",
+            'file_name': request_obj.audio.filename
 
         }
         inserted_id = await db_manager.add_document(doc_entry)
@@ -284,7 +286,8 @@ async def handle_file_upload_request(
                 'blob_path': blob_name,
                 'type': content_type_to_praxos_name(f.content_type),
                 'mimetype': f.content_type,
-                "platform": "praxos_web",
+                "platform": "import_file_upload",
+                'file_name': f.filename
 
             }
             inserted_id = await db_manager.add_document(doc_entry)

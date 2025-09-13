@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any
 from src.utils.logging import setup_logger
 from src.utils.file_msg_utils import build_payload_entry_from_inserted_id
 from langchain.chat_models import init_chat_model
-from ai_service_models import *
+from src.services.ai_service.ai_service_models import *
 logger = setup_logger(__name__)
 class AIService:
     def __init__(self, model_name: str = "gemini-2.5-pro"):

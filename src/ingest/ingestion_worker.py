@@ -63,12 +63,12 @@ class InitialIngestionCoordinator:
             new_files.append({
                 "filename": old_file.get("file_name", "unknown"),
                 "content": content,
-                "mime_type": old_file.get("mime_type"),
+                "mimetype": old_file.get("mime_type"),
                 "type": old_file.get("type"),
                 "metadata": {"source": "file_upload", **old_file.get("metadata", {}), 'skip_db_record': True}
             })
 
-        ingestion_results = await self.ingest_worker.ingest_files(user_id, files)
+        ingestion_results = await self.ingest_worker.ingest_files(user_id, new_files)
         successful_ingestions = [res for res in ingestion_results if res['status'] == 'success']
         failed_ingestions = [res for res in ingestion_results if res['status'] == 'failed']
 

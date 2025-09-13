@@ -300,7 +300,8 @@ async def handle_file_upload_request(
                     "type": content_type_to_praxos_name(f.content_type),
                     'mime_type': f.content_type,
                     "blob_path": blob_name,
-                    'inserted_id': inserted_id
+                    'inserted_id': inserted_id,
+                    'file_name': f.filename
                 } )
             logger.info(f"Inserted document record with ID: {inserted_id}")
         payload["file_count"] = len(request_obj.files)

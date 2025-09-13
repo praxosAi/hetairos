@@ -80,23 +80,24 @@ class IngestWorker:
                         if  file_data.get("metadata", {}).get("skip_db_record", False):
                             blob_name = f"{user_id}/ingested/{upload_filename}"
                             await upload_to_blob_storage(temp_file_path, blob_name)
-                            source_id = result.id
+                            source_id = result['id']
                             document_record = {
                                 "user_id": user_id,
                                 "source_id": source_id,
                                 "file_name": upload_filename,
                                 'blob_path': blob_name,
                                 "mime_type": "application/pdf",
+                                'type' : 'document',
                                 "metadata": file_data["metadata"],
                                 "created_at": datetime.utcnow().isoformat()
                             }
                             await self.db_manager.add_document(document_record)
-                            ingestion_results.append({"filename": upload_filename, "status": "success", "source_id": result["source_id"]})
+                            ingestion_results.append({"filename": upload_filename, "status": "success", "source_id": result["id"]})
                         else:
                             ### we have to update the document record with the source id.
-                            source_id = result.id
+                            source_id = result['id']
                             await self.db_manager.update_document_source_id(file_data['metadata']['inserted_id'], source_id)
-                            ingestion_results.append({"filename": upload_filename, "status": "success", "source_id  ": result["source_id"]})
+                            ingestion_results.append({"filename": upload_filename, "status": "success", "source_id  ": result["id"]})
                     else:
                         ingestion_results.append({"filename": upload_filename, "status": "failed", "error": result.get("error")})
 

@@ -128,7 +128,24 @@ class ConversationDatabase:
         return await cursor.to_list()
 
     
+    async def bulk_update_messages(self, messages_dict: Dict[str, Any]):
+        """Bulk update multiple messages."""
+        if not messages_dict:
+            return
+        
+        operations = []
+        for msg_id, update_fields in messages_dict.items():
+            operations.append(
+                motor.motor_asyncio.UpdateOne(
+                    {"_id": ObjectId(msg_id)},
+                    {"$set": update_fields}
+                )
+            )
+        if operations:
+            result = await self.messages.bulk_write(operations)
+            self.logger.info(f"Bulk updated {result.modified_count} messages.")
 
+        return result.modified_count
     async def record_search_attempt(self, conversation_id: str, query: str, search_type: str, 
                                      success: bool, error_type: Optional[str] = None, 
                                      results_count: int = 0, metadata: Dict = None) -> str:

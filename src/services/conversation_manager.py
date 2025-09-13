@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from src.utils.database import *
 from src.services.integration_service import IntegrationService
-
 class ConversationManager:
     """Manages conversation lifecycle, context, and search attempts"""
     
@@ -12,23 +11,23 @@ class ConversationManager:
         self.integration_manager = integration_manager
         self.INACTIVITY_TIMEOUT = 15 * 60 
     ### TODO: This should be smarter. just randomly finding and consolidating conversations is not the best idea. it should be using praxos memory to find relevant conversations, me thinks.
-    async def get_or_create_conversation(self, user_id: str, platform: str) -> str:
+    async def get_or_create_conversation(self, user_id: str, platform: str,payload: dict) -> str:
         """Get existing active conversation or create new one"""
         
         conversation_id = await self.db.get_active_conversation(user_id)
         conversation_info = await self.db.get_conversation_info(conversation_id)
         
         if conversation_id:
-            if await self.is_conversation_active(conversation_id) and conversation_info.get('platform') == platform:
+            if await self.is_conversation_active(conversation_id,payload) and conversation_info.get('platform') == platform:
                 return conversation_id
             else:
                 await self.db.mark_conversation_for_consolidation(conversation_id)
         
         return await self.db.create_conversation(user_id, platform)
-    
-    async def is_conversation_active(self, conversation_id: str) -> bool:
+
+    async def is_conversation_active(self, conversation_id: str, payload: dict) -> bool:
         """Check if conversation is still within the inactivity timeout"""
-        return not await self.db.is_conversation_expired(conversation_id, self.INACTIVITY_TIMEOUT // 60)
+        return not await self.db.is_conversation_expired(conversation_id, self.INACTIVITY_TIMEOUT // 60,payload)
     
     async def add_user_message(self, conversation_id: str, content: str, metadata: Dict = None) -> str:
         """Add user message to conversation"""

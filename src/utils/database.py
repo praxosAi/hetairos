@@ -9,6 +9,7 @@ from bson import ObjectId
 from pymongo.errors import OperationFailure
 from src.config.settings import settings
 from src.utils.logging.base_logger import setup_logger
+from src.services.ai_service.ai_service import ai_service
 class ConversationDatabase:
     def __init__(self, connection_string: str = settings.MONGO_CONNECTION_STRING, db_name: str = settings.MONGO_DB_NAME):
         self.client = motor.motor_asyncio.AsyncIOMotorClient(connection_string)
@@ -188,16 +189,32 @@ class ConversationDatabase:
         """Get a user by phone number."""
         return await self.users.find_one({"phone_number": phone_number})
     
-    async def is_conversation_expired(self, conversation_id: str, timeout_minutes: int = 15) -> bool:
+    async def is_conversation_expired(self, conversation_id: str, timeout_minutes:int,payload:dict) -> bool:
         """Check if a conversation has exceeded the inactivity timeout."""
         conversation = await self.get_conversation_info(conversation_id)
+
         if not conversation:
             return True
         
         last_activity = conversation['last_activity']
         timeout_delta = timedelta(minutes=timeout_minutes)
-        
-        return (datetime.utcnow() - last_activity) > timeout_delta
+        messages = await self.get_conversation_messages(conversation_id,6)
+        if (datetime.utcnow() - last_activity) > timeout_delta:
+            ## here, we will add further intelligence.
+            prompt = f"User has been inactive for {timeout_minutes} minutes."
+            if messages:
+                prompt += " Recent messages include: "
+                for msg in messages:
+                    prompt += f"{msg['role']}: {msg['content']}\n"
+            prompt += f" New incoming message: {json.dumps(payload)}"
+
+            prompt += " Based on the recent conversation context, determine if this new message is a continuation of the previous conversation or a new topic. If it's a continuation, return False. If it's a new topic, return True."
+            prompt += "Consider the time, as well as the relation"
+            response = await ai_service.boolean_call(prompt)
+            return response
+            
+            # You can use the prompt for further processing or logging
+        return False
 
     async def cleanup_old_conversations(self, days_old: int = 30):
         """Clean up conversations older than specified days."""

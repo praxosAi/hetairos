@@ -133,9 +133,6 @@ async def handle_chat_request(
     #     request_obj = request_body
     
     # Initialize conversation (assuming you have these imports/services)
-    conversation_manager = ConversationManager(conversation_db, integration_service)
-    conversation_id = await conversation_manager.get_or_create_conversation(request_obj.user_id, "websocket")
-    
 
 
     # Build payload with files and audio
@@ -191,6 +188,9 @@ async def handle_chat_request(
             'inserted_id': inserted_id
         })
 
+    conversation_manager = ConversationManager(conversation_db, integration_service)
+    conversation_id = await conversation_manager.get_or_create_conversation(request_obj.user_id, "websocket", payload)
+    
 
     event = {
         "user_id": request_obj.user_id,

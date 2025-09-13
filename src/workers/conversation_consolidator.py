@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 from src.utils.database import ConversationDatabase
 from src.core.praxos_client import PraxosClient
 from src.services.user_service import user_service
-from src.services.ai_service import ai_service
+from src.services.ai_service.ai_service import ai_service
 
 class ConversationConsolidator:
     """Consolidates conversations from short-term to long-term memory"""

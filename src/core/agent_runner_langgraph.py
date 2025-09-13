@@ -312,7 +312,7 @@ class LangGraphAgentRunner:
             nyc_tz = pytz.timezone('America/New_York')
             current_time_nyc = datetime.now(nyc_tz).isoformat()
             # --- Execution ---
-            conversation_id = metadata.get("conversation_id") or await self.conversation_manager.get_or_create_conversation(user_context.user_id, source)
+            conversation_id = metadata.get("conversation_id") or await self.conversation_manager.get_or_create_conversation(user_context.user_id, source, input)
             message_prefix = 'message sent on date ' + current_time_nyc + ' by ' + user_context.user_record.get('first_name', '') + ' ' + user_context.user_record.get('last_name', '') + ': ' 
             if input_text:
                 await self.conversation_manager.add_user_message(conversation_id, message_prefix + input_text, metadata)

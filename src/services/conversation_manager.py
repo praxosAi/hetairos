@@ -25,7 +25,7 @@ class ConversationManager:
         
         return await self.db.create_conversation(user_id, platform)
 
-    async def is_conversation_active(self, conversation_id: str, payload: dict) -> bool:
+    async def is_conversation_active(self, conversation_id: str, payload: dict = None) -> bool:
         """Check if conversation is still within the inactivity timeout"""
         return not await self.db.is_conversation_expired(conversation_id, self.INACTIVITY_TIMEOUT // 60,payload)
     

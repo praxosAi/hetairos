@@ -39,7 +39,13 @@ class ExecutionWorker:
                     )
                     # Ingestion tasks typically don't have a direct response to the user.
                     # We could potentially send a notification via the egress service if needed.
-                
+                elif source == "file_ingestions":
+                    await self.ingestion_coordinator.ingest_uploaded_files(
+                        user_id=event["user_id"],
+                        files=event["payload"]["files"],
+                        metadata=event.get("metadata", {})
+                    )
+
                 elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram"]:
                     # --- Handle Agent Task ---
                     if source == "recurring":

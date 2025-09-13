@@ -200,6 +200,8 @@ class ConversationDatabase:
         timeout_delta = timedelta(minutes=timeout_minutes)
         messages = await self.get_conversation_messages(conversation_id,6)
         if (datetime.utcnow() - last_activity) > timeout_delta:
+            if not payload:
+                return True
             ## here, we will add further intelligence.
             prompt = f"User has been inactive for {timeout_minutes} minutes."
             if messages:
@@ -441,5 +443,11 @@ class DatabaseManager:
         if document:
             return document
         return None
+    async def update_document_source_id(self, document_id: str, source_id: str):    
+        """Update the source_id of a document."""
+        await self.documents.update_one(
+            {"_id": ObjectId(document_id)},
+            {"$set": {"source_id": source_id}}
+        )
 # Global database instance
 db_manager = DatabaseManager()

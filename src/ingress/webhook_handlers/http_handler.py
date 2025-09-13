@@ -306,9 +306,9 @@ async def handle_file_upload_request(
     try:
         ingestion_event = {
             "user_id": request_obj.user_id,
-            "source": "ingestion", # A new source type for our worker to identify
+            "source": "file_ingestion", # A new source type for our worker to identify
             "payload": payload,
-            "metadata": {}
+            "metadata": {'ingest_type':'file_upload','source':'file_upload_api'}
         }
         await event_queue.publish(ingestion_event)
     except Exception as e:

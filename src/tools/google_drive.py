@@ -35,11 +35,26 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
             return ToolExecutionResponse(status="success", result=content)
         except Exception as e:
             return ToolExecutionResponse(status="error", system_error=str(e), user_message=f"Could not read the file '{file_name}'. Make sure it exists and is a text file.")
+
+    @tool
+    async def list_drive_files(query: Optional[str] = None, max_results: int = 50, folder_id: Optional[str] = None) -> ToolExecutionResponse:
+        """Lists files in the user's Google Drive ({user_email}).
+        - If query is None or empty: Lists all files in the drive
+        - If query is provided: Searches for files whose names contain the query string
+        - folder_id: Optional folder ID to limit search to a specific folder
+        - max_results: Maximum number of files to return (default 50)
+        """
+        try:
+            files = await gdrive_integration.list_files(query, max_results, folder_id)
+            return ToolExecutionResponse(status="success", result=files)
+        except Exception as e:
+            return ToolExecutionResponse(status="error", system_error=str(e), user_message="Could not list files from Google Drive.")
     user_info = gdrive_integration.get_user_info()
     user_email = user_info.get('email', '')
 
     save_file_to_drive.description = save_file_to_drive.description.format(user_email=user_email)
     create_text_file_in_drive.description = create_text_file_in_drive.description.format(user_email=user_email)
     read_file_from_drive.description = read_file_from_drive.description.format(user_email=user_email)
+    list_drive_files.description = list_drive_files.description.format(user_email=user_email)
 
-    return [save_file_to_drive, create_text_file_in_drive, read_file_from_drive]
+    return [save_file_to_drive, create_text_file_in_drive, read_file_from_drive, list_drive_files]

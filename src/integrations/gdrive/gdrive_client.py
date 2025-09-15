@@ -147,27 +147,45 @@ class GoogleDriveIntegration(BaseIntegration):
         file = self.service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
         return file
 
-    async def read_file_from_drive(self, file_name: str) -> str:
-        """Reads the content of a text file from Google Drive by its name."""
+    async def read_file_content_by_id(self, file_id: str) -> str:
+        """Reads the content of a file from Google Drive using its file ID."""
         if not self.service:
             raise Exception("Google Drive service not initialized. Call authenticate() first.")
 
-        # Find the file by name
-        results = self.service.files().list(
-            q=f"name='{file_name}' and mimeType='text/plain'",
-            pageSize=1,
-            fields="files(id, name)"
-        ).execute()
+        try:
+            # Get file metadata to check if it exists and get MIME type
+            file_metadata = self.service.files().get(fileId=file_id, fields="id, name, mimeType").execute()
+            mime_type = file_metadata.get('mimeType', '')
 
-        items = results.get('files', [])
-        if not items:
-            raise Exception(f"File not found: {file_name}")
+            # Handle different file types
+            if mime_type.startswith('text/') or mime_type in ['application/json', 'application/xml']:
+                # Download text-based files directly
+                content = await self.download_file(file_id)
+                return content.decode('utf-8')
+            elif mime_type in ['application/vnd.google-apps.document', 'application/vnd.google-apps.spreadsheet']:
+                # Export Google Docs/Sheets as text
+                if 'document' in mime_type:
+                    export_mime_type = 'text/plain'
+                else:
+                    export_mime_type = 'text/csv'
 
-        file_id = items[0]['id']
+                request = self.service.files().export_media(fileId=file_id, mimeType=export_mime_type)
+                fh = BytesIO()
+                downloader = MediaIoBaseDownload(fh, request)
+                done = False
+                while done is False:
+                    status, done = downloader.next_chunk()
 
-        # Download and read the file content
-        content = await self.download_file(file_id)
-        return content.decode('utf-8')
+                fh.seek(0)
+                return fh.read().decode('utf-8')
+            else:
+                raise Exception(f"Unsupported file type: {mime_type}. Only text-based files and Google Docs/Sheets are supported.")
+
+        except Exception as e:
+            if "File not found" in str(e):
+                raise Exception(f"File with ID '{file_id}' not found or you don't have permission to access it.")
+            else:
+                raise Exception(f"Error reading file content: {e}")
 
     async def list_files(self, query: Optional[str] = None, max_results: int = 50, folder_id: Optional[str] = None) -> List[Dict]:
         """Lists files in Google Drive with optional search query and folder filtering."""

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from bson import ObjectId
 from pymongo.errors import OperationFailure
+from pymongo import UpdateOne
 from src.config.settings import settings
 from src.utils.logging.base_logger import setup_logger
 from src.services.ai_service.ai_service import ai_service
@@ -136,16 +137,17 @@ class ConversationDatabase:
         operations = []
         for msg_id, update_fields in messages_dict.items():
             operations.append(
-                motor.motor_asyncio.UpdateOne(
+                UpdateOne(
                     {"_id": ObjectId(msg_id)},
                     {"$set": update_fields}
                 )
             )
         if operations:
             result = await self.messages.bulk_write(operations)
-            self.logger.info(f"Bulk updated {result.modified_count} messages.")
-
-        return result.modified_count
+            return result
+            # self.logger.info(f"Bulk updated {result.modified_count} messages.")
+        return None
+        # return result.modified_count
     async def record_search_attempt(self, conversation_id: str, query: str, search_type: str, 
                                      success: bool, error_type: Optional[str] = None, 
                                      results_count: int = 0, metadata: Dict = None) -> str:

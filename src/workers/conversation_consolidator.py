@@ -45,8 +45,8 @@ class ConversationConsolidator:
                 logger.error(f"Error generating media descriptions: {e}", exc_info=True)
 
             ### now, let's update messages
-            update_messages = await self.db.bulk_update_messages(list(message_dict.values()))
-            logger.info(f"Updated {update_messages.modified_count} messages with media descriptions")
+            update_messages = await self.db.bulk_update_messages(message_dict)
+            logger.info(f"Updated {update_messages} messages with media descriptions")
             search_attempts = await self.db.get_recent_search_attempts(conversation_id, limit=100)
             logger.info(f"Found {len(search_attempts)} search attempts")
             if not messages:

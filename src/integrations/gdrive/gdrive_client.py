@@ -158,13 +158,61 @@ class GoogleDriveIntegration(BaseIntegration):
             pageSize=1,
             fields="files(id, name)"
         ).execute()
-        
+
         items = results.get('files', [])
         if not items:
             raise Exception(f"File not found: {file_name}")
-        
+
         file_id = items[0]['id']
-        
+
         # Download and read the file content
         content = await self.download_file(file_id)
         return content.decode('utf-8')
+
+    async def list_files(self, query: Optional[str] = None, max_results: int = 50, folder_id: Optional[str] = None) -> List[Dict]:
+        """Lists files in Google Drive with optional search query and folder filtering."""
+        if not self.service:
+            raise Exception("Google Drive service not initialized. Call authenticate() first.")
+
+        try:
+            # Build the query string
+            q_parts = []
+
+            if folder_id:
+                q_parts.append(f"'{folder_id}' in parents")
+
+            if query:
+                q_parts.append(f"name contains '{query}'")
+
+            # Exclude trashed files
+            q_parts.append("trashed=false")
+
+            q_string = " and ".join(q_parts)
+
+            results = self.service.files().list(
+                q=q_string,
+                pageSize=min(max_results, 1000),  # Google Drive API max is 1000
+                fields="nextPageToken, files(id, name, mimeType, modifiedTime, size, webViewLink, parents)"
+            ).execute()
+
+            files = results.get('files', [])
+
+            # Format the response for better readability
+            formatted_files = []
+            for file in files:
+                formatted_file = {
+                    'id': file.get('id'),
+                    'name': file.get('name'),
+                    'type': file.get('mimeType', '').split('/')[-1] if file.get('mimeType') else 'unknown',
+                    'modified': file.get('modifiedTime'),
+                    'size': file.get('size', 'N/A'),
+                    'link': file.get('webViewLink'),
+                    'parents': file.get('parents', [])
+                }
+                formatted_files.append(formatted_file)
+
+            return formatted_files
+
+        except Exception as e:
+            logger.error(f"Error listing Google Drive files for user {self.user_id}: {e}")
+            raise Exception(f"Failed to list files: {e}")

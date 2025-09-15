@@ -28,13 +28,13 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
             return ToolExecutionResponse(status="error", system_error=str(e))
 
     @tool
-    async def read_file_from_drive(file_name: str) -> ToolExecutionResponse:
-        """Reads the content of a text file from user's Google Drive ({user_email}) by its name."""
+    async def read_file_content_by_id(file_id: str) -> ToolExecutionResponse:
+        """Reads the content of a file from user's Google Drive ({user_email}) using its file ID. Use list_drive_files to get file IDs first."""
         try:
-            content = await gdrive_integration.read_file_from_drive(file_name)
+            content = await gdrive_integration.read_file_content_by_id(file_id)
             return ToolExecutionResponse(status="success", result=content)
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message=f"Could not read the file '{file_name}'. Make sure it exists and is a text file.")
+            return ToolExecutionResponse(status="error", system_error=str(e), user_message=f"Could not read the file with ID '{file_id}'. Make sure the file exists and you have permission to read it.")
 
     @tool
     async def list_drive_files(query: Optional[str] = None, max_results: int = 50, folder_id: Optional[str] = None) -> ToolExecutionResponse:
@@ -54,7 +54,7 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
 
     save_file_to_drive.description = save_file_to_drive.description.format(user_email=user_email)
     create_text_file_in_drive.description = create_text_file_in_drive.description.format(user_email=user_email)
-    read_file_from_drive.description = read_file_from_drive.description.format(user_email=user_email)
+    read_file_content_by_id.description = read_file_content_by_id.description.format(user_email=user_email)
     list_drive_files.description = list_drive_files.description.format(user_email=user_email)
 
-    return [save_file_to_drive, create_text_file_in_drive, read_file_from_drive, list_drive_files]
+    return [save_file_to_drive, create_text_file_in_drive, read_file_content_by_id, list_drive_files]

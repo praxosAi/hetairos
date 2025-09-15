@@ -5,11 +5,13 @@ from src.utils.database import ConversationDatabase
 from src.core.praxos_client import PraxosClient
 from src.services.user_service import user_service
 from src.services.ai_service.ai_service import ai_service
+from src.utils.logging import setup_logger
 
 class ConversationConsolidator:
     """Consolidates conversations from short-term to long-term memory"""
     def __init__(self, db_manager: ConversationDatabase):
         self.db = db_manager
+        self.logger = setup_logger("conversation_consolidator")
 
     
     async def consolidate_conversation(self, conversation_id: int) -> bool:
@@ -18,9 +20,9 @@ class ConversationConsolidator:
             conversation = await self.db.get_conversation_info(conversation_id)
             ### now that we have this, we can 
             if not conversation:
-                print(f"Conversation {conversation_id} not found")
+                self.logger.warning(f"Conversation {conversation_id} not found")
                 return False
-            print('found conversation')
+            self.logger.info('Found conversation for consolidation')
             # Get all messages and search attempts
                        
             messages = await self.db.get_conversation_messages(conversation_id)
@@ -38,19 +40,19 @@ class ConversationConsolidator:
                     description = descriptions[i]
                     messages[message_idx]['content'] = f'Description of media type with id: {message["metadata"]["inserted_id"]}: {description}'
             except Exception as e:
-                print(f"Error generating media descriptions: {e}", exc_info=True)
-            print('found messages')
+                self.logger.error(f"Error generating media descriptions: {e}", exc_info=True)
+            self.logger.info('Found messages for conversation')
             search_attempts = await self.db.get_recent_search_attempts(conversation_id, limit=100)
-            print('found search attempts')
+            self.logger.info('Found search attempts for conversation')
             if not messages:
-                print(f"No messages found for conversation {conversation_id}")
+                self.logger.warning(f"No messages found for conversation {conversation_id}")
                 await self.db.mark_conversation_consolidated(conversation_id)
                 return True
             # summary = self.create_conversation_summary(conversation, messages, search_attempts)
             
             new_consolidation = await self.db.mark_conversation_consolidated(conversation_id)
             if not new_consolidation:
-                print(f"Conversation {conversation_id} already consolidated")
+                self.logger.info(f"Conversation {conversation_id} already consolidated")
                 return True
             # Send to Praxos
             conversation_user_id = conversation['user_id']
@@ -88,11 +90,11 @@ class ConversationConsolidator:
             # Mark as consolidated
             
             
-            print(f"Successfully consolidated conversation {conversation_id} with {len(messages)} messages")
+            self.logger.info(f"Successfully consolidated conversation {conversation_id} with {len(messages)} messages")
             return True
             
         except Exception as e:
-            print(f"Error consolidating conversation {conversation_id}: {e}")
+            self.logger.error(f"Error consolidating conversation {conversation_id}: {e}")
             # Optionally, mark the conversation as failed to prevent retries
             # await self.db.mark_conversation_failed(conversation_id, str(e))
             return False
@@ -211,14 +213,14 @@ class ConversationConsolidator:
     async def consolidate_all_ready_conversations(self) -> Dict:
         """Consolidate all conversations ready for consolidation"""
         conversations = await self.db.get_conversations_to_consolidate()
-        
+
         results = {
             'total': len(conversations),
             'successful': 0,
             'failed': 0,
             'errors': []
         }
-        self.db.logger.info(f"Consolidating {len(conversations)} conversations")
+        self.logger.info(f"Consolidating {len(conversations)} conversations")
         for conversation in conversations:
             conversation_id = str(conversation['_id'])
             try:

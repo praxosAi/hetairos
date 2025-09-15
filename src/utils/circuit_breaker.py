@@ -215,7 +215,7 @@ def get_all_circuit_breakers() -> Dict[str, CircuitBreaker]:
 
 async def test_circuit_breaker():
     """Test circuit breaker functionality"""
-    print("🔧 Testing Circuit Breaker...")
+    logger.info("🔧 Testing Circuit Breaker...")
     
     # Create test breaker
     test_breaker = CircuitBreaker("test", CircuitBreakerConfig(failure_threshold=2, timeout=1.0))
@@ -226,7 +226,7 @@ async def test_circuit_breaker():
     
     result = await test_breaker.call(success_func)
     assert result == "success"
-    print("   ✅ Successful operation works")
+    logger.info("   ✅ Successful operation works")
     
     # Test failing operation
     async def failing_func():
@@ -250,7 +250,7 @@ async def test_circuit_breaker():
         await test_breaker.call(failing_func)
         assert False, "Should have raised CircuitBreakerOpenError"
     except CircuitBreakerOpenError:
-        print("   ✅ Circuit breaker opens after failures")
+        logger.info("   ✅ Circuit breaker opens after failures")
     
     # Wait for timeout
     await asyncio.sleep(1.1)
@@ -258,9 +258,9 @@ async def test_circuit_breaker():
     # Should now be half-open and allow one request
     result = await test_breaker.call(success_func)
     assert result == "success"
-    print("   ✅ Circuit breaker transitions to half-open and closes")
+    logger.info("   ✅ Circuit breaker transitions to half-open and closes")
     
-    print("   🎉 Circuit breaker test passed!")
+    logger.info("   🎉 Circuit breaker test passed!")
 
 if __name__ == "__main__":
     asyncio.run(test_circuit_breaker())

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Dict, List, Any
 import json
+from src.utils.logging import setup_logger
 
 class ReadWorker:
     """
@@ -8,6 +9,7 @@ class ReadWorker:
     """
 
     def __init__(self):
+        self.logger = setup_logger("read_worker")
         self.integration_classes = {}
         self._load_integration_classes()
 
@@ -31,7 +33,7 @@ class ReadWorker:
                 "onedrive": OneDriveIntegration,
             }
         except ImportError as e:
-            print(f"Error loading integration classes: {e}")
+            self.logger.error(f"Error loading integration classes: {e}")
 
     async def read_data(self, user_id: str, integration_type: str) -> List[Dict[str, Any]]:
         """

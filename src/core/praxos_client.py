@@ -158,7 +158,7 @@ class PraxosClient:
             # SyncSource object has .id attribute
             source_id = getattr(result, 'id', None) if result else None
             
-            print(f"✅ Email conversation added successfully in {duration:.2f}s (ID: {source_id})")
+            praxos_logger.info(f"✅ Email conversation added successfully in {duration:.2f}s (ID: {source_id})")
             
             # Return consistent format
             return {
@@ -169,9 +169,9 @@ class PraxosClient:
             
         except Exception as e:
             duration = time.time() - start_time
-            print(f"❌ Email conversation add failed: {e} (Duration: {duration:.2f}s)")
+            praxos_logger.error(f"❌ Email conversation add failed: {e} (Duration: {duration:.2f}s)")
             if hasattr(e, 'status_code'):
-                print(f"   Status code: {e.status_code}")
+                praxos_logger.error(f"   Status code: {e.status_code}")
             return {"error": str(e)}
     
     async def add_integration_capability(self, user_id: str, integration_type: str, capabilities: List[str]):
@@ -316,7 +316,7 @@ class PraxosClient:
                 )
                 
         except Exception as e:
-            print(f"Error adding file content to Praxos: {e}")
+            praxos_logger.error(f"Error adding file content to Praxos: {e}")
             return {"error": f"File content upload failed: {str(e)}"}
     
     async def search_from_anchors(self, user_id: str, query: str, max_hops: int = 3, top_k: int = 3, node_types: List[str] = None):
@@ -534,7 +534,7 @@ class PraxosClient:
           duration = time.time() - start_time
 
           # Log success (you can add specific logging if needed)
-          print(f"✅ Business data added successfully in {duration:.2f}s")
+          praxos_logger.info(f"✅ Business data added successfully in {duration:.2f}s")
 
           # Return consistent format
           return {
@@ -545,7 +545,7 @@ class PraxosClient:
 
       except Exception as e:
           duration = time.time() - start_time
-          print(f"❌ Business data add failed: {e} (Duration: {duration:.2f}s)")
+          praxos_logger.error(f"❌ Business data add failed: {e} (Duration: {duration:.2f}s)")
           if hasattr(e, 'status_code'):
-              print(f"   Status code: {e.status_code}")
+              praxos_logger.error(f"   Status code: {e.status_code}")
           return {"error": str(e)}

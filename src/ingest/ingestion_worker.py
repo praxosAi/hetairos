@@ -4,6 +4,7 @@ from src.ingest.read_worker import ReadWorker
 from src.ingest.ingest_worker import IngestWorker
 import asyncio
 from src.utils.blob_utils import download_from_blob_storage
+from src.utils.logging import setup_logger
 class InitialIngestionCoordinator:
     """
     Coordinates the initial data ingestion process by using ReadWorker and IngestWorker.
@@ -12,6 +13,7 @@ class InitialIngestionCoordinator:
     def __init__(self):
         self.read_worker = ReadWorker()
         self.ingest_worker = IngestWorker()
+        self.logger = setup_logger("ingestion_coordinator")
 
     async def perform_initial_ingestion(self, user_id: str, integration_type: str) -> Dict:
         """
@@ -19,13 +21,13 @@ class InitialIngestionCoordinator:
         """
         try:
             # 1. Read data from the integration
-            print(f"Starting initial ingestion for {integration_type} for user {user_id}...")
+            self.logger.info(f"Starting initial ingestion for {integration_type} for user {user_id}...")
             in_memory_files = await self.read_worker.read_data(user_id, integration_type)
-            print(f"Read {len(in_memory_files)} files from {integration_type}.")
+            self.logger.info(f"Read {len(in_memory_files)} files from {integration_type}.")
 
             # 2. Ingest the files into Praxos and database
             ingestion_results = await self.ingest_worker.ingest_files(user_id, in_memory_files)
-            print(f"Ingestion complete for {integration_type}.")
+            self.logger.info(f"Ingestion complete for {integration_type}.")
 
             successful_ingestions = [res for res in ingestion_results if res['status'] == 'success']
             failed_ingestions = [res for res in ingestion_results if res['status'] == 'failed']

@@ -120,7 +120,7 @@ class MicrosoftGraphIntegration(BaseIntegration):
             formatted_messages = [await self._format_message(msg) for msg in messages]
             return formatted_messages
         except Exception as e:
-            print(f"Error fetching Outlook messages: {e}")
+            logger.error(f"Error fetching Outlook messages: {e}")
             return []
 
     async def _fetch_calendar_events(self, since: datetime) -> List[Dict]:
@@ -143,7 +143,7 @@ class MicrosoftGraphIntegration(BaseIntegration):
             formatted_events = [self._format_event(event) for event in events]
             return formatted_events
         except Exception as e:
-            print(f"Error fetching Outlook Calendar events: {e}")
+            logger.error(f"Error fetching Outlook Calendar events: {e}")
             return []
 
     def _format_event(self, event: Dict) -> Dict:
@@ -197,7 +197,7 @@ class MicrosoftGraphIntegration(BaseIntegration):
                 return base64.b64decode(attachment_data['contentBytes'])
             return None
         except Exception as e:
-            print(f"Error downloading attachment: {e}")
+            logger.error(f"Error downloading attachment: {e}")
             return None
 
     async def send_email(self, recipient: str, subject: str, body: str) -> Dict:
@@ -245,7 +245,7 @@ class MicrosoftGraphIntegration(BaseIntegration):
             events = data.get('value', [])
             return [self._format_event(event) for event in events]
         except Exception as e:
-            print(f"Error fetching Outlook Calendar events: {e}")
+            logger.error(f"Error fetching Outlook Calendar events: {e}")
             return []
 
     async def create_calendar_event(self, title: str, start_time: str, end_time: str, attendees: Optional[List[str]] = None, description: str = "", location: str = "") -> Dict:
@@ -268,7 +268,7 @@ class MicrosoftGraphIntegration(BaseIntegration):
                     response.raise_for_status()
                     return await response.json()
         except Exception as e:
-            print(f"Error creating Outlook Calendar event: {e}")
+            logger.error(f"Error creating Outlook Calendar event: {e}")
             raise
 
     async def get_emails_from_sender(self, sender_email: str, max_results: int = 10) -> List[Dict]:

@@ -3,11 +3,13 @@ import asyncio
 from typing import Optional
 
 from src.config.settings import settings
+from src.utils.logging import setup_logger
 
 class TelegramClient:
     def __init__(self):
         self.token = settings.TELEGRAM_BOT_TOKEN
         self.base_url = f"https://api.telegram.org/bot{self.token}"
+        self.logger = setup_logger("telegram_client")
 
     async def send_message(self, chat_id: int, text: str):
         """Send text message via Telegram Bot API"""
@@ -27,7 +29,7 @@ class TelegramClient:
                     response.raise_for_status()
                     return await response.json()
         except aiohttp.ClientError as e:
-            print(f"Telegram API error: {e}")
+            self.logger.error(f"Telegram API error: {e}")
             return None
     async def get_file_path(self, file_id: str):
         """Get the file path of a file from Telegram Bot API"""

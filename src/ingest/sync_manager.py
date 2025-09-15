@@ -30,7 +30,7 @@ class SyncManager:
     async def sync_integration(self, user_id: str, integration_type: str):
         """Sync a specific integration for a user"""
         if integration_type not in self.integration_classes:
-            print(f"Integration type {integration_type} not yet implemented")
+            logger.warning(f"Integration type {integration_type} not yet implemented")
             return 0
         
         try:
@@ -54,11 +54,11 @@ class SyncManager:
             return 0
             synced_count = await integration.full_sync(praxos_client)
             
-            print(f"Synced {synced_count} items from {integration_type} for user {user_id}")
+            logger.info(f"Synced {synced_count} items from {integration_type} for user {user_id}")
             return synced_count
-            
+
         except Exception as e:
-            print(f"Error syncing {integration_type} for user {user_id}: {e}")
+            logger.error(f"Error syncing {integration_type} for user {user_id}: {e}")
             raise
     
     async def sync_all_user_integrations(self, user_id: str):

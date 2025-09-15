@@ -4,13 +4,15 @@ import tempfile
 import os
 from typing import Dict, Tuple, Optional
 from src.config.settings import settings
+from src.utils.logging import setup_logger
 
 class WhatsAppClient:
     def __init__(self):
-        self.access_token = settings.WHATSAPP_ACCESS_TOKEN              
+        self.access_token = settings.WHATSAPP_ACCESS_TOKEN
         self.phone_number_id = settings.WHATSAPP_PHONE_NUMBER_ID
         self.api_version = settings.WHATSAPP_API_VERSION
         self.base_url = f"https://graph.facebook.com/{self.api_version}/{self.phone_number_id}"
+        self.logger = setup_logger("whatsapp_client")
         
     async def send_message(self, to_phone: str, message: str, conversation_id: int = None):
         """Send text message via WhatsApp Business API"""
@@ -54,10 +56,10 @@ class WhatsAppClient:
                     
                     return result
         except asyncio.TimeoutError:
-            print(f"WhatsApp API timeout for message to {to_phone}")
+            self.logger.error(f"WhatsApp API timeout for message to {to_phone}")
             return {"error": "timeout", "message": "Message sending timed out"}
         except aiohttp.ClientError as e:
-            print(f"WhatsApp send message error: {e}")
+            self.logger.error(f"WhatsApp send message error: {e}")
             return {"error": str(e)}
     
     async def mark_as_read(self, message_id: str):
@@ -86,10 +88,10 @@ class WhatsAppClient:
                     response.raise_for_status()
                     return await response.json()
         except asyncio.TimeoutError:
-            print(f"WhatsApp mark as read timeout for message {message_id}")
+            self.logger.error(f"WhatsApp mark as read timeout for message {message_id}")
             return {"error": "timeout", "message": "Read receipt timed out"}
         except aiohttp.ClientError as e:
-            print(f"WhatsApp mark as read error: {e}")
+            self.logger.error(f"WhatsApp mark as read error: {e}")
             return {"error": str(e)}
     
     async def retry_failed_message(self, message_id: str, to_phone: str, message: str, 
@@ -118,7 +120,7 @@ class WhatsAppClient:
                     await asyncio.sleep(2 ** attempt)  # Exponential backoff
                     
             except Exception as e:
-                print(f"Retry attempt {attempt + 1} failed for message {message_id}: {e}")
+                self.logger.warning(f"Retry attempt {attempt + 1} failed for message {message_id}: {e}")
                 if attempt < max_retries - 1:
                     await asyncio.sleep(2 ** attempt)
         
@@ -155,7 +157,7 @@ class WhatsAppClient:
                     result = await response.json()
                     return result.get("url")
         except Exception as e:
-            print(f"Error getting media URL for {media_id}: {e}")
+            self.logger.error(f"Error getting media URL for {media_id}: {e}")
             return None
     
     async def download_media_to_file(self, media_url: str, target_file_path: str) -> Tuple[bool, int]:
@@ -179,11 +181,11 @@ class WhatsAppClient:
                             file.write(chunk)
                             bytes_downloaded += len(chunk)
                     
-                    print(f"Streamed {bytes_downloaded} bytes to {target_file_path}")
+                    self.logger.info(f"Streamed {bytes_downloaded} bytes to {target_file_path}")
                     return True, bytes_downloaded
                     
         except Exception as e:
-            print(f"Error streaming media from {media_url}: {e}")
+            self.logger.error(f"Error streaming media from {media_url}: {e}")
             # Clean up partial file on error
             if os.path.exists(target_file_path):
                 try:
@@ -203,7 +205,7 @@ class WhatsAppClient:
                 media_url = await self.get_media_url(media_id)
                 if not media_url:
                     error_msg = f"Failed to get media URL for {media_id}"
-                    print(error_msg)
+                    self.logger.error(error_msg)
                     last_error = error_msg
                     if attempt < max_retries:
                         await asyncio.sleep(1 * (attempt + 1))  # Increasing delay
@@ -218,7 +220,7 @@ class WhatsAppClient:
                 success, bytes_downloaded = await self.download_media_to_file(media_url, temp_file_path)
                 if not success:
                     error_msg = f"Failed to stream download media from {media_url}"
-                    print(error_msg)
+                    self.logger.error(error_msg)
                     last_error = error_msg
                     if attempt < max_retries:
                         await asyncio.sleep(1 * (attempt + 1))  # Increasing delay
@@ -227,12 +229,12 @@ class WhatsAppClient:
                 
                 # Success
                 if attempt > 0:
-                    print(f"Successfully downloaded media {media_id} on attempt {attempt + 1}")
+                    self.logger.info(f"Successfully downloaded media {media_id} on attempt {attempt + 1}")
                 return temp_file_path, bytes_downloaded
                 
             except asyncio.TimeoutError as e:
                 error_msg = f"Timeout downloading media {media_id} (attempt {attempt + 1})"
-                print(error_msg)
+                self.logger.error(error_msg)
                 last_error = error_msg
                 if temp_file_path and os.path.exists(temp_file_path):
                     os.unlink(temp_file_path)
@@ -241,7 +243,7 @@ class WhatsAppClient:
                     continue
             except Exception as e:
                 error_msg = f"Error in download_media_by_id_to_file for {media_id} (attempt {attempt + 1}): {e}"
-                print(error_msg)
+                self.logger.error(error_msg)
                 last_error = str(e)
                 if temp_file_path and os.path.exists(temp_file_path):
                     os.unlink(temp_file_path)
@@ -249,5 +251,5 @@ class WhatsAppClient:
                     await asyncio.sleep(1 * (attempt + 1))
                     continue
         
-        print(f"Failed to download media {media_id} after {max_retries + 1} attempts. Last error: {last_error}")
+        self.logger.error(f"Failed to download media {media_id} after {max_retries + 1} attempts. Last error: {last_error}")
         return None, 0

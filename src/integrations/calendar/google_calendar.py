@@ -75,7 +75,7 @@ class GoogleCalendarIntegration(BaseIntegration):
             return formatted_events
             
         except Exception as e:
-            print(f"Error fetching Google Calendar events: {e}")
+            logger.error(f"Error fetching Google Calendar events: {e}")
             return []
 
     def _remove_timezone_offset(self, time_string: str) -> str:

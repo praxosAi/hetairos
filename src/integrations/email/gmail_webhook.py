@@ -210,7 +210,7 @@ class GmailWebhookHandler:
 
             # Initialize the controller to process messages
             assistant_controller = AssistantController()
-            print(f"Processing message, controller initialized")
+            logger.info(f"Processing message, controller initialized")
             for message_id in new_message_ids:
                 try:
                     # Get the full, formatted email details

@@ -214,7 +214,7 @@ async def handle_chat_request(
     await event_queue.publish(event)
     
     # For demo purposes, just log the event structure
-    print(f"Would publish event: {json.dumps(event, indent=2, default=str)}")
+    logger.info(f"Published event: {json.dumps(event, indent=2, default=str)}")
     
     return {
         "status": "accepted", 

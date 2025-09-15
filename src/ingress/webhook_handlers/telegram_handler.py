@@ -33,7 +33,7 @@ async def handle_telegram_webhook(request: Request):
             integration_record["telegram_chat_id"] = chat_id
             await integration_service.update_integration(integration_record["_id"], integration_record)
         text = message.get("text")
-        print(f"Received message from Telegram: {message}")
+        logger.info(f"Received message from Telegram: {message}")
         if text:
             event = {
                 "user_id": user_id,

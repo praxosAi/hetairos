@@ -1,11 +1,13 @@
 import asyncio
 from typing import Dict, Optional, Tuple
 import magic  # python-magic for file type detection
+from src.utils.logging import setup_logger
 
 class FileProcessor:
     """Processes different file types for content extraction and Praxos ingestion"""
     
     def __init__(self):
+        self.logger = setup_logger("file_processor")
         self.supported_text_types = {
             'text/plain',
             'text/csv', 
@@ -70,7 +72,7 @@ class FileProcessor:
                 return None
                 
         except Exception as e:
-            print(f"Error extracting content from {filename}: {e}")
+            self.logger.error(f"Error extracting content from {filename}: {e}")
             return None
     
     async def _extract_text_content(self, file_data: bytes, mimetype: str) -> str:
@@ -118,10 +120,10 @@ class FileProcessor:
             return content
             
         except ImportError:
-            print("PyPDF2 not installed, cannot extract PDF content")
+            self.logger.warning("PyPDF2 not installed, cannot extract PDF content")
             return f"[PDF file - content extraction not available]"
         except Exception as e:
-            print(f"Error extracting PDF content: {e}")
+            self.logger.error(f"Error extracting PDF content: {e}")
             return f"[PDF file - extraction failed: {str(e)}]"
     
     async def _extract_office_content(self, file_data: bytes, mimetype: str) -> str:
@@ -156,10 +158,10 @@ class FileProcessor:
                 return f"[Office document - {mimetype} - content extraction not implemented]"
                 
         except ImportError as e:
-            print(f"Required library not installed for {mimetype}: {e}")
+            self.logger.warning(f"Required library not installed for {mimetype}: {e}")
             return f"[Office document - content extraction not available]"
         except Exception as e:
-            print(f"Error extracting Office content: {e}")
+            self.logger.error(f"Error extracting Office content: {e}")
             return f"[Office document - extraction failed: {str(e)}]"
     
     def get_file_summary(self, filename: str, mimetype: str, file_size: int, content: str = None) -> str:

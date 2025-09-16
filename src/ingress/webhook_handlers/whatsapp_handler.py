@@ -74,7 +74,10 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
 
                         webhook_logger.info(f"Marking message as read on webhook with base url {whatsapp_client.base_url}")
                         await whatsapp_client.mark_as_read(message["id"])
-                        
+                        ### check if message is forwarded.
+                        forwarded = message.get("context",{}).get("forwarded",False) or message.get("context",{}).get("frequently_forwarded",False)
+
+
                         user_record = user_service.get_user_by_id(integration_record["user_id"])
                         message_type = message.get("type")
 
@@ -86,7 +89,7 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                 'output_phone_number': phone_number,
                                 "source": "whatsapp",
                                 "payload": {"text": message_text},
-                                "metadata": {"message_id": message["id"],'source':'whatsapp'}
+                                "metadata": {"message_id": message["id"],'source':'whatsapp','forwarded':forwarded, 'timestamp': message.get('timestamp')}
                             }
                             await event_queue.publish(event)
                         
@@ -123,7 +126,7 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                             'output_phone_number': phone_number,
                                             "source": "whatsapp",
                                             "payload": {"files": [{'type': message_type, 'blob_path': file_path_blob, 'mime_type': mime_type[0],'caption': caption,'inserted_id': str(inserted_id)}]},
-                                            "metadata": {"message_id": message["id"],'source':'whatsapp'}
+                                            "metadata": {"message_id": message["id"],'source':'whatsapp','forwarded':forwarded,'timestamp': message.get('timestamp')}
                                         }
 
 

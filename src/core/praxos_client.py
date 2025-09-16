@@ -465,7 +465,7 @@ class PraxosClient:
                 for result in results:
                     # Check if result has a score > 0.8
                     score = result.get('score', 0)
-                    if score > 0.6:
+                    if score > 0.7:
                         qualified_results.append({'text': result.get('sentence', ''), 'node_id': result.get('node_id')})
                         # Extract sentence field if available
                         sentence = result.get('sentence', '')

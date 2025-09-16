@@ -304,18 +304,39 @@ class LangGraphAgentRunner:
         try:
             
             """Main entry point for the LangGraph agent runner."""
-            input_text = input.get("text")
-            input_files = input.get("files")
+            ### here's what I'll do. first of all, some methods do need a flattened text input. so even in the list case, we'll generate it.
+            if isinstance(input, list):
+                input_text = " ".join([item.get("text", "") for item in input if item.get("text")])
+                input_files = [item.get("files", []) for item in input if item.get("files")]
+                input_files = [file for sublist in input_files for file in sublist]  # flatten list of lists
+            else:
+                input_text = input.get("text")
+                input_files = input.get("files")
             if input_text:
                 logger.info(f"Running LangGraph agent runner for user {user_context.user_id} with input {input_text} and source {source}")
             
             nyc_tz = pytz.timezone('America/New_York')
             current_time_nyc = datetime.now(nyc_tz).isoformat()
-            # --- Execution ---
-            conversation_id = metadata.get("conversation_id") or await self.conversation_manager.get_or_create_conversation(user_context.user_id, source, input)
-            message_prefix = 'message sent on date ' + current_time_nyc + ' by ' + user_context.user_record.get('first_name', '') + ' ' + user_context.user_record.get('last_name', '') + ': ' 
-            if input_text:
-                await self.conversation_manager.add_user_message(conversation_id, message_prefix + input_text, metadata)
+            # --- Data preparation ---
+            payload_for_conversation_manager = {'text': input_text, 'files': input_files}
+            conversation_id = metadata.get("conversation_id") or await self.conversation_manager.get_or_create_conversation(user_context.user_id, source, payload_for_conversation_manager)
+
+            if isinstance(input, list):
+                ### this is where it gets interesting. we need to add each message in order, with forwarding data if needed.
+                for item in input:
+                    message_prefix = 'message sent on date ' + current_time_nyc + ' by ' + user_context.user_record.get('first_name', '') + ' ' + user_context.user_record.get('last_name', '') + ': '
+                    if item.get("metadata",{}).get("forwarded",False):
+
+                        message_prefix += " this message was forwarded."
+                        if item.get("metadata",{}).get("forward_origin"):
+                            message_prefix += " original sender: " + item.get("metadata",{}).get("original_sender_identifier", "unknown") + "."
+
+            elif isinstance(input, dict):
+                message_prefix = 'message sent on date ' + current_time_nyc + ' by ' + user_context.user_record.get('first_name', '') + ' ' + user_context.user_record.get('last_name', '') + ': ' 
+                if input_text:
+                    await self.conversation_manager.add_user_message(conversation_id, message_prefix + input_text, metadata)
+            else:
+                return AgentFinalResponse(response="Invalid input format.", delivery_modality=source, execution_notes="Input must be a dict or list of dicts.")
             history, has_media = await self._get_conversation_history(conversation_id)
             if has_media:
                 logger.info(f"Conversation {conversation_id} has media; switching to media-capable LLM")
@@ -345,6 +366,10 @@ class LangGraphAgentRunner:
                         system_prompt += long_term_memory_context
             except Exception as e:
                 logger.error(f"Error fetching long-term memory: {e}", exc_info=True)
+
+
+
+
 
             # --- Graph Definition ---
             async def call_model(state: AgentState):
@@ -392,7 +417,7 @@ class LangGraphAgentRunner:
                 "metadata": metadata,
                 "final_response": None
             }
-
+            # --- END Graph Definition ---
             final_state = await app.ainvoke(initial_state,{"recursion_limit": 100})
             
             final_response = final_state['final_response']

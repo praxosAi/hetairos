@@ -39,6 +39,25 @@ async def handle_telegram_webhook(request: Request):
             await integration_service.update_integration(integration_record["_id"], integration_record)
         text = message.get("text")
         logger.info(f"Received message from Telegram: {message}")
+        #### handling forwarded messages
+        forwarded  = False
+        forward_origin = {}
+        if  message.get("forward_origin"):
+            forwarded = True
+            forward_origin_raw = message["forward_origin"]
+            if forward_origin_raw.get("type") == "hidden_user":
+                forward_origin = {"type":"hidden_user",'original_sender_identifier': forward_origin_raw.get("sender_user_name","Unknown"),'forward_date': forward_origin_raw.get("date")}
+
+            elif forward_origin_raw.get("type") == "user":
+                sender_user = forward_origin_raw.get("sender_user",{})
+                sender_user_full_identifier = ''
+                if sender_user.get("first_name"):
+                    sender_user_full_identifier += 'First Name:' +  sender_user["first_name"]
+                if sender_user.get("last_name"):
+                    sender_user_full_identifier += ' Last Name:' +  sender_user["last_name"]
+                if sender_user.get("username"):
+                    sender_user_full_identifier += ' Username:' +  sender_user["username"]
+                forward_origin = {"type":"user",'original_sender_identifier': sender_user_full_identifier,'forward_date': forward_origin_raw.get("date")}
         if text:
             event = {
                 "user_id": user_id,
@@ -46,10 +65,10 @@ async def handle_telegram_webhook(request: Request):
                 'output_chat_id': chat_id,
                 "source": "telegram",
                 "payload": {"text": text},
-                "metadata": {'message_id': message["message_id"],'chat_id': chat_id, 'source':'Telegram'}
+                "metadata": {'message_id': message["message_id"],'chat_id': chat_id, 'source':'Telegram','forwarded':forwarded,'forward_origin':forward_origin,'timestamp': message.get("date")}
             }
             await event_queue.publish(event)
-        for key in ['video','document','sticker','voice','audio','sticker']:
+        for key in ['video','document','sticker','voice','audio','photo']:
             if not key in message or not message[key]:
                 continue
             
@@ -94,7 +113,7 @@ async def handle_telegram_webhook(request: Request):
                 'output_chat_id': chat_id,
                 "source": "telegram",
                 "payload": {"files": [{'type': type_to_use, 'blob_path': blob_name, 'mime_type': mime_type[0],'caption': caption,'inserted_id': str(inserted_id)}]},
-                "metadata": {'message_id': message["message_id"],'chat_id': chat_id,'source':'Telegram'}
+                "metadata": {'message_id': message["message_id"],'chat_id': chat_id,'source':'Telegram', 'forwarded':forwarded,'forward_origin':forward_origin, 'timestamp': message.get("date")}
             }
             await event_queue.publish(event)
     return {"status": "ok"}

@@ -20,7 +20,12 @@ async def handle_telegram_webhook(request: Request):
     logger.info(f"Received data from telegram webhook: {data}")
     if "message" in data:
         message = data["message"]
-        username = message["from"]["username"].lower()
+
+        username = message["from"].get("username", "").lower()
+        if not username:
+            logger.warning(f"User {message['from']['id']} has no username, cannot authorize")
+            await telegram_client.send_message(message["chat"]["id"], "You seem to have not setup a username on telegram yet. this makes it impossible for us to authorize you. Please set a username in your telegram settings, and integrate with praxos.")
+            return {"status": "ok"}
         integration_record = await integration_service.is_authorized_user("telegram", username)
         if not integration_record:
             logger.warning(f"User {message['from']['id']} is not authorized to use the bot")

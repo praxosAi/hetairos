@@ -1,3 +1,4 @@
+import json
 from typing import Optional, List
 from langchain_core.tools import tool
 from src.integrations.gdrive.gdrive_client import GoogleDriveIntegration
@@ -8,6 +9,25 @@ logger = setup_logger(__name__)
 
 def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
     """Creates all Google Drive related tools."""
+
+    @tool
+    async def search_google_drive_files(query: str, max_results: Optional[int] = 20) -> ToolExecutionResponse:
+        """
+        Searches for files in the user's Google Drive ({user_email}).
+        
+        Args:
+            query: Search query. Can include file names, content, or Google Drive search operators like:
+                   - name:'filename' (search by exact name)
+                   - fullText contains 'text' (search file contents)
+                   - mimeType='application/vnd.google-apps.document' (search by file type)
+                   - parents in 'folder_id' (search in specific folder)
+            max_results: Maximum number of results to return (default: 20)
+        """
+        try:
+            results = await gdrive_integration.search_files(query, max_results)
+            return ToolExecutionResponse(status="success", result=json.dumps(results, indent=2))
+        except Exception as e:
+            return ToolExecutionResponse(status="error", system_error=str(e))
 
     @tool
     async def save_file_to_drive(file_url: str, file_name: str, drive_folder_id: Optional[str] = None) -> ToolExecutionResponse:
@@ -52,6 +72,7 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
     user_info = gdrive_integration.get_user_info()
     user_email = user_info.get('email', '')
 
+    search_google_drive_files.description = search_google_drive_files.description.format(user_email=user_email)
     save_file_to_drive.description = save_file_to_drive.description.format(user_email=user_email)
     create_text_file_in_drive.description = create_text_file_in_drive.description.format(user_email=user_email)
     read_file_content_by_id.description = read_file_content_by_id.description.format(user_email=user_email)

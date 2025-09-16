@@ -44,7 +44,7 @@ class PraxosClient:
         try:
             self.client = praxos_python.SyncClient(
                 api_key=self.api_key,
-                timeout=50
+                timeout=15,
             )
         
             # Get or create environment
@@ -454,7 +454,7 @@ class PraxosClient:
         try:
             # Use direct search method as specified by user
             results = self.env.search(query=query, top_k=top_k, search_modality=search_modality)
-            praxos_logger.info(f"Results: {results}")
+        
             duration = time.time() - start_time
             
             # Filter results by score > 0.8 and extract sentences
@@ -465,7 +465,7 @@ class PraxosClient:
                 for result in results:
                     # Check if result has a score > 0.8
                     score = result.get('score', 0)
-                    if score > 0.6:
+                    if score > 0.7:
                         qualified_results.append({'text': result.get('sentence', ''), 'node_id': result.get('node_id')})
                         # Extract sentence field if available
                         sentence = result.get('sentence', '')

@@ -176,6 +176,198 @@ class LangGraphAgentRunner:
 
 
     # ---------------------------------------------------
+    # Generate user messages from list structure (grouped messages)
+    # ---------------------------------------------------
+    async def _generate_user_messages(
+        self,
+        input_messages: List[Dict],
+        messages: List[BaseMessage],
+        conversation_id: str = None,
+        base_message_prefix: str = "",
+        user_context: UserContext = None,
+    ) -> List[BaseMessage]:
+        """
+        Process grouped messages (list format) and add them to conversation history.
+        Each message gets proper metadata and forwarding context.
+        """
+        logger.info(f"Processing {len(input_messages)} grouped user messages")
+        
+        for i, message_entry in enumerate(input_messages):
+            # Extract content and metadata
+            text_content = message_entry.get("text", "")
+            files_content = message_entry.get("files", [])
+            metadata = message_entry.get("metadata", {})
+            
+            # Build message prefix with forwarding context
+            message_prefix = base_message_prefix
+            
+            if metadata.get("forwarded"):
+                message_prefix += " [FORWARDED MESSAGE] "
+                if forward_origin := metadata.get("forward_origin"):
+                    if forward_origin.get("original_sender_identifier"):
+                        message_prefix += f"originally from {forward_origin['original_sender_identifier']} "
+                    if forward_origin.get("forward_date"):
+                        message_prefix += f"(sent: {forward_origin['forward_date']}) "
+            
+            # Process this message as a complete unit (text + files together)
+            if text_content and files_content:
+                # Message with both text and files - process together
+                full_message = message_prefix + text_content
+                
+                # Add text to conversation DB first
+                await self.conversation_manager.add_user_message(
+                    conversation_id, 
+                    full_message, 
+                    metadata
+                )
+                
+                # Add text to LLM message history
+                messages.append(HumanMessage(content=full_message))
+                
+                # Then immediately add the files for this same message
+                messages = await self._generate_file_messages(
+                    files_content,
+                    messages,
+                    conversation_id=conversation_id,
+                    message_prefix=message_prefix,
+                    max_concurrency=8
+                )
+                logger.info(f"Added combined text+files message {i+1}/{len(input_messages)} to conversation")
+                
+            elif text_content:
+                # Text-only message
+                full_message = message_prefix + text_content
+                
+                await self.conversation_manager.add_user_message(
+                    conversation_id, 
+                    full_message, 
+                    metadata
+                )
+                
+                messages.append(HumanMessage(content=full_message))
+                logger.info(f"Added text-only message {i+1}/{len(input_messages)} to conversation")
+                
+            elif files_content:
+                # Files-only message
+                messages = await self._generate_file_messages(
+                    files_content,
+                    messages,
+                    conversation_id=conversation_id,
+                    message_prefix=message_prefix,
+                    max_concurrency=8
+                )
+                logger.info(f"Added files-only message {i+1}/{len(input_messages)} to conversation")
+            
+            # If neither text nor files, skip this message entry
+            else:
+                logger.warning(f"Message {i+1} has neither text nor files, skipping")
+        
+        return messages
+
+    async def _generate_user_messages_parallel(
+        self,
+        input_messages: List[Dict],
+        messages: List[BaseMessage],
+        conversation_id: str = None,
+        base_message_prefix: str = "",
+        user_context: UserContext = None,
+        max_concurrency: int = 8,
+    ) -> List[BaseMessage]:
+        """Parallel version of _generate_user_messages with better performance."""
+        logger.info(f"Processing {len(input_messages)} grouped messages with parallel file handling")
+        
+        # Phase 1: Build structure and collect file tasks
+        message_structure = []
+        all_file_tasks = []
+        
+        for i, message_entry in enumerate(input_messages):
+            text_content = message_entry.get("text", "")
+            files_content = message_entry.get("files", [])
+            metadata = message_entry.get("metadata", {})
+            
+            # Build prefix with forwarding context
+            message_prefix = base_message_prefix
+            if metadata.get("forwarded"):
+                message_prefix += " [FORWARDED MESSAGE] "
+                if forward_origin := metadata.get("forward_origin"):
+                    if forward_origin.get("original_sender_identifier"):
+                        message_prefix += f"originally from {forward_origin['original_sender_identifier']} "
+                    if forward_origin.get("forward_date"):
+                        message_prefix += f"(sent: {forward_origin['forward_date']}) "
+            
+            structure_entry = {
+                "message_index": i,
+                "text_content": text_content,
+                "message_prefix": message_prefix,
+                "metadata": metadata,
+                "files_info": files_content,
+                "file_task_start_index": len(all_file_tasks),
+                "file_count": len(files_content)
+            }
+            
+            # Queue file tasks
+            for file_info in files_content:
+                all_file_tasks.append(self._build_payload_entry(file_info))
+            
+            message_structure.append(structure_entry)
+        
+        # Phase 2: Execute all file tasks in parallel
+        file_payloads = []
+        if all_file_tasks:
+            logger.info(f"Executing {len(all_file_tasks)} file tasks in parallel")
+            file_payloads = await _gather_bounded(all_file_tasks, limit=max_concurrency)
+        
+        # Phase 3: Reconstruct in order
+        for structure_entry in message_structure:
+            i = structure_entry["message_index"]
+            text_content = structure_entry["text_content"]
+            message_prefix = structure_entry["message_prefix"]
+            metadata = structure_entry["metadata"]
+            files_info = structure_entry["files_info"]
+            file_start = structure_entry["file_task_start_index"]
+            file_count = structure_entry["file_count"]
+            
+            # Add text message
+            if text_content:
+                full_message = message_prefix + text_content
+                await self.conversation_manager.add_user_message(conversation_id, full_message, metadata)
+                messages.append(HumanMessage(content=full_message))
+                logger.info(f"Added text for message {i+1}/{len(input_messages)}")
+            
+            # Add file messages
+            if file_count > 0:
+                message_payloads = file_payloads[file_start:file_start + file_count]
+                for file_info, payload in zip(files_info, message_payloads):
+                    if isinstance(payload, Exception) or payload is None:
+                        continue
+                    
+                    # Add to conversation DB
+                    ftype = file_info.get("type")
+                    caption = file_info.get("caption", "")
+                    inserted_id = file_info.get("inserted_id")
+                    
+                    if inserted_id and conversation_id:
+                        await self.conversation_manager.add_user_media_message(
+                            conversation_id, message_prefix, inserted_id,
+                            message_type=ftype,
+                            metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
+                        )
+                        if caption:
+                            await self.conversation_manager.add_user_message(
+                                conversation_id,
+                                message_prefix + " as caption for media in the previous message: " + caption,
+                                metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
+                            )
+                    
+                    # Add to LLM message history
+                    content = ([{"type": "text", "text": caption}] if caption else []) + [payload]
+                    messages.append(HumanMessage(content=content))
+                
+                logger.info(f"Added {file_count} files for message {i+1}/{len(input_messages)}")
+        
+        return messages
+
+    # ---------------------------------------------------
     # Generate file messages (parallel, order preserved)
     # ---------------------------------------------------
     async def _generate_file_messages(
@@ -227,9 +419,7 @@ class LangGraphAgentRunner:
         return messages
 
 
-    # ------------------------------------------------------------
-    # Conversation history reconstruction (parallel, ordered)
-    # ------------------------------------------------------------
+   
     async def _get_conversation_history(
         self,
         conversation_id: str,
@@ -304,27 +494,73 @@ class LangGraphAgentRunner:
         try:
             
             """Main entry point for the LangGraph agent runner."""
-            input_text = input.get("text")
-            input_files = input.get("files")
+            ### here's what I'll do. first of all, some methods do need a flattened text input. so even in the list case, we'll generate it.
+            if isinstance(input, list):
+                ### this is not really the best way to do it, but for now, we'll just concatenate all text parts.
+                input_text = " ".join([item.get("text", "") for item in input if item.get("text")])
+                input_files = [item.get("files", []) for item in input if item.get("files")]
+                input_files = [file for sublist in input_files for file in sublist]  # flatten list of lists
+                all_forwarded = all([item.get("metadata", {}).get("forwarded", False) for item in input if item.get("metadata")])
+            else:
+                input_text = input.get("text")
+                input_files = input.get("files")
+                all_forwarded = input.get("metadata", {}).get("forwarded", False)
             if input_text:
                 logger.info(f"Running LangGraph agent runner for user {user_context.user_id} with input {input_text} and source {source}")
-            
-            nyc_tz = pytz.timezone('America/New_York')
-            current_time_nyc = datetime.now(nyc_tz).isoformat()
-            # --- Execution ---
+
+            # --- Data preparation ---
             conversation_id = metadata.get("conversation_id") or await self.conversation_manager.get_or_create_conversation(user_context.user_id, source, input)
-            message_prefix = 'message sent on date ' + current_time_nyc + ' by ' + user_context.user_record.get('first_name', '') + ' ' + user_context.user_record.get('last_name', '') + ': ' 
-            if input_text:
-                await self.conversation_manager.add_user_message(conversation_id, message_prefix + input_text, metadata)
+
+            # Get conversation history first (before adding new messages)
             history, has_media = await self._get_conversation_history(conversation_id)
             if has_media:
                 logger.info(f"Conversation {conversation_id} has media; switching to media-capable LLM")
                 self.llm = self.media_llm
-            if input_files:
-                history = await self._generate_file_messages(input_files,history,model='gemini', conversation_id=conversation_id,message_prefix=message_prefix)            
+            
+
+
+            ### TODO: use user timezone from preferences object.            
+            nyc_tz = pytz.timezone('America/New_York')
+            current_time_nyc = datetime.now(nyc_tz).isoformat()
+            # Process input based on type
+            if isinstance(input, list):
+                # Grouped messages - use the parallel method
+                base_message_prefix = f'message sent on date {current_time_nyc} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
+                history = await self._generate_user_messages_parallel(
+                    input, 
+                    history, 
+                    conversation_id=conversation_id,
+                    base_message_prefix=base_message_prefix,
+                    user_context=user_context
+                )
+            elif isinstance(input, dict):
+                # Single message - existing logic
+                message_prefix = f'message sent on date {current_time_nyc} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
+                if input_text:
+                    await self.conversation_manager.add_user_message(conversation_id, message_prefix + input_text, metadata)
+                    history.append(HumanMessage(content=message_prefix + input_text))
+                
+                # Handle files for single message
+                if input_files:
+                    history = await self._generate_file_messages(
+                        input_files, 
+                        history, 
+                        conversation_id=conversation_id,
+                        message_prefix=message_prefix
+                    )
+            else:
+                return AgentFinalResponse(response="Invalid input format.", delivery_modality=source, execution_notes="Input must be a dict or list of dicts.")            
+
+
+
+
+            
+            if all_forwarded:
+                logger.info("All input messages are forwarded; verify with the user before taking actions.")
+                return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_modality=source, execution_notes="All input messages were marked as forwarded.")
                 
             tools = await self.tools_factory.create_tools(user_context, metadata)
-            logger.info(f"Tools created: {tools}")
+
             tool_executor = ToolNode(tools)
             llm_with_tools = self.llm.bind_tools(tools)
 
@@ -345,6 +581,10 @@ class LangGraphAgentRunner:
                         system_prompt += long_term_memory_context
             except Exception as e:
                 logger.error(f"Error fetching long-term memory: {e}", exc_info=True)
+
+
+
+
 
             # --- Graph Definition ---
             async def call_model(state: AgentState):
@@ -392,8 +632,8 @@ class LangGraphAgentRunner:
                 "metadata": metadata,
                 "final_response": None
             }
-
-            final_state = await app.ainvoke(initial_state)
+            # --- END Graph Definition ---
+            final_state = await app.ainvoke(initial_state,{"recursion_limit": 100})
             
             final_response = final_state['final_response']
             await self.conversation_manager.add_assistant_message(conversation_id, final_response.response)

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from bson import ObjectId
 from pymongo.errors import OperationFailure
+from pymongo import UpdateOne
 from src.config.settings import settings
 from src.utils.logging.base_logger import setup_logger
 from src.services.ai_service.ai_service import ai_service
@@ -128,7 +129,25 @@ class ConversationDatabase:
         return await cursor.to_list()
 
     
-
+    async def bulk_update_messages(self, messages_dict: Dict[str, Any]):
+        """Bulk update multiple messages."""
+        if not messages_dict:
+            return
+        
+        operations = []
+        for msg_id, update_fields in messages_dict.items():
+            operations.append(
+                UpdateOne(
+                    {"_id": ObjectId(msg_id)},
+                    {"$set": update_fields}
+                )
+            )
+        if operations:
+            result = await self.messages.bulk_write(operations)
+            return result
+            # self.logger.info(f"Bulk updated {result.modified_count} messages.")
+        return None
+        # return result.modified_count
     async def record_search_attempt(self, conversation_id: str, query: str, search_type: str, 
                                      success: bool, error_type: Optional[str] = None, 
                                      results_count: int = 0, metadata: Dict = None) -> str:
@@ -208,7 +227,7 @@ class ConversationDatabase:
                 prompt += " Recent messages include: "
                 for msg in messages:
                     prompt += f"{msg['role']}: {msg['content']}\n"
-            prompt += f" New incoming message: {json.dumps(payload)}"
+            prompt += f" New incoming message: {json.dumps(payload,default=str)}."
 
             prompt += " Based on the recent conversation context, determine if this new message is a continuation of the previous conversation or a new topic. If it's a continuation, return False. If it's a new topic, return True."
             prompt += "Consider the time, as well as the relation between the recent previous messages and the new message."

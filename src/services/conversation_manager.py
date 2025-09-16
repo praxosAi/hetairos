@@ -11,7 +11,7 @@ class ConversationManager:
         self.integration_manager = integration_manager
         self.INACTIVITY_TIMEOUT = 15 * 60 
     ### TODO: This should be smarter. just randomly finding and consolidating conversations is not the best idea. it should be using praxos memory to find relevant conversations, me thinks.
-    async def get_or_create_conversation(self, user_id: str, platform: str,payload: Union[Dict,List]) -> str:
+    async def get_or_create_conversation(self, user_id: str, platform: str,payload) -> str:
         """Get existing active conversation or create new one"""
         
         conversation_id = await self.db.get_active_conversation(user_id)

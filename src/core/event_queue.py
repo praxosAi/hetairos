@@ -2,7 +2,7 @@ import json
 import logging
 import asyncio
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from src.config.settings import settings
 from src.utils.logging.base_logger import setup_logger
@@ -180,18 +180,18 @@ class AzureEventQueue:
     async def consume(self):
         """
         A generator that yields messages grouped by session (user).
-        This enables processing all messages from a user together to avoid race conditions.
+        Falls back to individual message processing if sessions aren't enabled.
         """
         from azure.servicebus.aio import ServiceBusClient
+        from azure.servicebus import NEXT_AVAILABLE_SESSION
         while True:
             try:
                 async with ServiceBusClient.from_connection_string(settings.AZURE_SERVICEBUS_CONNECTION_STRING) as client:
-                    # Accept next available session with timeout
+                    # Try session-based approach first
                     try:
                         session_receiver = client.get_queue_receiver(
                             settings.AZURE_SERVICEBUS_QUEUE_NAME,
-                            session_id=client.get_queue_receiver.NEXT_AVAILABLE_SESSION,
-                            max_wait_time=30  # Wait up to 30 seconds for a session
+                            session_id=NEXT_AVAILABLE_SESSION
                         )
                         
                         async with session_receiver:
@@ -201,30 +201,40 @@ class AzureEventQueue:
                             # Collect messages from this session with brief wait for grouping
                             messages = []
                             
-                            # Process messages in this session
-                            async for msg in session_receiver:
+                            # Collect messages in this session with grouping logic
+                            first_message_received = False
+
+                            while True:
                                 try:
-                                    event = json.loads(str(msg))
-                                    messages.append(event)
-                                    await session_receiver.complete_message(msg)
-                                    
-                                    # Adaptive delay based on message characteristics
-                                    delay = self._calculate_adaptive_delay(messages)
-                                    logger.debug(f"Using adaptive delay of {delay}ms for session {session_id}")
-                                    await asyncio.sleep(delay)
-                                    
-                                    # Check if there are more messages waiting in this session
-                                    try:
-                                        # Peek for more messages (non-blocking)
-                                        peeked_msgs = await session_receiver.peek_messages(max_message_count=10)
-                                        if not peeked_msgs:
-                                            break  # No more messages, process what we have
-                                    except:
-                                        break  # Error peeking, process current messages
-                                        
-                                except Exception as e:
-                                    logger.error(f"Error processing message: {e}", exc_info=True)
-                                    await session_receiver.abandon_message(msg)
+                                    # First message: wait longer (30s), subsequent: shorter wait (2s for grouping)
+                                    wait_time = 30 if not first_message_received else 2
+
+                                    batch = await session_receiver.receive_messages(max_message_count=10, max_wait_time=wait_time)
+
+                                    if not batch:
+                                        if first_message_received:
+                                            # We got some messages but now timeout - process what we have
+                                            break
+                                        else:
+                                            # No messages at all in this session, continue to next session
+                                            break
+
+                                    # Process the batch
+                                    for msg in batch:
+                                        try:
+                                            event = json.loads(str(msg))
+                                            messages.append(event)
+                                            await session_receiver.complete_message(msg)
+                                            first_message_received = True
+
+                                        except Exception as e:
+                                            logger.error(f"Error processing message: {e}", exc_info=True)
+                                            await session_receiver.abandon_message(msg)
+
+
+                                except Exception as batch_error:
+                                    logger.error(f"Error receiving message batch: {batch_error}", exc_info=True)
+                                    break
                             
                             if messages:
                                 yield {
@@ -234,7 +244,27 @@ class AzureEventQueue:
                                 }
                     
                     except Exception as session_error:
-                        if "no messages available" not in str(session_error).lower():
+                        if "does not require sessions" in str(session_error) or "RequiresSession" in str(session_error):
+                            logger.warning("Service Bus queue doesn't have sessions enabled, falling back to individual message processing")
+                            # Fall back to non-session processing
+                            receiver = client.get_queue_receiver(settings.AZURE_SERVICEBUS_QUEUE_NAME)
+                            async with receiver:
+                                logger.info("Using individual message processing (no sessions)")
+                                async for msg in receiver:
+                                    try:
+                                        event = json.loads(str(msg))
+                                        # Yield as single-message group for compatibility
+                                        yield {
+                                            'session_id': 'no-session',
+                                            'events': [event],
+                                            'is_grouped': False
+                                        }
+                                        await receiver.complete_message(msg)
+                                    except Exception as e:
+                                        logger.error(f"Error processing individual message: {e}", exc_info=True)
+                                        await receiver.abandon_message(msg)
+                            return  # Exit the session retry loop
+                        elif "no messages available" not in str(session_error).lower():
                             logger.error(f"Session processing error: {session_error}", exc_info=True)
                         await asyncio.sleep(1)  # Brief pause before trying again
             

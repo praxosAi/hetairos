@@ -140,7 +140,7 @@ class ExecutionWorker:
                 if not user_context:
                     logger.error(f"Could not create user context for user {event['user_id']}. Skipping event.")
                     return  # Changed from continue to return
-                has_media = self.determine_media_presence(event)
+                has_media = await self.determine_media_presence(event)
                 
 
                 self.langgraph_agent_runner = LangGraphAgentRunner(trace_id=f"exec-{str(event['user_id'])}-{datetime.utcnow().isoformat()}", has_media=has_media)

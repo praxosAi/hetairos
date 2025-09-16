@@ -44,7 +44,7 @@ class PraxosClient:
         try:
             self.client = praxos_python.SyncClient(
                 api_key=self.api_key,
-                timeout=50
+                timeout=15,
             )
         
             # Get or create environment
@@ -454,7 +454,7 @@ class PraxosClient:
         try:
             # Use direct search method as specified by user
             results = self.env.search(query=query, top_k=top_k, search_modality=search_modality)
-            praxos_logger.info(f"Results: {results}")
+        
             duration = time.time() - start_time
             
             # Filter results by score > 0.8 and extract sentences

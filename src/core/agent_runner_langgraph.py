@@ -419,9 +419,7 @@ class LangGraphAgentRunner:
         return messages
 
 
-    # ------------------------------------------------------------
-    # Conversation history reconstruction (parallel, ordered)
-    # ------------------------------------------------------------
+   
     async def _get_conversation_history(
         self,
         conversation_id: str,
@@ -498,6 +496,7 @@ class LangGraphAgentRunner:
             """Main entry point for the LangGraph agent runner."""
             ### here's what I'll do. first of all, some methods do need a flattened text input. so even in the list case, we'll generate it.
             if isinstance(input, list):
+                ### this is not really the best way to do it, but for now, we'll just concatenate all text parts.
                 input_text = " ".join([item.get("text", "") for item in input if item.get("text")])
                 input_files = [item.get("files", []) for item in input if item.get("files")]
                 input_files = [file for sublist in input_files for file in sublist]  # flatten list of lists
@@ -518,7 +517,7 @@ class LangGraphAgentRunner:
             
 
 
-                        
+            ### TODO: use user timezone from preferences object.            
             nyc_tz = pytz.timezone('America/New_York')
             current_time_nyc = datetime.now(nyc_tz).isoformat()
             # Process input based on type
@@ -551,7 +550,7 @@ class LangGraphAgentRunner:
                 return AgentFinalResponse(response="Invalid input format.", delivery_modality=source, execution_notes="Input must be a dict or list of dicts.")            
                 
             tools = await self.tools_factory.create_tools(user_context, metadata)
-            logger.info(f"Tools created: {tools}")
+
             tool_executor = ToolNode(tools)
             llm_with_tools = self.llm.bind_tools(tools)
 

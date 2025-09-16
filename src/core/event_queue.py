@@ -207,24 +207,47 @@ class AzureEventQueue:
 
                             while True:
                                 try:
-                                    # Calculate wait time based on message patterns
+                                    # Determine wait time based on current state
                                     if not first_message_received:
                                         wait_time = 30  # First message: wait longer
                                     else:
                                         # Check if all messages so far are forwarded
                                         all_forwarded = messages and all(
-                                            msg.get('is_forwarded', False) or
-                                            (msg.get('message_data', {}).get('is_forwarded', False)) or
-                                            'forward' in str(msg.get('message_data', {})).lower()
+                                            (dict(msg)).get('metadata', {}).get('forwarded', False)
                                             for msg in messages
                                         )
                                         # Extended wait for forwarded message chains, regular wait otherwise
-                                        wait_time = 8 if all_forwarded else 2
+                                        wait_time = 15 if all_forwarded else 3
 
                                     batch = await session_receiver.receive_messages(max_message_count=10, max_wait_time=wait_time)
 
                                     if not batch:
                                         if first_message_received:
+                                            # Check if we should wait longer for forwarded chains
+                                            if messages:
+                                                all_forwarded = all(
+                                                    (dict(msg)).get('metadata', {}).get('forwarded', False)
+                                                    for msg in messages
+                                                )
+
+
+
+                                                if all_forwarded and wait_time < 20:
+                                                    # For forwarded chains, do one final long wait
+                                                    logger.info(f"Forwarded message chain detected, waiting an additional 20 seconds for more messages in session {session_id}")
+                                                    batch = await session_receiver.receive_messages(max_message_count=10, max_wait_time=20)
+                                                    if batch:
+                                                        # More messages arrived! Process them and continue
+                                                        for msg in batch:
+                                                            try:
+                                                                event = (dict(msg))
+                                                                messages.append(event)
+                                                                await session_receiver.complete_message(msg)
+                                                            except Exception as e:
+                                                                logger.error(f"Error processing message: {e}", exc_info=True)
+                                                                await session_receiver.abandon_message(msg)
+                                                        continue  # Continue the main loop
+
                                             # We got some messages but now timeout - process what we have
                                             break
                                         else:

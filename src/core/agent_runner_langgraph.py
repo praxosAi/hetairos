@@ -393,7 +393,7 @@ class LangGraphAgentRunner:
                 "final_response": None
             }
 
-            final_state = await app.ainvoke(initial_state)
+            final_state = await app.ainvoke(initial_state,{"recursion_limit": 100})
             
             final_response = final_state['final_response']
             await self.conversation_manager.add_assistant_message(conversation_id, final_response.response)

@@ -56,7 +56,13 @@ class EgressService:
                     except Exception as e:
                         logger.error(f"no phone number found for WhatsApp output type. Event: {event}", exc_info=True)
                         return
-                await self.whatsapp_client.send_message(phone_number, response_text)
+                if len(response_text) > 4096:
+                    ### we must break up the message into chunks of 4096 characters or less
+                    chunks = [response_text[i:i+4096] for i in range(0, len(response_text), 4096)]
+                    for chunk in chunks:
+                        await self.whatsapp_client.send_message(phone_number, chunk)
+                else:
+                    await self.whatsapp_client.send_message(phone_number, response_text)
                 logger.info(f"Successfully sent response to WhatsApp user {phone_number}")
 
             elif event.get("output_type") == "telegram" or (event.get("source") == "telegram" and event.get("output_type") is None):

@@ -227,7 +227,7 @@ class ConversationDatabase:
                 prompt += " Recent messages include: "
                 for msg in messages:
                     prompt += f"{msg['role']}: {msg['content']}\n"
-            prompt += f" New incoming message: {json.dumps(payload)}"
+            prompt += f" New incoming message: {json.dumps(payload,default=str)}."
 
             prompt += " Based on the recent conversation context, determine if this new message is a continuation of the previous conversation or a new topic. If it's a continuation, return False. If it's a new topic, return True."
             prompt += "Consider the time, as well as the relation between the recent previous messages and the new message."

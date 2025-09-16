@@ -191,7 +191,8 @@ class AzureEventQueue:
                     try:
                         session_receiver = client.get_queue_receiver(
                             settings.AZURE_SERVICEBUS_QUEUE_NAME,
-                            session_id=NEXT_AVAILABLE_SESSION
+                            session_id=NEXT_AVAILABLE_SESSION,
+                            max_wait_time=60  # Wait up to 60 seconds for a session to become available
                         )
                         
                         async with session_receiver:
@@ -206,8 +207,19 @@ class AzureEventQueue:
 
                             while True:
                                 try:
-                                    # First message: wait longer (30s), subsequent: shorter wait (2s for grouping)
-                                    wait_time = 30 if not first_message_received else 2
+                                    # Calculate wait time based on message patterns
+                                    if not first_message_received:
+                                        wait_time = 30  # First message: wait longer
+                                    else:
+                                        # Check if all messages so far are forwarded
+                                        all_forwarded = messages and all(
+                                            msg.get('is_forwarded', False) or
+                                            (msg.get('message_data', {}).get('is_forwarded', False)) or
+                                            'forward' in str(msg.get('message_data', {})).lower()
+                                            for msg in messages
+                                        )
+                                        # Extended wait for forwarded message chains, regular wait otherwise
+                                        wait_time = 8 if all_forwarded else 2
 
                                     batch = await session_receiver.receive_messages(max_message_count=10, max_wait_time=wait_time)
 

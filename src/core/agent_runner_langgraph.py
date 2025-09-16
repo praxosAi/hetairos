@@ -500,9 +500,11 @@ class LangGraphAgentRunner:
                 input_text = " ".join([item.get("text", "") for item in input if item.get("text")])
                 input_files = [item.get("files", []) for item in input if item.get("files")]
                 input_files = [file for sublist in input_files for file in sublist]  # flatten list of lists
+                all_forwarded = all([item.get("metadata", {}).get("forwarded", False) for item in input if item.get("metadata")])
             else:
                 input_text = input.get("text")
                 input_files = input.get("files")
+                all_forwarded = input.get("metadata", {}).get("forwarded", False)
             if input_text:
                 logger.info(f"Running LangGraph agent runner for user {user_context.user_id} with input {input_text} and source {source}")
 
@@ -548,6 +550,14 @@ class LangGraphAgentRunner:
                     )
             else:
                 return AgentFinalResponse(response="Invalid input format.", delivery_modality=source, execution_notes="Input must be a dict or list of dicts.")            
+
+
+
+
+            
+            if all_forwarded:
+                logger.info("All input messages are forwarded; verify with the user before taking actions.")
+                return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_modality=source, execution_notes="All input messages were marked as forwarded.")
                 
             tools = await self.tools_factory.create_tools(user_context, metadata)
 

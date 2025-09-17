@@ -33,8 +33,14 @@ LANGUAGE_MAP = {
     'fr': 'French',
     'it': 'Italian',
     'de': 'German',
-    'ja': 'Japanese'
+    'ja': 'Japanese',
+    'vn' : 'Vietnamese',
 }
+
+def abbrev_to_pytz(name: str):
+    ### TODO remove
+    return name
+
 import asyncio
 async def _gather_bounded(coros: List[Any], limit: int = 8):
     sem = asyncio.Semaphore(limit)
@@ -101,21 +107,28 @@ class LangGraphAgentRunner:
             if user_record.get("phone_number"): user_record_for_context += f"\nPhone Number: {user_record.get('phone_number')}"
         else:
             user_record_for_context = ""
-
-        nyc_tz = pytz.timezone('America/New_York')
+        preferences = user_service.get_user_preferences(user_context.user_id) 
+        preferences = preferences if preferences else {}
+        
+        if 'timezone' not in preferences or not preferences['timezone']:
+            timezone = 'America/New_York'
+        else:
+            timezone = abbrev_to_pytz(preferences['timezone'])
+        nyc_tz = pytz.timezone(timezone)
         current_time_nyc = datetime.now(nyc_tz).isoformat()
 
         base_prompt = (
             "You are a helpful AI assistant. Use the available tools to complete the user's request. "
             "If it's not a request, but a general conversation, just respond to the user's message. "
             "Do not mention tools if the user's final, most current request, does not require them. "
+            "if the user asks you to transcribe a voice message, they simply mean to tell them what is in. Just write out what you just heard. You are able to understand voice messages if you receive them."
             "If the user's request requires you to do an action in the future or in a recurring manner, "
             "use the available tools to schedule the task."
             "do not confirm the scheduling with the user, just do it, unless the user specifically asks you to confirm it with them."
             "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
         )
         
-        time_prompt = f"\nThe current time in NYC is {current_time_nyc}. You should always assume New York time (EDT/EST)."
+        time_prompt = f"\nThe current time is {current_time_nyc}. You should always assume  {timezone} timezone for the user, unless specified otherwise."
         
         tool_output_prompt = (
             "\nThe output format of most tools will be an object containing information, including the status of the tool execution. "
@@ -136,12 +149,13 @@ class LangGraphAgentRunner:
                 task_prompt += " The output modality for the final response of this scheduled task was not specified, so you should choose the most appropriate one based on the user's preferences and context. this cannot be websocket in this case."
 
 
-        preferences = user_service.get_user_preferences(user_context.user_id) 
-        preferences = preferences if preferences else {}
+        
         assistance_name = preferences.get('assistant_name', 'Praxos')
         preferred_language = LANGUAGE_MAP[preferences.get('language_responses', 'en')]
+        if preferred_language == 'Vietnamese':
+            preferred_language += 'Pay special attention to tones, as well as the pronouns and formality levels. Use proper pronouns based on the context and relationship.'
         personilization_prompt = (f"\nYou are personilized to the user. User wants to call you '{assistance_name}' to get assistance. You should respond to the user's request as if you are the assistant named '{assistance_name}'."
-         f"The prefered language to use is '{preferred_language}'. You must always respond in the prefered language."
+         f"The prefered language to use is '{preferred_language}'. You must always respond in the prefered language, unless the user specifically asks you to respond in a different language. an example of this is if the user asks you to respond in English, or any other language, or messages you in a different language."
         )
 
         return base_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt
@@ -336,6 +350,7 @@ class LangGraphAgentRunner:
             
             # Add file messages
             if file_count > 0:
+                has_media = True
                 message_payloads = file_payloads[file_start:file_start + file_count]
                 for file_info, payload in zip(files_info, message_payloads):
                     if isinstance(payload, Exception) or payload is None:
@@ -365,7 +380,7 @@ class LangGraphAgentRunner:
                 
                 logger.info(f"Added {file_count} files for message {i+1}/{len(input_messages)}")
         
-        return messages
+        return messages,has_media
 
     # ---------------------------------------------------
     # Generate file messages (parallel, order preserved)
@@ -519,20 +534,30 @@ class LangGraphAgentRunner:
             
 
 
-            ### TODO: use user timezone from preferences object.            
-            nyc_tz = pytz.timezone('America/New_York')
+            ### TODO: use user timezone from preferences object.     
+            preferences = user_service.get_user_preferences(user_context.user_id) 
+            preferences = preferences if preferences else {}
+            
+            if 'timezone' not in preferences or not preferences['timezone']:
+                timezone = 'America/New_York'
+            else:
+                timezone = abbrev_to_pytz(preferences['timezone'])
+            nyc_tz = pytz.timezone(timezone)
             current_time_nyc = datetime.now(nyc_tz).isoformat()
             # Process input based on type
             if isinstance(input, list):
                 # Grouped messages - use the parallel method
                 base_message_prefix = f'message sent on date {current_time_nyc} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
-                history = await self._generate_user_messages_parallel(
+                history,has_media = await self._generate_user_messages_parallel(
                     input, 
                     history, 
                     conversation_id=conversation_id,
                     base_message_prefix=base_message_prefix,
                     user_context=user_context
                 )
+                if has_media:
+                    logger.info(f"Conversation {conversation_id} has media; switching to media-capable LLM")
+                    self.llm = self.media_llm
             elif isinstance(input, dict):
                 # Single message - existing logic
                 message_prefix = f'message sent on date {current_time_nyc} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '

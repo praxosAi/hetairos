@@ -7,11 +7,32 @@ from src.utils.logging.base_logger import setup_logger
 from typing import List, Dict, Optional
 logger = setup_logger(__name__)
 from zoneinfo import ZoneInfo # Use this for Python 3.9+
-
+from src.services.user_service import user_service
 from datetime import datetime, timezone, timedelta
 
+tz_abbrev_map = {
+    "EST": "America/New_York",
+    "EDT": "America/New_York",
+    "CST": "America/Chicago",
+    "CDT": "America/Chicago",
+    "MST": "America/Denver",
+    "MDT": "America/Denver",
+    "PST": "America/Los_Angeles",
+    "PDT": "America/Los_Angeles",
+    "GMT": "Etc/GMT",
+    "UTC": "UTC",
+    "CET": "Europe/Paris",
+    "CEST": "Europe/Paris",
+    "IST": "Asia/Kolkata",
+    'ICT': 'Asia/Bangkok',
+}
 
-def nyc_to_utc(nyc_dt: datetime) -> datetime:
+def abbrev_to_pytz(name: str):
+    return name
+
+
+
+def nyc_to_utc(nyc_dt: datetime, timezone_name: str) -> datetime:
     """
     Converts a naive datetime object from NYC time to UTC.
 
@@ -20,7 +41,7 @@ def nyc_to_utc(nyc_dt: datetime) -> datetime:
     timezone database.
     """
     # Define the New York timezone using the IANA database
-    nyc_tz = ZoneInfo("America/New_York")
+    nyc_tz = ZoneInfo(timezone_name)
     
     # Localize the naive datetime by applying the NYC timezone.
     # This step correctly determines whether the datetime falls in EST or EDT.
@@ -41,9 +62,13 @@ class SchedulingService:
         """
         try:
             ## convert the EST time to UTC time.
-
+            user_pref = user_service.get_user_preferences(user_id)
+            if 'timezone' not in user_pref or not user_pref['timezone']:
+                timezone_name = 'America/New_York'
+            else:
+                timezone_name = abbrev_to_pytz(user_pref['timezone'])
             task_id = f"task_{user_id}_{datetime.utcnow().timestamp()}"
-            time_to_do = nyc_to_utc(time_to_do)
+            time_to_do = nyc_to_utc(time_to_do,timezone_name)
             await db_manager.create_scheduled_task(
                 task_id=task_id,
                 user_id=user_id,
@@ -103,9 +128,14 @@ class SchedulingService:
             #     return "Invalid cron expression."
             # cron = croniter(cron_expression, base_time)
             # next_run_time = cron.get_next(datetime)
-
+            user_pref = user_service.get_user_preferences(user_id)
+            if 'timezone' not in user_pref or not user_pref['timezone']:
+                timezone = 'America/New_York'
+            else:
+                timezone = abbrev_to_pytz(user_pref['timezone'])
+            logger.info(f"User {user_id} timezone: {timezone}")
             task_id = f"task_{user_id}_{datetime.utcnow().timestamp()}"
-            start_time = nyc_to_utc(start_time)
+            start_time = nyc_to_utc(start_time, timezone)
             base_time = datetime.utcnow()
             if not croniter.is_valid(cron_expression):
                 logger.error(f"Invalid cron expression: {cron_expression}")

@@ -78,6 +78,11 @@ class IngestWorker:
                     
                     if result:
                         if  file_data.get("metadata", {}).get("skip_db_record", False):
+                            source_id = result['id']
+                            await self.db_manager.update_document_source_id(file_data['metadata']['inserted_id'], source_id)
+                            ingestion_results.append({"filename": upload_filename, "status": "success", "source_id  ": result["id"]})
+                        else:
+                            ### we have to update the document record with the source id.
                             blob_name = f"{user_id}/ingested/{upload_filename}"
                             await upload_to_blob_storage(temp_file_path, blob_name)
                             source_id = result['id']
@@ -93,11 +98,7 @@ class IngestWorker:
                             }
                             await self.db_manager.add_document(document_record)
                             ingestion_results.append({"filename": upload_filename, "status": "success", "source_id": result["id"]})
-                        else:
-                            ### we have to update the document record with the source id.
-                            source_id = result['id']
-                            await self.db_manager.update_document_source_id(file_data['metadata']['inserted_id'], source_id)
-                            ingestion_results.append({"filename": upload_filename, "status": "success", "source_id  ": result["id"]})
+
                     else:
                         ingestion_results.append({"filename": upload_filename, "status": "failed", "error": result.get("error")})
 

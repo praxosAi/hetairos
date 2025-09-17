@@ -95,6 +95,13 @@ class EgressService:
 
             else:
                 logger.warning(f"Unknown source '{source}'. Cannot route response.")
+                ## try routing to the original source if available
+                if event.get('metadata',{}).get('original_source', None):
+                    logger.info(f"Attempting to route response to original source '{event['metadata']['original_source']}'")
+                    event['output_type'] = event['metadata']['original_source']
+                    await self.send_response(event, result)
+                else:
+                    logger.error(f"No original source found in metadata. Cannot route response. Event: {event}")
 
         except Exception as e:
             logger.error(f"Failed to send response for source '{source}'. Error: {e}", exc_info=True)

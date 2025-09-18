@@ -1,10 +1,14 @@
+
+import time
+from src.core.agent_runner_langgraph import LangGraphAgentRunner
+from src.core.agent_runner_dynamic import DynamicAgentRunner
+from src.services.exec_graph.service import exec_graph_service
+from src.tools.tool_factory import AgentToolsFactory
+from src.core.context import create_user_context
 import asyncio
 from datetime import datetime
 import logging
 from src.core.event_queue import event_queue
-
-from src.core.agent_runner_langgraph import LangGraphAgentRunner
-from src.core.context import create_user_context
 from src.config.settings import settings
 from src.utils.logging.base_logger import setup_logger
 from src.services.scheduling_service import scheduling_service
@@ -18,8 +22,8 @@ class ExecutionWorker:
     Listens to the event queue and triggers the appropriate action based on the event source.
     """
     def __init__(self):
-        
         self.ingestion_coordinator = InitialIngestionCoordinator()
+        self.tools_factory = AgentToolsFactory(config=settings, db_manager=None)
 
     async def run(self):
         """Main loop to consume events from the queue and execute them."""
@@ -103,7 +107,7 @@ class ExecutionWorker:
 
 
     async def handle_single_event(self, event):
-        """Handle a single event (original logic)"""
+        """Handle a single event with the new strategy dispatcher."""
         try:
             logger.info(f"Processing single event: {event}")
             source = event.get("source")
@@ -134,22 +138,36 @@ class ExecutionWorker:
                     task_active = await scheduling_service.verify_task_active(event["metadata"]["task_id"])
                     if not task_active:
                         logger.info(f"Task is cancelled for event: {event}")
-                        return  # Changed from continue to return
+                        return
 
                 user_context = await create_user_context(event["user_id"])
                 if not user_context:
                     logger.error(f"Could not create user context for user {event['user_id']}. Skipping event.")
-                    return  # Changed from continue to return
-                has_media = await self.determine_media_presence(event)
-                
+                    return
 
-                self.langgraph_agent_runner = LangGraphAgentRunner(trace_id=f"exec-{str(event['user_id'])}-{datetime.utcnow().isoformat()}", has_media=has_media)
-                result = await self.langgraph_agent_runner.run(
-                    user_context=user_context,
-                    input=event["payload"],
-                    source=source,
-                    metadata=event.get("metadata", {})
-                )
+                # --- NEW: Strategy Dispatcher Logic ---
+                metadata = event.get("metadata", {})
+                strategy = metadata.get("strategy", "langgraph_only")
+
+                start_time = time.perf_counter()
+                
+                if strategy == "langgraph_only":
+                    logger.info(f"Executing with 'langgraph_only' strategy.")
+                    result = await self.run_langgraph_only(user_context, event)
+                elif strategy == "exec_graph_preselection":
+                    logger.info(f"Executing with 'exec_graph_preselection' strategy.")
+                    result = await self.run_exec_graph_preselection(user_context, event)
+                elif strategy == "exec_graph_first":
+                    logger.info(f"Executing with 'exec_graph_first' strategy.")
+                    result = await self.run_exec_graph_first(user_context, event)
+                else:
+                    logger.warning(f"Unknown strategy: '{strategy}'. Defaulting to 'langgraph_only'.")
+                    result = await self.run_langgraph_only(user_context, event)
+
+                end_time = time.perf_counter()
+                elapsed_ms = (end_time - start_time) * 1000
+                logger.info(f"Strategy '{strategy}' completed in {elapsed_ms:.2f} ms.")
+
                 await self.post_process_langgraph_response(result, event)
             
             else:
@@ -157,6 +175,64 @@ class ExecutionWorker:
 
         except Exception as e:
             logger.error(f"Error processing single event {event}: {e}", exc_info=True)
+
+    # --- NEW: Strategy Implementations ---
+    async def run_langgraph_only(self, user_context, event):
+        """The original, untouched LangGraph execution path."""
+        has_media = await self.determine_media_presence(event)
+        langgraph_agent_runner = LangGraphAgentRunner(trace_id=f"exec-{str(event['user_id'])}-{datetime.utcnow().isoformat()}", has_media=has_media)
+        return await langgraph_agent_runner.run(
+            user_context=user_context,
+            input=event["payload"],
+            source=event["source"],
+            metadata=event.get("metadata", {})
+        )
+
+    async def run_exec_graph_preselection(self, user_context, event):
+        """Hybrid Strategy: Use exec_graph to select tools for LangGraph."""
+        logger.info("Pre-selecting tools with ExecGraph planner...")
+        user_query = str(event["payload"]) 
+        plan = await exec_graph_service.create_execution_plan(user_query)
+        
+        if plan and plan.steps:
+            logger.info(f"ExecGraph plan created. Required tools: {plan.steps}")
+            all_tools = await self.tools_factory.create_tools(user_context, event.get("metadata", {}))
+            tool_map = {tool.name: tool for tool in all_tools}
+            selected_tools = [tool_map[step.replace('fn_', '')] for step in plan.steps if step.replace('fn_', '') in tool_map]
+            
+            logger.info(f"Passing {len(selected_tools)} pre-selected tools to the dynamic agent runner.")
+            has_media = await self.determine_media_presence(event)
+            dynamic_agent_runner = DynamicAgentRunner(
+                trace_id=f"exec-{str(event['user_id'])}-{datetime.utcnow().isoformat()}", 
+                has_media=has_media, 
+                override_tools=selected_tools
+            )
+            return await dynamic_agent_runner.run(
+                user_context=user_context,
+                input=event["payload"],
+                source=event["source"],
+                metadata=event.get("metadata", {})
+            )
+        else:
+            logger.warning("ExecGraph could not create a plan. Falling back to langgraph_only.")
+            return await self.run_langgraph_only(user_context, event)
+
+    async def run_exec_graph_first(self, user_context, event):
+        """Planner-Led Strategy: Try to execute with exec_graph, fallback to LangGraph."""
+        logger.info("Attempting execution with ExecGraph first...")
+        user_query = str(event["payload"])
+        plan = await exec_graph_service.create_execution_plan(user_query)
+
+        if plan and plan.is_complete:
+            logger.info(f"ExecGraph created a complete plan. (Execution placeholder).")
+            from src.core.agent_runner_langgraph import AgentFinalResponse
+            return AgentFinalResponse(
+                response=f"I have a complete plan: {plan.steps}. (Full execution not yet implemented).",
+                delivery_modality=event["source"]
+            )
+        else:
+            logger.warning("ExecGraph could not create a complete plan. Falling back to langgraph_only.")
+            return await self.run_langgraph_only(user_context, event)
 
     async def post_process_langgraph_response(self, result: dict, event: dict):
         event["output_type"] = result.delivery_modality

@@ -102,7 +102,7 @@ async def handle_chat_request(
     # Process uploaded files
     file_data = []
     for file in files:
-        logger.info(f"Received file: {file.filename} of type {file.content_type} and size {file.spool_max_size}")  
+        logger.info(f"Received file: {file.filename} of type {file.content_type}")  
         if file.filename:  
             content = await file.read()
             file_data.append(FileInfo(

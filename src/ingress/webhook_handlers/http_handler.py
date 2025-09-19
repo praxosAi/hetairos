@@ -102,7 +102,7 @@ async def handle_chat_request(
     # Process uploaded files
     file_data = []
     for file in files:
-        logger.info(f"Received file: {file.filename} of type {file.content_type}")  
+        # logger.info(f"Received file: {file.filename} of type {file.content_type} and size {file.spool_max_size}")  
         if file.filename:  
             content = await file.read()
             file_data.append(FileInfo(
@@ -144,7 +144,7 @@ async def handle_chat_request(
         payload["files"] = []
         for f in request_obj.files:
             logger.info(f"Processing uploaded file: {f.filename} of type {f.content_type} and size {f.size}")
-            blob_name = f"{user_id}/telegram/{f.filename.replace(' ', '_')}"
+            blob_name = f"{user_id}/websockets/{f.filename.replace(' ', '_')}"
             blob_name = await upload_bytes_to_blob_storage(f.content, blob_name)
             doc_entry = {
                 'user_id': ObjectId(request_obj.user_id),

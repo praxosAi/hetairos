@@ -150,6 +150,9 @@ class LangGraphAgentRunner:
         """Create a single payload dict for a file entry."""
         ftype = file.get("type")
         mime_type = file.get("mime_type")
+        if not mime_type:
+            mime_type = file.get("mimetype")
+
         blob_path = file.get("blob_path")
         if not blob_path or not ftype:
             return None
@@ -158,7 +161,7 @@ class LangGraphAgentRunner:
 
         if ftype in {"voice", "audio", "video"}:
             return {"type": "media", "data": data_b64, "mime_type": mime_type}
-        if ftype == "image":
+        if ftype in {"image", "photo"}:
             return {"type": "image_url", "image_url": f"data:{mime_type};base64,{data_b64}"}
         if ftype in {"document", "file"}:
             return {

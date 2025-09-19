@@ -2,11 +2,9 @@ fastapi
 uvicorn
 websockets
 python-telegram-bot
-aiohttp
 requests
 openai
 python-dotenv
-aiohttp
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
@@ -27,11 +25,12 @@ ffmpeg-python
 aiofiles
 pymongo
 azure-keyvault-secrets
-langgraph==0.6.3
+langgraph
 langgraph-prebuilt
-langchain[openai]==0.3.27
+langchain[openai]
 langchain-community
-langchain-google-genai
+google-ai-generativelanguage==0.7.0
+langchain-google-genai==2.1.12
 langchain_google_community
 pydantic
 croniter
@@ -43,7 +42,7 @@ azure-keyvault-secrets
 azure-identity
 redis
 azure-servicebus
-google-generativeai
+
 starlette
 anyio
 pydub
@@ -53,9 +52,9 @@ pytz
 googlemaps
 dropbox
 beautifulsoup4
-playwright==1.55.0
 lxml
 fpdf2
 portkey_ai
 pip-tools
 python-multipart
+playwright==1.55.0

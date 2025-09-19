@@ -127,7 +127,7 @@ class ExecutionWorker:
                     files=event["payload"]["files"],
                 )
 
-            elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram"]:
+            elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram","benchmark"]:
                 # --- Handle Agent Task ---
                 if source == "recurring":
                     try:
@@ -234,7 +234,9 @@ class ExecutionWorker:
             )
         elif plan is not None and plan.steps:
             logger.info(f"ExecGraph plan created. Required tools: {plan.steps}")
-            all_tools = await self.tools_factory.create_tools(user_context, event.get("metadata", {}))
+            tools_to_build = [step.replace('fn_', '') for step in plan.steps if step.startswith('fn_')]
+            logger.info(f"Building {len(tools_to_build)} tools: {tools_to_build}")
+            all_tools = await self.tools_factory.create_tools(user_context, event.get("metadata", {}), tools_to_build=tools_to_build)
             tool_map = {tool.name: tool for tool in all_tools}
             selected_tools = [tool_map[step.replace('fn_', '')] for step in plan.steps if step.replace('fn_', '') in tool_map]
             

@@ -59,7 +59,7 @@ class AgentState(MessagesState):
 
 # --- 2. Define the Agent Runner Class ---
 class LangGraphAgentRunner:
-    def __init__(self,trace_id: str, has_media: bool = False):
+    def __init__(self,trace_id: str, has_media: bool = True):
         
         self.tools_factory = AgentToolsFactory(config=settings, db_manager=db_manager)
         self.conversation_manager = ConversationManager(db_manager.db, integration_service)

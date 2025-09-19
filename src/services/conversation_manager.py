@@ -17,7 +17,7 @@ class ConversationManager:
         conversation_id = await self.db.get_active_conversation(user_id)
         conversation_info = await self.db.get_conversation_info(conversation_id)
         
-        if conversation_id:
+        if conversation_id and not platform == 'benchmark':
             if await self.is_conversation_active(conversation_id,payload) and conversation_info.get('platform') == platform:
                 return conversation_id
             else:

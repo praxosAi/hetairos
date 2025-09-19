@@ -37,8 +37,8 @@ class AgentToolsFactory:
     def __init__(self, config, db_manager):
         self.config = config
         self.db_manager = db_manager
-    
-    async def create_tools(self, user_context: UserContext, metadata: Optional[Dict] = None) -> List:
+
+    async def create_tools(self, user_context: UserContext, metadata: Optional[Dict] = None, tools_to_build: Optional[List[str]] = None) -> List:
         """Create tools based on agent configuration by instantiating integration clients."""
         tools = []
         user_id = user_context.user_id
@@ -49,38 +49,42 @@ class AgentToolsFactory:
 
         if not user_id:
             return []
-
         # --- Google Integrations ---
-        gcal_integration = GoogleCalendarIntegration(user_id)
-        if await gcal_integration.authenticate():
-            tools.extend(create_calendar_tools(gcal_integration))
-            have_calendar_tool = True
-
-        gmail_integration = GmailIntegration(user_id)
-        if await gmail_integration.authenticate():
-            tools.extend(create_gmail_tools(gmail_integration))
-            have_email_tool = True
-
-        gdrive_integration = GoogleDriveIntegration(user_id)
-        if await gdrive_integration.authenticate():
-            tools.extend(create_drive_tools(gdrive_integration))
+        if not tools_to_build or any('calendar' in tool_name for tool_name in tools_to_build):
+            gcal_integration = GoogleCalendarIntegration(user_id)
+            if await gcal_integration.authenticate():
+                tools.extend(create_calendar_tools(gcal_integration))
+                have_calendar_tool = True
+        
+        if not tools_to_build or any('email' in tool_name for tool_name in tools_to_build):
+            gmail_integration = GmailIntegration(user_id)
+            if await gmail_integration.authenticate():
+                tools.extend(create_gmail_tools(gmail_integration))
+                have_email_tool = True
+        if not tools_to_build or any('drive' in tool_name for tool_name in tools_to_build):
+            gdrive_integration = GoogleDriveIntegration(user_id)
+            if await gdrive_integration.authenticate():
+                tools.extend(create_drive_tools(gdrive_integration))
         
         # --- Microsoft Integration ---
-        outlook_integration = MicrosoftGraphIntegration(user_id)
-        if await outlook_integration.authenticate():
-            tools.extend(create_outlook_tools(outlook_integration))
-            have_email_tool = True
-            have_calendar_tool = True
+        if not tools_to_build or any(tool_name in ['email', 'calendar', 'outlook'] for tool_name in tools_to_build):
+            outlook_integration = MicrosoftGraphIntegration(user_id)
+            if await outlook_integration.authenticate():
+                tools.extend(create_outlook_tools(outlook_integration))
+                have_email_tool = True
+                have_calendar_tool = True
 
         # --- Notion Integration ---
-        notion_integration = NotionIntegration(user_id)
-        if await notion_integration.authenticate():
-            tools.extend(create_notion_tools(notion_integration))
+        if not tools_to_build or any('notion' in tool_name for tool_name in tools_to_build):
+            notion_integration = NotionIntegration(user_id)
+            if await notion_integration.authenticate():
+                tools.extend(create_notion_tools(notion_integration))
 
         # --- Dropbox Integration ---
-        dropbox_integration = DropboxIntegration(user_id)
-        if await dropbox_integration.authenticate():
-            tools.extend(create_dropbox_tools(dropbox_integration))
+        if not tools_to_build or any('dropbox' in tool_name for tool_name in tools_to_build):
+            dropbox_integration = DropboxIntegration(user_id)
+            if await dropbox_integration.authenticate():
+                tools.extend(create_dropbox_tools(dropbox_integration))
 
         # --- Praxos & Other Core Tools ---
         from src.config.settings import settings

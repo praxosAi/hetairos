@@ -37,7 +37,7 @@ async def main():
             session_id = str(uuid.uuid4())
             event = {
                 "session_id": session_id,
-                "source": "websocket",  # Simulate a generic source
+                "source": "benchmark",  # Simulate a generic source
                 "user_id": "68a4e992fc24111a6257dec8",
                 "payload": {"text": case["query"]},
                 "metadata": {

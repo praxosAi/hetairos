@@ -27,11 +27,11 @@ ffmpeg-python
 aiofiles
 pymongo
 azure-keyvault-secrets
-langgraph==0.6.3
+langgraph
 langgraph-prebuilt
-langchain[openai]==0.3.27
+langchain[openai]
 langchain-community
-langchain-google-genai
+langchain-google-genai==2.1.12
 langchain_google_community
 pydantic
 croniter
@@ -43,7 +43,7 @@ azure-keyvault-secrets
 azure-identity
 redis
 azure-servicebus
-google-generativeai
+google-ai-generativelanguage
 starlette
 anyio
 pydub

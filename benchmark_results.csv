@@ -1,1 +1,29 @@
 timestamp,strategy,query,latency_ms
+2025-09-19T04:52:15.318010,langgraph_only,"{'text': ""Can you find the email for 'John Doe' and then send him a message saying 'Hi'?""}",52707.51
+2025-09-19T04:53:45.476853,exec_graph_preselection,"{'text': 'Hi there, how are you?'}",23242.63
+2025-09-19T04:53:45.479995,exec_graph_first,"{'text': 'Hi there, how are you?'}",23866.01
+2025-09-19T04:53:56.881586,langgraph_only,"{'text': 'Hi there, how are you?'}",34452.57
+2025-09-19T04:53:57.560696,exec_graph_first,"{'text': ""Can you find the email for 'John Doe' and then send him a message saying 'Hi'?""}",9957.76
+2025-09-19T04:54:02.617312,exec_graph_preselection,"{'text': ""Can you find the email for 'John Doe' and then send him a message saying 'Hi'?""}",27314.74
+2025-09-19T04:54:04.576731,langgraph_only,"{'text': ""Please schedule a meeting with 'jane.doe@example.com' for tomorrow at 4pm titled 'Catch up'""}",42905.46
+2025-09-19T04:54:15.521018,langgraph_only,"{'text': ""Can you find the email for 'John Doe' and then send him a message saying 'Hi'?""}",49042.50
+2025-09-19T04:54:16.128260,exec_graph_first,"{'text': ""Please schedule a meeting with 'jane.doe@example.com' for tomorrow at 4pm titled 'Catch up'""}",51247.56
+2025-09-19T04:54:25.031197,exec_graph_preselection,"{'text': ""Please schedule a meeting with 'jane.doe@example.com' for tomorrow at 4pm titled 'Catch up'""}",61781.85
+2025-09-19T04:59:51.169745,exec_graph_preselection,"{'text': 'Hi there, how are you?'}",30735.26
+2025-09-19T04:59:53.813977,exec_graph_first,"{'text': ""Can you find the email for 'John Doe' and then send him a message saying 'Hi'?""}",8689.14
+2025-09-19T05:00:08.521156,langgraph_only,"{'text': 'Hi there, how are you?'}",47082.88
+2025-09-19T05:00:08.522376,exec_graph_first,"{'text': 'Hi there, how are you?'}",47510.08
+2025-09-19T05:00:09.197447,langgraph_only,"{'text': ""Please schedule a meeting with 'jane.doe@example.com' for tomorrow at 4pm titled 'Catch up'""}",48886.27
+2025-09-19T05:00:13.198083,exec_graph_preselection,"{'text': ""Can you find the email for 'John Doe' and then send him a message saying 'Hi'?""}",34417.17
+2025-09-19T05:00:22.804865,exec_graph_preselection,"{'text': ""Please schedule a meeting with 'jane.doe@example.com' for tomorrow at 4pm titled 'Catch up'""}",60896.00
+2025-09-19T05:00:28.994009,exec_graph_first,"{'text': ""Please schedule a meeting with 'jane.doe@example.com' for tomorrow at 4pm titled 'Catch up'""}",65496.05
+2025-09-19T05:00:29.898972,langgraph_only,"{'text': ""Can you find the email for 'John Doe' and then send him a message saying 'Hi'?""}",63956.69
+2025-09-19T05:01:27.393547,exec_graph_first,"{'text': 'Hi there, how are you?'}",11281.40
+2025-09-19T05:01:27.424164,exec_graph_preselection,"{'text': 'Hi there, how are you?'}",13757.87
+2025-09-19T05:01:36.594059,langgraph_only,"{'text': 'Hi there, how are you?'}",24546.41
+2025-09-19T05:01:36.610161,exec_graph_first,"{'text': ""Can you find the email for 'John Doe' and then send him a message saying 'Hi'?""}",8907.60
+2025-09-19T05:01:45.076235,exec_graph_preselection,"{'text': ""Can you find the email for 'John Doe' and then send him a message saying 'Hi'?""}",17879.26
+2025-09-19T05:01:47.280884,langgraph_only,"{'text': ""Please schedule a meeting with 'jane.doe@example.com' for tomorrow at 4pm titled 'Catch up'""}",28079.05
+2025-09-19T05:01:53.727878,langgraph_only,"{'text': ""Can you find the email for 'John Doe' and then send him a message saying 'Hi'?""}",30293.05
+2025-09-19T05:01:57.627537,exec_graph_preselection,"{'text': ""Please schedule a meeting with 'jane.doe@example.com' for tomorrow at 4pm titled 'Catch up'""}",36658.13
+2025-09-19T05:02:00.685963,exec_graph_first,"{'text': ""Please schedule a meeting with 'jane.doe@example.com' for tomorrow at 4pm titled 'Catch up'""}",39492.83

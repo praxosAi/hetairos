@@ -152,7 +152,7 @@ class ExecutionWorker:
                 strategy = metadata.get("strategy", "langgraph_only")
                 user_query = str(event.get("payload", ""))
                 
-                start_time = time.perf_counter()
+                start_time = time.time()
                 
                 if strategy == "langgraph_only":
                     logger.info(f"Executing with 'langgraph_only' strategy.")
@@ -166,8 +166,8 @@ class ExecutionWorker:
                 else:
                     logger.warning(f"Unknown strategy: '{strategy}'. Defaulting to 'langgraph_only'.")
                     result = await self.run_langgraph_only(user_context, event)
-                
-                end_time = time.perf_counter()
+
+                end_time = time.time()
                 elapsed_ms = (end_time - start_time) * 1000
                 logger.info(f"Strategy '{strategy}' completed in {elapsed_ms:.2f} ms.")
 
@@ -317,7 +317,8 @@ class ExecutionWorker:
             from src.core.agent_runner_langgraph import AgentFinalResponse
             return AgentFinalResponse(
                 response=f"I have a complete plan: {plan.steps}. (Full execution not yet implemented).",
-                delivery_modality=event["source"]
+                delivery_modality=event["source"],
+                execution_notes="ExecGraph complete plan - execution not yet implemented."
             )
         else:
             logger.warning("ExecGraph could not create a complete plan. Falling back to langgraph_only.")

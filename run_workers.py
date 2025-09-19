@@ -1,31 +1,54 @@
 import asyncio
+import os
+from dotenv import load_dotenv
 
-from src.utils.logging.base_logger import setup_logger
-logger = setup_logger(__name__)
+# Load environment variables from .env file
+load_dotenv()
+
+# Import the main entry points for each worker type
 from src.workers.execution_worker import execution_task
+# Assuming other workers follow a similar pattern, add them here.
+# from src.workers.conversation_consolidator import conversation_consolidator_task
+# from src.ingest.ingest_worker import ingest_task
 
-from src.workers.conversation_consolidator import ConversationConsolidator
-from src.utils.database import conversation_db
-
-async def run_consolidator():
-    """Periodically runs the conversation consolidator."""
-    consolidator = ConversationConsolidator(conversation_db)
-    while True:
-        logger.info("Running conversation consolidator...")
-        await consolidator.consolidate_all_ready_conversations()
-        await asyncio.sleep(60 * 15) # Run every 15 minutes
+# --- Configuration ---
+# Set the number of concurrent workers you want to run for each type
+NUM_EXECUTION_WORKERS = 9
+# NUM_CONSOLIDATOR_WORKERS = 1
+# NUM_INGEST_WORKERS = 2
 
 async def main():
     """
-    Main entry point to run all background workers.
-    This should be run in a separate process from the web server.
+    Initializes and runs all the agent's background workers concurrently.
     """
-    logger.info("Starting all background workers...")
+    print("--- Initializing Workers ---")
     
-    await asyncio.gather(
-        execution_task(),
-        run_consolidator()
-    )
+    # Create a list to hold all the worker tasks
+    tasks = []
+
+    # Schedule the execution workers
+    for i in range(NUM_EXECUTION_WORKERS):
+        task = asyncio.create_task(execution_task())
+        tasks.append(task)
+        print(f"  - Scheduled Execution Worker {i + 1}")
+
+    # Schedule other worker types here if they exist
+    # for i in range(NUM_CONSOLIDATOR_WORKERS):
+    #     task = asyncio.create_task(conversation_consolidator_task())
+    #     tasks.append(task)
+    #     print(f"  - Scheduled Consolidator Worker {i + 1}")
+
+    print("\n--- All workers are running. Press Ctrl+C to stop. ---")
+    
+    # asyncio.gather will run all the tasks in the list concurrently.
+    # It will complete when all tasks have completed. Since our workers
+    # run in an infinite loop, this will run forever until the script is stopped.
+    await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n--- Shutting down workers gracefully... ---")
+        # The program will exit automatically as the asyncio loop is stopped.
+        print("--- Shutdown complete. ---")

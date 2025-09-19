@@ -56,7 +56,7 @@ class AgentFinalResponse(BaseModel):
 class AgentState(MessagesState):
     user_context: UserContext
     metadata: Optional[Dict[str, Any]]
-    final_response: Optional[AgentFinalResponse] # To hold the structured output
+    final_response: Optional[AgentFinalResponse]
 
 # --- 2. Define the Agent Runner Class ---
 class DynamicAgentRunner:

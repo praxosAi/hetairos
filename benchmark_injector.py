@@ -19,7 +19,7 @@ async def main():
         {
             "description": "Simple command with all data present",
             "query": "Please schedule a meeting with 'jane.doe@example.com' for tomorrow at 4pm titled 'Catch up'",
-            "user_id": "benchmark_user_02"
+            "user_id": "68a4e992fc24111a6257dec8"
         },
         {
             "description": "Complex command requiring data transformation",
@@ -30,26 +30,23 @@ async def main():
 
     # --- Define Strategies to Test ---
     strategies = ["langgraph_only", "exec_graph_preselection", "exec_graph_first"]
+    # strategies = ["exec_graph_preselection"]
 
     for case in benchmark_queries:
         for strategy in strategies:
             session_id = str(uuid.uuid4())
             event = {
                 "session_id": session_id,
-                "events": [
-                    {
-                        "source": "websocket", # Simulate a generic source
-                        "user_id": case["user_id"],
-                        "payload": {"text": case["query"]},
-                        "metadata": {
+                "source": "websocket",  # Simulate a generic source
+                "user_id": "68a4e992fc24111a6257dec8",
+                "payload": {"text": case["query"]},
+                "metadata": {
                             "strategy": strategy,
                             "benchmark_description": case["description"]
                         }
                     }
-                ]
-            }
-            
-            await event_queue.publish(event)
+
+            await event_queue.publish(event,f"{event['metadata']['benchmark_description']}_{strategy}") 
             print(f"Published event for session {session_id}: Strategy='{strategy}', Desc='{case['description']}'")
 
     print("Benchmark injection complete.")

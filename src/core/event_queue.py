@@ -217,7 +217,7 @@ class AzureEventQueue:
                                             for msg in messages
                                         )
                                         # Extended wait for forwarded message chains, regular wait otherwise
-                                        wait_time = 15 if all_forwarded else 3
+                                        wait_time = 10 if all_forwarded else 1
 
                                     batch = await session_receiver.receive_messages(max_message_count=10, max_wait_time=wait_time)
 

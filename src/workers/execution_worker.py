@@ -1,5 +1,7 @@
 
 import time
+import csv
+import os
 from src.core.agent_runner_langgraph import LangGraphAgentRunner
 from src.core.agent_runner_dynamic import DynamicAgentRunner
 from src.services.exec_graph.service import exec_graph_service
@@ -145,10 +147,11 @@ class ExecutionWorker:
                     logger.error(f"Could not create user context for user {event['user_id']}. Skipping event.")
                     return
 
-                # --- NEW: Strategy Dispatcher Logic ---
+                # --- Strategy Dispatcher Logic ---
                 metadata = event.get("metadata", {})
                 strategy = metadata.get("strategy", "langgraph_only")
-
+                user_query = str(event.get("payload", ""))
+                
                 start_time = time.perf_counter()
                 
                 if strategy == "langgraph_only":
@@ -163,10 +166,13 @@ class ExecutionWorker:
                 else:
                     logger.warning(f"Unknown strategy: '{strategy}'. Defaulting to 'langgraph_only'.")
                     result = await self.run_langgraph_only(user_context, event)
-
+                
                 end_time = time.perf_counter()
                 elapsed_ms = (end_time - start_time) * 1000
                 logger.info(f"Strategy '{strategy}' completed in {elapsed_ms:.2f} ms.")
+
+                # --- NEW: Log to CSV ---
+                self.log_benchmark_to_csv(strategy, user_query, elapsed_ms)
 
                 await self.post_process_langgraph_response(result, event)
             
@@ -176,7 +182,25 @@ class ExecutionWorker:
         except Exception as e:
             logger.error(f"Error processing single event {event}: {e}", exc_info=True)
 
-    # --- NEW: Strategy Implementations ---
+    def log_benchmark_to_csv(self, strategy, query, latency_ms):
+        """Appends a benchmark result to the CSV file."""
+        file_path = 'benchmark_results.csv'
+        file_exists = os.path.isfile(file_path)
+        
+        with open(file_path, 'a', newline='') as csvfile:
+            fieldnames = ['timestamp', 'strategy', 'query', 'latency_ms']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            
+            if not file_exists:
+                writer.writeheader()
+            
+            writer.writerow({
+                'timestamp': datetime.utcnow().isoformat(),
+                'strategy': strategy,
+                'query': query,
+                'latency_ms': f"{latency_ms:.2f}"
+            })
+
     async def run_langgraph_only(self, user_context, event):
         """The original, untouched LangGraph execution path."""
         has_media = await self.determine_media_presence(event)
@@ -193,8 +217,22 @@ class ExecutionWorker:
         logger.info("Pre-selecting tools with ExecGraph planner...")
         user_query = str(event["payload"]) 
         plan = await exec_graph_service.create_execution_plan(user_query)
-        
-        if plan and plan.steps:
+        logger.info(f"ExecGraph plan: {plan}")
+        if plan.conversation_only:
+            has_media = await self.determine_media_presence(event)
+            logger.info("ExecGraph determined this is a conversation-only query. Using LangGraph directly.")
+            dynamic_agent_runner = DynamicAgentRunner(
+                trace_id=f"exec-{str(event['user_id'])}-{datetime.utcnow().isoformat()}", 
+                has_media=has_media, 
+                override_tools=[]
+            )
+            return await dynamic_agent_runner.run(
+                user_context=user_context,
+                input=event["payload"],
+                source=event["source"],
+                metadata=event.get("metadata", {})
+            )
+        elif plan is not None and plan.steps:
             logger.info(f"ExecGraph plan created. Required tools: {plan.steps}")
             all_tools = await self.tools_factory.create_tools(user_context, event.get("metadata", {}))
             tool_map = {tool.name: tool for tool in all_tools}
@@ -217,13 +255,64 @@ class ExecutionWorker:
             logger.warning("ExecGraph could not create a plan. Falling back to langgraph_only.")
             return await self.run_langgraph_only(user_context, event)
 
+
+    async def post_process_langgraph_response(self, result: dict, event: dict):
+        event["output_type"] = result.delivery_modality
+        await egress_service.send_response(event, {"response": result.response})
+
+
+    async def determine_media_presence(self, event: dict) -> bool:
+        has_media = False
+        if isinstance(event.get('payload'), list):
+            for item in event['payload']:
+                if item.get('type') in ['voice','video','audio','image','file','document']:
+                    has_media = True
+                    logger.info(f"Event has media file, setting has_audio to True so we use gemini-2.5-pro model")
+                    break
+        elif isinstance(event.get('payload'), dict):
+            for file in event.get('payload', {}).get('files', []):
+                if file.get('type') in ['voice','video','audio','image','file','document']:
+                    has_media = True
+                    logger.info(f"Event has media file, setting has_audio to True so we use gemini-2.5-pro model")
+                    break
+        else:
+            logger.info(f"Event payload is neither list nor dict, cannot determine media presence: {event.get('payload')}")
+        return has_media
+
+    async def run_langgraph_only(self, user_context, event):
+        """The original, untouched LangGraph execution path."""
+        has_media = await self.determine_media_presence(event)
+        langgraph_agent_runner = LangGraphAgentRunner(trace_id=f"exec-{str(event['user_id'])}-{datetime.utcnow().isoformat()}", has_media=has_media)
+        return await langgraph_agent_runner.run(
+            user_context=user_context,
+            input=event["payload"],
+            source=event["source"],
+            metadata=event.get("metadata", {})
+        )
+
+    
+
     async def run_exec_graph_first(self, user_context, event):
         """Planner-Led Strategy: Try to execute with exec_graph, fallback to LangGraph."""
         logger.info("Attempting execution with ExecGraph first...")
         user_query = str(event["payload"])
         plan = await exec_graph_service.create_execution_plan(user_query)
-
-        if plan and plan.is_complete:
+        logger.info(f"ExecGraph plan: {plan}")
+        if plan.conversation_only:
+            has_media = await self.determine_media_presence(event)
+            logger.info("ExecGraph determined this is a conversation-only query. Using LangGraph directly.")
+            dynamic_agent_runner = DynamicAgentRunner(
+                trace_id=f"exec-{str(event['user_id'])}-{datetime.utcnow().isoformat()}", 
+                has_media=has_media, 
+                override_tools=[]
+            )
+            return await dynamic_agent_runner.run(
+                user_context=user_context,
+                input=event["payload"],
+                source=event["source"],
+                metadata=event.get("metadata", {})
+            )
+        elif plan and plan.is_complete:
             logger.info(f"ExecGraph created a complete plan. (Execution placeholder).")
             from src.core.agent_runner_langgraph import AgentFinalResponse
             return AgentFinalResponse(

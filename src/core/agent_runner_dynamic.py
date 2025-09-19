@@ -70,7 +70,11 @@ class DynamicAgentRunner:
         from src.utils.portkey_headers_isolation import create_port_key_headers
         portkey_headers , portkey_gateway_url = create_port_key_headers(trace_id=trace_id)
         ### note that this is not OpenAI, this is azure. we will use portkey to access OAI Azure.
-        self.llm = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
+        if override_tools == []:
+            self.llm =  init_chat_model("gpt-4.1-mini", model_provider="openai")
+        else:
+            self.llm = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
+
         self.media_llm =ChatGoogleGenerativeAI(
             model="gemini-2.5-pro",
             api_key=settings.GEMINI_API_KEY,
@@ -567,8 +571,8 @@ class DynamicAgentRunner:
             else:
                 tools = await self.tools_factory.create_tools(user_context, metadata)
 
-            tool_executor = ToolNode(tools)
-            llm_with_tools = self.llm.bind_tools(tools)
+
+
 
             system_prompt = self._create_system_prompt(user_context, source, metadata)
             
@@ -579,7 +583,7 @@ class DynamicAgentRunner:
                 praxos_api_key = user_context.user_record.get("praxos_api_key")
 
             try:
-                if input_text and len(input_text) > 5 and praxos_api_key:
+                if input_text and len(input_text) > 5 and praxos_api_key and tools and len(tools) > 0:
                     praxos_client = PraxosClient(f"env_for_{user_context.user_record.get('email')}", api_key=praxos_api_key)
 
                     long_term_memory_context = await self._get_long_term_memory(praxos_client, input_text)
@@ -590,7 +594,14 @@ class DynamicAgentRunner:
 
 
 
+            if not tools or len(tools) == 0:
+                logger.warning("No tools available for this user; proceeding without tools.")
+                llm_with_tools = self.llm
+                
+            else:
 
+                tool_executor = ToolNode(tools)
+                llm_with_tools = self.llm.bind_tools(tools)
 
             # --- Graph Definition ---
             async def call_model(state: AgentState):
@@ -615,19 +626,31 @@ class DynamicAgentRunner:
                 response = await self.structured_llm.ainvoke(prompt)
                 return {"final_response": response}
 
+
+
+            
             workflow = StateGraph(AgentState)
             workflow.add_node("agent", call_model)
-            workflow.add_node("action", tool_executor)
+
+            
             workflow.add_node("finalize", generate_final_response)
             
             workflow.set_entry_point("agent")
             
-            workflow.add_conditional_edges(
-                "agent",
-                should_continue,
-                {"continue": "action", "end": "finalize"}
-            )
-            workflow.add_edge('action', 'agent')
+            if tools and len(tools) > 0:
+                workflow.add_node("action", tool_executor)
+                workflow.add_conditional_edges(
+                    "agent",
+                    should_continue,
+                    {"continue": "action", "end": "finalize"}
+                )
+                workflow.add_edge('action', 'agent')
+            else:
+                workflow.add_conditional_edges(
+                    "agent",
+                    should_continue,
+                    {"continue": "agent", "end": "finalize"}
+                )
             workflow.add_edge('finalize', END)
             
             app = workflow.compile()
@@ -642,6 +665,7 @@ class DynamicAgentRunner:
             final_state = await app.ainvoke(initial_state,{"recursion_limit": 100})
             
             final_response = final_state['final_response']
+            logger.info(f"Agent run {execution_id} completed successfully with response: {final_response}")
             await self.conversation_manager.add_assistant_message(conversation_id, final_response.response)
 
             return final_response

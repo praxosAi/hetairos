@@ -301,7 +301,7 @@ class AzureEventQueue:
                             return  # Exit the session retry loop
                         elif "no messages available" not in str(session_error).lower():
                             if isinstance(session_error, OperationTimeoutError):
-                                logger.debug("Session receive operation timed out, retrying...")
+                                logger.info("Session receive operation timed out, retrying...")
                                 await asyncio.sleep(1)
                             else:
                                 logger.error(f"Session processing error: {session_error}", exc_info=True)

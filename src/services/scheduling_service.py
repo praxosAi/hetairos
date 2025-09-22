@@ -7,11 +7,11 @@ from src.utils.logging.base_logger import setup_logger
 from typing import List, Dict, Optional
 logger = setup_logger(__name__)
 from zoneinfo import ZoneInfo # Use this for Python 3.9+
-
+from src.services import user_service
 from datetime import datetime, timezone, timedelta
 
 
-def nyc_to_utc(nyc_dt: datetime) -> datetime:
+def nyc_to_utc(nyc_dt: datetime, timezone_name: str = "America/New_York") -> datetime:
     """
     Converts a naive datetime object from NYC time to UTC.
 
@@ -20,7 +20,7 @@ def nyc_to_utc(nyc_dt: datetime) -> datetime:
     timezone database.
     """
     # Define the New York timezone using the IANA database
-    nyc_tz = ZoneInfo("America/New_York")
+    nyc_tz = ZoneInfo(timezone_name)
     
     # Localize the naive datetime by applying the NYC timezone.
     # This step correctly determines whether the datetime falls in EST or EDT.
@@ -43,7 +43,9 @@ class SchedulingService:
             ## convert the EST time to UTC time.
 
             task_id = f"task_{user_id}_{datetime.utcnow().timestamp()}"
-            time_to_do = nyc_to_utc(time_to_do)
+            user_preferences = user_service.get_user_preferences(user_id)    
+            timezone_name = user_preferences.get('timezone', 'America/New_York') if user_preferences else 'America/New_York'
+            time_to_do = nyc_to_utc(time_to_do, timezone_name)
             await db_manager.create_scheduled_task(
                 task_id=task_id,
                 user_id=user_id,
@@ -103,9 +105,11 @@ class SchedulingService:
             #     return "Invalid cron expression."
             # cron = croniter(cron_expression, base_time)
             # next_run_time = cron.get_next(datetime)
-
+            
             task_id = f"task_{user_id}_{datetime.utcnow().timestamp()}"
-            start_time = nyc_to_utc(start_time)
+            user_preferences = user_service.get_user_preferences(user_id)    
+            timezone_name = user_preferences.get('timezone', 'America/New_York') if user_preferences else 'America/New_York'
+            start_time = nyc_to_utc(start_time, timezone_name)
             base_time = datetime.utcnow()
             if not croniter.is_valid(cron_expression):
                 logger.error(f"Invalid cron expression: {cron_expression}")

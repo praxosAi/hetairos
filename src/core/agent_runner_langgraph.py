@@ -33,7 +33,8 @@ LANGUAGE_MAP = {
     'fr': 'French',
     'it': 'Italian',
     'de': 'German',
-    'ja': 'Japanese'
+    'ja': 'Japanese',
+    'vn': 'Vietnamese',
 }
 import asyncio
 async def _gather_bounded(coros: List[Any], limit: int = 8):
@@ -102,8 +103,6 @@ class LangGraphAgentRunner:
         else:
             user_record_for_context = ""
 
-        nyc_tz = pytz.timezone('America/New_York')
-        current_time_nyc = datetime.now(nyc_tz).isoformat()
 
         base_prompt = (
             "You are a helpful AI assistant. Use the available tools to complete the user's request. "
@@ -114,9 +113,14 @@ class LangGraphAgentRunner:
             "do not confirm the scheduling with the user, just do it, unless the user specifically asks you to confirm it with them."
             "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
         )
-        
-        time_prompt = f"\nThe current time in NYC is {current_time_nyc}. You should always assume New York time (EDT/EST)."
-        
+        preferences = user_service.get_user_preferences(user_context.user_id) 
+        preferences = preferences if preferences else {}
+        timezone_name = preferences.get('timezone', 'America/New_York')
+
+        nyc_tz = pytz.timezone(timezone_name)
+        current_time_nyc = datetime.now(nyc_tz).isoformat()
+        time_prompt = f"\nThe current time in the user's timezone is {current_time_nyc}. You should always assume the user is in the '{timezone_name}' timezone unless specified otherwise."
+
         tool_output_prompt = (
             "\nThe output format of most tools will be an object containing information, including the status of the tool execution. "
             "If the execution is successful, the status will be 'success'. In cases where the tool execution is not successful, "
@@ -136,12 +140,11 @@ class LangGraphAgentRunner:
                 task_prompt += " The output modality for the final response of this scheduled task was not specified, so you should choose the most appropriate one based on the user's preferences and context. this cannot be websocket in this case."
 
 
-        preferences = user_service.get_user_preferences(user_context.user_id) 
-        preferences = preferences if preferences else {}
+        
         assistance_name = preferences.get('assistant_name', 'Praxos')
         preferred_language = LANGUAGE_MAP[preferences.get('language_responses', 'en')]
         personilization_prompt = (f"\nYou are personilized to the user. User wants to call you '{assistance_name}' to get assistance. You should respond to the user's request as if you are the assistant named '{assistance_name}'."
-         f"The prefered language to use is '{preferred_language}'. You must always respond in the prefered language."
+         f"The prefered language to use is '{preferred_language}'. You must always respond in the prefered language, unless the user specifically asks you to respond in a different language. If the user uses a different language than the prefered one, you can respond in the language the user used. if the user asks you to use a different language, you must comply."
         )
 
         return base_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt
@@ -522,13 +525,15 @@ class LangGraphAgentRunner:
             
 
 
-            ### TODO: use user timezone from preferences object.            
-            nyc_tz = pytz.timezone('America/New_York')
-            current_time_nyc = datetime.now(nyc_tz).isoformat()
+            ### TODO: use user timezone from preferences object.        
+            user_preferences = user_service.get_user_preferences(user_context.user_id)    
+            timezone_name = user_preferences.get('timezone', 'America/New_York') if user_preferences else 'America/New_York'
+            user_tz = pytz.timezone(timezone_name)
+            current_time_user = datetime.now(user_tz).isoformat()
             # Process input based on type
             if isinstance(input, list):
                 # Grouped messages - use the parallel method
-                base_message_prefix = f'message sent on date {current_time_nyc} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
+                base_message_prefix = f'message sent on date {current_time_user} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
                 history = await self._generate_user_messages_parallel(
                     input, 
                     history, 
@@ -538,7 +543,7 @@ class LangGraphAgentRunner:
                 )
             elif isinstance(input, dict):
                 # Single message - existing logic
-                message_prefix = f'message sent on date {current_time_nyc} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
+                message_prefix = f'message sent on date {current_time_user} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
                 if input_text:
                     await self.conversation_manager.add_user_message(conversation_id, message_prefix + input_text, metadata)
                     history.append(HumanMessage(content=message_prefix + input_text))

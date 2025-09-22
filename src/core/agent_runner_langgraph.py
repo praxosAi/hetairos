@@ -279,10 +279,10 @@ class LangGraphAgentRunner:
         base_message_prefix: str = "",
         user_context: UserContext = None,
         max_concurrency: int = 8,
-    ) -> List[BaseMessage]:
+    ) -> Tuple[List[BaseMessage], bool]:
         """Parallel version of _generate_user_messages with better performance."""
         logger.info(f"Processing {len(input_messages)} grouped messages with parallel file handling")
-        
+        has_media = False
         # Phase 1: Build structure and collect file tasks
         message_structure = []
         all_file_tasks = []
@@ -343,6 +343,7 @@ class LangGraphAgentRunner:
             
             # Add file messages
             if file_count > 0:
+                has_media = True
                 message_payloads = file_payloads[file_start:file_start + file_count]
                 for file_info, payload in zip(files_info, message_payloads):
                     if isinstance(payload, Exception) or payload is None:
@@ -372,7 +373,7 @@ class LangGraphAgentRunner:
                 
                 logger.info(f"Added {file_count} files for message {i+1}/{len(input_messages)}")
         
-        return messages
+        return messages, has_media
 
     # ---------------------------------------------------
     # Generate file messages (parallel, order preserved)
@@ -520,9 +521,7 @@ class LangGraphAgentRunner:
 
             # Get conversation history first (before adding new messages)
             history, has_media = await self._get_conversation_history(conversation_id)
-            if has_media:
-                logger.info(f"Conversation {conversation_id} has media; switching to media-capable LLM")
-                self.llm = self.media_llm
+
             
 
 
@@ -535,7 +534,7 @@ class LangGraphAgentRunner:
             if isinstance(input, list):
                 # Grouped messages - use the parallel method
                 base_message_prefix = f'message sent on date {current_time_user} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
-                history = await self._generate_user_messages_parallel(
+                history, has_media = await self._generate_user_messages_parallel(
                     input, 
                     history, 
                     conversation_id=conversation_id,
@@ -561,7 +560,9 @@ class LangGraphAgentRunner:
                 return AgentFinalResponse(response="Invalid input format.", delivery_modality=source, execution_notes="Input must be a dict or list of dicts.")            
 
 
-
+            if has_media:
+                logger.info(f"Conversation {conversation_id} has media; switching to media-capable LLM")
+                self.llm = self.media_llm
 
             
             if all_forwarded:
@@ -584,10 +585,10 @@ class LangGraphAgentRunner:
             try:
                 if input_text and len(input_text) > 5 and praxos_api_key:
                     praxos_client = PraxosClient(f"env_for_{user_context.user_record.get('email')}", api_key=praxos_api_key)
-
-                    long_term_memory_context = await self._get_long_term_memory(praxos_client, input_text)
-                    if long_term_memory_context:
-                        system_prompt += long_term_memory_context
+                    ### @TODO: this needs a more intelligent approach. for example, if the input is just "hi" or "hello", we don't need to fetch long term memory.
+                    # long_term_memory_context = await self._get_long_term_memory(praxos_client, input_text)
+                    # if long_term_memory_context:
+                    #     system_prompt += long_term_memory_context
             except Exception as e:
                 logger.error(f"Error fetching long-term memory: {e}", exc_info=True)
 

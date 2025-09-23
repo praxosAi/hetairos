@@ -20,7 +20,8 @@ class EgressService:
         """
         source = event.get("source")
         response_text = result.get("response", "Sorry, something went wrong.")
-
+        response_files = result.get("file_links", [])
+        logger.info(f"the following response payload will be sent: text: {response_text}, files: {response_files}")
         if not source:
             logger.error(f"No source found in event metadata. Cannot route response. Event: {event}")
             return
@@ -56,8 +57,11 @@ class EgressService:
                     except Exception as e:
                         logger.error(f"no phone number found for WhatsApp output type. Event: {event}", exc_info=True)
                         return
-
-                await self.whatsapp_client.send_message(phone_number, response_text)
+                if response_text:
+                    await self.whatsapp_client.send_message(phone_number, response_text)
+                if response_files:
+                    for file_obj in response_files:
+                        await self.whatsapp_client.send_media_from_link(phone_number, file_obj)
                 logger.info(f"Successfully sent response to WhatsApp user {phone_number}")
 
             elif event.get("output_type") == "telegram" or (event.get("source") == "telegram" and event.get("output_type") is None):

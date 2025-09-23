@@ -8,7 +8,7 @@ from src.utils.logging import setup_logger
 from src.utils.blob_utils import download_from_blob_storage
 import mimetypes
 from src.utils.text_chunker import TextChunker
-
+import uuid
 class WhatsAppClient:
     def __init__(self):
         self.access_token = settings.WHATSAPP_ACCESS_TOKEN
@@ -205,7 +205,6 @@ class WhatsAppClient:
             "type": media_type,
             media_type: {
                 "id": media_id,
-                "caption": caption
             }
         }
         if media_type == "document":
@@ -220,7 +219,40 @@ class WhatsAppClient:
         except aiohttp.ClientError as e:
             self.logger.error(f"WhatsApp send media error: {e}")
             return None
+    async def send_media_from_link(self, to_phone: str, media_link_object: Dict):
+        """Send a media message via WhatsApp."""
+        self.logger.info(f"Sending media via WhatsApp to {to_phone} with link object: {media_link_object}")
+        url = media_link_object.get("url")
+        media_type = media_link_object.get("file_type", "document")
+        file_name = media_link_object.get("file_name", uuid.uuid4().hex)
+        if not url:
+            self.logger.error(f"No URL provided in media link object: {media_link_object}")
+            return None
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to_phone,
+            "type": media_type,
+            media_type: {
+                "link": url,
+            }
+        }
+        if media_type == "document":
+            payload[media_type]["filename"] = file_name
 
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{self.base_url}/messages", headers=headers, json=payload) as response:
+                    response.raise_for_status()
+                    return await response.json()
+        except aiohttp.ClientError as e:
+            self.logger.error(f"WhatsApp send media error: {e}")
+            return None
     async def get_media_url(self, media_id: str) -> Optional[str]:
         """Get media download URL from WhatsApp API"""
         headers = {

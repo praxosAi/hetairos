@@ -18,14 +18,17 @@ class AIService:
         portkey_headers , portkey_gateway_url = create_port_key_headers(trace_id='internal_call')
         self.model_gpt_mini = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
         self.model_gemini_flash = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY)
-    
+        self.model_gemini_flash_no_thinking = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0)
     async def with_structured_output(self, schema: BaseModel, prompt: str):
         structured_llm = self.model_gemini_flash.with_structured_output(schema)
         return await structured_llm.ainvoke(prompt)
 
 
-    async def boolean_call(self, prompt: str) -> bool:
-        structured_llm = self.model_gemini_flash.with_structured_output(BooleanResponse)
+    async def boolean_call(self, prompt: str, think: bool = False) -> bool:
+        if think:
+            structured_llm = self.model_gemini_flash.with_structured_output(BooleanResponse)
+        else:
+            structured_llm = self.model_gemini_flash_no_thinking.with_structured_output(BooleanResponse)
         response = await structured_llm.ainvoke(prompt)
         logger.info(f"Boolean call response: {response}")
         return response.response

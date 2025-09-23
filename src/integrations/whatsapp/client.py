@@ -7,6 +7,7 @@ from src.config.settings import settings
 from src.utils.logging import setup_logger
 from src.utils.blob_utils import download_from_blob_storage
 import mimetypes
+from src.utils.text_chunker import TextChunker
 
 class WhatsAppClient:
     def __init__(self):
@@ -38,52 +39,60 @@ class WhatsAppClient:
 
         
     async def send_message(self, to_phone: str, message: str, conversation_id: int = None):
-        """Send text message via WhatsApp Business API"""
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "Content-Type": "application/json"
-        }
+        """Send text message via WhatsApp Business API, chunking smartly if it's too long."""
+        responses = []
+        # WhatsApp's official limit is higher, but 1600 is a widely cited safe limit.
+        chunker = TextChunker(max_length=1600)
         
-        payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": to_phone,
-            "type": "text",
-            "text": {"body": message}
-        }
+        chunks = list(chunker.chunk(message))
+        
+        for i, chunk in enumerate(chunks):
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": to_phone,
+                "type": "text",
+                "text": {"body": chunk}
+            }
 
-        
-        timeout = aiohttp.ClientTimeout(total=10) 
-        
-        try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(
-                    f"{self.base_url}/messages",
-                    headers=headers,
-                    json=payload
-                ) as response:
-                    response.raise_for_status()
-                    result = await response.json()
-                    
-                    if conversation_id and "messages" in result:
-                        message_id = result["messages"][0]["id"]
-                        from src.utils.database import conversation_db
+            timeout = aiohttp.ClientTimeout(total=10) 
+            
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(
+                        f"{self.base_url}/messages",
+                        headers=headers,
+                        json=payload
+                    ) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        responses.append(result)
                         
-                        db = conversation_db
-                        await db.store_message_status(
-                            message_id=message_id,
-                            conversation_id=conversation_id,
-                            platform="whatsapp",
-                            status="sent"
-                        )
-                    
-                    return result
-        except asyncio.TimeoutError:
-            self.logger.error(f"WhatsApp API timeout for message to {to_phone}")
-            return {"error": "timeout", "message": "Message sending timed out"}
-        except aiohttp.ClientError as e:
-            self.logger.error(f"WhatsApp send message error: {e}")
-            return {"error": str(e)}
+                        # Only store the status for the last message in the chunk
+                        if conversation_id and "messages" in result and i == len(chunks) - 1:
+                            message_id = result["messages"][0]["id"]
+                            from src.utils.database import conversation_db
+                            
+                            db = conversation_db
+                            await db.store_message_status(
+                                message_id=message_id,
+                                conversation_id=conversation_id,
+                                platform="whatsapp",
+                                status="sent"
+                            )
+            except asyncio.TimeoutError:
+                self.logger.error(f"WhatsApp API timeout for message to {to_phone}")
+                responses.append({"error": "timeout", "message": "Message sending timed out"})
+            except aiohttp.ClientError as e:
+                self.logger.error(f"WhatsApp send message error: {e}")
+                responses.append({"error": str(e)})
+        
+        return responses
     
     async def mark_as_read(self, message_id: str):
         """Mark message as read"""

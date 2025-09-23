@@ -6,6 +6,7 @@ import tempfile
 from src.config.settings import settings
 from src.utils.logging import setup_logger
 from src.utils.blob_utils import download_from_blob_storage
+from src.utils.text_chunker import TextChunker
 
 class TelegramClient:
     def __init__(self):
@@ -14,16 +15,18 @@ class TelegramClient:
         self.logger = setup_logger("telegram_client")
 
     async def send_message(self, chat_id: int, text: str):
-        """Send text message via Telegram Bot API"""
-        ## chunk text if too long
+        """Send text message via Telegram Bot API, chunking smartly if it's too long."""
         responses = []
-        texts = [text[i:i+4096] for i in range(0, len(text), 4096)]
-        for new_text in texts:
+        # Using 4000 to be safe, as Telegram's official limit is 4096
+        chunker = TextChunker(max_length=4000)
+        
+        for chunk in chunker.chunk(text):
             payload = {
                 "chat_id": chat_id,
-                "text": new_text,
+                "text": chunk,
             }
             responses.append(await self._make_request("sendMessage", payload))
+        
         return responses
 
     async def send_media(self, chat_id: int, blob_name: str, media_type: str, caption: str = ""):

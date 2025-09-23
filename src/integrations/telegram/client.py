@@ -15,11 +15,16 @@ class TelegramClient:
 
     async def send_message(self, chat_id: int, text: str):
         """Send text message via Telegram Bot API"""
-        payload = {
-            "chat_id": chat_id,
-            "text": text,
-        }
-        return await self._make_request("sendMessage", payload)
+        ## chunk text if too long
+        responses = []
+        texts = [text[i:i+4096] for i in range(0, len(text), 4096)]
+        for new_text in texts:
+            payload = {
+                "chat_id": chat_id,
+                "text": new_text,
+            }
+            responses.append(await self._make_request("sendMessage", payload))
+        return responses
 
     async def send_media(self, chat_id: int, blob_name: str, media_type: str, caption: str = ""):
         """Send a media message via Telegram."""

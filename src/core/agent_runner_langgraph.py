@@ -132,7 +132,10 @@ class LangGraphAgentRunner:
         preferences = user_service.get_user_preferences(user_context.user_id) 
         preferences = preferences if preferences else {}
         timezone_name = preferences.get('timezone', 'America/New_York')
+        annotations = preferences.get('annotations', [])
 
+        if annotations:
+            praxos_prompt += f"\n\nThe user has provided the following additional context and preferences for you to consider in your responses: {'\n'.join(annotations)}\n"
         nyc_tz = pytz.timezone(timezone_name)
         current_time_nyc = datetime.now(nyc_tz).isoformat()
         time_prompt = f"\nThe current time in the user's timezone is {current_time_nyc}. You should always assume the user is in the '{timezone_name}' timezone unless specified otherwise."
@@ -585,7 +588,7 @@ class LangGraphAgentRunner:
                 logger.info("All input messages are forwarded; verify with the user before taking actions.")
                 return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_platform=source, execution_notes="All input messages were marked as forwarded.", output_modality="text", file_links=[], generation_instructions=None)
 
-            tools = await self.tools_factory.create_tools(user_context, metadata)
+            tools = await self.tools_factory.create_tools(user_context, metadata,timezone_name)
 
             tool_executor = ToolNode(tools)
             llm_with_tools = self.llm.bind_tools(tools)

@@ -123,7 +123,7 @@ class LangGraphAgentRunner:
             "use the available tools to schedule the task."
             "do not confirm the scheduling with the user, just do it, unless the user specifically asks you to confirm it with them."
             "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
-            "if the user requests generation of audio, video or image, you should simply set the appropriate flag on output_modality, and generation_instructions, and not use any tool to generate them. this will be handled after your response is processed, with systems that are capable of generating them. your response in the final_response field should always simply be to acknowledge the request and say you would be happy to help. you will then describe the media in detail in the appropriate field, using the generation_instructions field, as well as setting the output modality field to the appropriate value for what the user actually wants."
+            "if the user requests generation of audio, video or image, you should simply set the appropriate flag on output_modality, and generation_instructions, and not use any tool to generate them. this will be handled after your response is processed, with systems that are capable of generating them. your response in the final_response field should always simply be to acknowledge the request and say you would be happy to help. you will then describe the media in detail in the appropriate field, using the generation_instructions field, as well as setting the output modality field to the appropriate value for what the user actually wants. do not actually tell the user you won't generate it yourself, that's overly complex and will confuse."
         )
         praxos_prompt = """
         this assistant service has been developed by Praxos AI. the user can register and manage their account at https://www.mypraxos.com.
@@ -678,6 +678,7 @@ class LangGraphAgentRunner:
                             output_blobs.append({"url": image_blob_url, "file_type": "image", "file_name": image_file_name})
                     if final_response.output_modality in {"audio", "voice"}:
                         is_imessage = final_response.delivery_platform == "imessage"
+                        logger.info(f"Generating audio with is_imessage={is_imessage}")
                         audio_blob_url, audio_file_name = await output_generator.generate_speech(generation_instructions, prefix, is_imessage)
                         if audio_blob_url:
                             output_blobs.append({"url": audio_blob_url, "file_type": "audio", "file_name": audio_file_name})

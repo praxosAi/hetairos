@@ -14,6 +14,14 @@ class IMessageClient:
         self.base_url = "https://api.sendblue.co/api"
         self.logger = setup_logger("imessage_client")
         
+    async def upload_media(self, media_url: str) -> Optional[Dict]:
+        """Upload media to Sendblue and return the file object."""
+        payload = {
+            "media_url": media_url
+        }
+        response = await self._make_request("POST", f"{self.base_url}/upload-media-object", payload)
+        if response and "mediaObjectId" in response:
+            return f"https://storage.googleapis.com/inbound-file-store/{response['mediaObjectId']}"
     async def send_message(self, to_number: str, message: str):
         """Send text message via Sendblue iMessage API"""
         headers = {
@@ -32,9 +40,13 @@ class IMessageClient:
     async def send_media(self, to_number: str, file_obj: str):
         """Send media message via Sendblue iMessage API"""
         url = file_obj.get("url")
+        cdn_url = await self.upload_media(url)
+        if not cdn_url:
+            self.logger.error(f"Failed to upload media from {url}")
+            return None
         payload = {
             "number": to_number,
-            "media_url": url
+            "media_url": cdn_url
         }
         
         return await self._make_request("POST", f"{self.base_url}/send-message", payload)

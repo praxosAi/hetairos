@@ -80,7 +80,7 @@ def create_preference_tools(user_id: str) -> list:
                 "annotations": merged,
                 "updated_at": _utc_now_iso(),
             }
-            ok = user_service.add_new_preference_annotations(user_id, payload)
+            ok = user_service.add_new_preference_annotations(user_id, payload,True)
             return {
                 "ok": bool(ok),
                 "message": "Annotations updated.",

@@ -7,7 +7,7 @@ from src.config.settings import settings
 from src.utils.logging import setup_logger
 from src.utils.blob_utils import download_from_blob_storage
 from src.utils.text_chunker import TextChunker
-
+import requests
 class TelegramClient:
     def __init__(self):
         self.token = settings.TELEGRAM_BOT_TOKEN
@@ -29,15 +29,20 @@ class TelegramClient:
         
         return responses
 
-    async def send_media(self, chat_id: int, blob_name: str, media_type: str, caption: str = ""):
+    async def send_media(self, chat_id: int, media_obj: dict):
+        media_url = media_obj.get("url")
+        file_name = media_obj.get("file_name", "file")
+        media_type = media_obj.get("file_type", "document")  # Default to Document if not specified
+        caption = media_obj.get("caption", "")
+        if media_type == 'audio':
+            media_type = 'voice'
+        if media_type == 'image':
+            media_type = 'photo'
         """Send a media message via Telegram."""
-        file_data = await download_from_blob_storage(blob_name)
-        if not file_data:
-            self.logger.error(f"Failed to download {blob_name} from blob storage.")
-            return None
+        media_bytes = requests.get(media_url).content
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(blob_name)[1]) as temp_file:
-            temp_file.write(file_data)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_name)[1]) as temp_file:
+            temp_file.write(media_bytes)
             temp_file_path = temp_file.name
         
         api_method = f"send{media_type.capitalize()}"

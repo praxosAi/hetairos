@@ -57,7 +57,7 @@ class AgentFinalResponse(BaseModel):
     response: str = Field(description="The final, user-facing response to be delivered.")
     delivery_platform: str = Field(description="The channel for the response. Should be the same as the input source.", enum=["email", "whatsapp", "websocket", "telegram",'imessage'])
     execution_notes: Optional[str] = Field(description="Internal notes about the execution, summarizing tool calls or errors.")
-    output_modality: Optional[str] = Field(description="The modality of the output, e.g., text, image, file, etc. unless otherwise specified by user needs, this should be text", enum=["text", "voice", "image", "video",'file'])
+    output_modality: Optional[str] = Field(description="The modality of the output, e.g., text, image, file, etc. unless otherwise specified by user needs, this should be text", enum=["text", "voice", 'audio', "image", "video",'file'])
     generation_instructions: Optional[str] = Field(description="Instructions for generating audio, video, or image if applicable.")
     file_links: Optional[List[FileLink]] = Field(description="Links to any files generated or used in the response.")
     class Config:
@@ -123,7 +123,7 @@ class LangGraphAgentRunner:
             "use the available tools to schedule the task."
             "do not confirm the scheduling with the user, just do it, unless the user specifically asks you to confirm it with them."
             "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
-            "if the user requests generation of audio, video or image, you should simply set the appropriate flag on output_modality, and generation_instructions, and not use any tool to generate them. this will be handled after your response is processed, with systems that are capable of generating them. your response in the final_response field should always simply be to acknowledge the request and say you would be happy to help. you will then describe the media in detail in the appropriate field, using the generation_instructions field, as well as setting the output modality field to the appropriate value for what the user actually wants."
+            "if the user requests generation of audio, video or image, you should simply set the appropriate flag on output_modality, and generation_instructions, and not use any tool to generate them. this will be handled after your response is processed, with systems that are capable of generating them. your response in the final_response field should always simply be to acknowledge the request and say you would be happy to help. you will then describe the media in detail in the appropriate field, using the generation_instructions field, as well as setting the output modality field to the appropriate value for what the user actually wants. do not actually tell the user you won't generate it yourself, that's overly complex and will confuse them. do not ask them for more info in your response either, as the generation will happen regardless."
         )
         praxos_prompt = """
         this assistant service has been developed by Praxos AI. the user can register and manage their account at https://www.mypraxos.com.
@@ -132,7 +132,10 @@ class LangGraphAgentRunner:
         preferences = user_service.get_user_preferences(user_context.user_id) 
         preferences = preferences if preferences else {}
         timezone_name = preferences.get('timezone', 'America/New_York')
+        annotations = preferences.get('annotations', [])
 
+        if annotations:
+            praxos_prompt += f"\n\nThe user has provided the following additional context and preferences for you to consider in your responses: {'\n'.join(annotations)}\n"
         nyc_tz = pytz.timezone(timezone_name)
         current_time_nyc = datetime.now(nyc_tz).isoformat()
         time_prompt = f"\nThe current time in the user's timezone is {current_time_nyc}. You should always assume the user is in the '{timezone_name}' timezone unless specified otherwise."
@@ -585,7 +588,7 @@ class LangGraphAgentRunner:
                 logger.info("All input messages are forwarded; verify with the user before taking actions.")
                 return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_platform=source, execution_notes="All input messages were marked as forwarded.", output_modality="text", file_links=[], generation_instructions=None)
 
-            tools = await self.tools_factory.create_tools(user_context, metadata)
+            tools = await self.tools_factory.create_tools(user_context, metadata,timezone_name)
 
             tool_executor = ToolNode(tools)
             llm_with_tools = self.llm.bind_tools(tools)
@@ -677,7 +680,9 @@ class LangGraphAgentRunner:
                         if image_blob_url:
                             output_blobs.append({"url": image_blob_url, "file_type": "image", "file_name": image_file_name})
                     if final_response.output_modality in {"audio", "voice"}:
-                        audio_blob_url, audio_file_name = await output_generator.generate_speech(generation_instructions, prefix)
+                        is_imessage = final_response.delivery_platform == "imessage"
+                        logger.info(f"Generating audio with is_imessage={is_imessage}")
+                        audio_blob_url, audio_file_name = await output_generator.generate_speech(generation_instructions, prefix, is_imessage)
                         if audio_blob_url:
                             output_blobs.append({"url": audio_blob_url, "file_type": "audio", "file_name": audio_file_name})
                     if final_response.output_modality == "video":

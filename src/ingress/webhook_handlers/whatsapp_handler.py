@@ -55,7 +55,12 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
         # webhook_logger.error(f"Invalid signature for WhatsApp webhook")
         raise HTTPException(status_code=403, detail="Invalid signature")
     
-    body = await request.json()
+    try:
+        body = json.loads(body_bytes)
+        webhook_logger.info(f"WhatsApp webhook body: {body}")
+    except json.JSONDecodeError:
+        webhook_logger.error("Failed to decode webhook body as JSON")
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
     webhook_logger.info(f"WhatsApp webhook body: {body}")
     if "entry" in body and body["entry"]:
         for entry in body["entry"]:

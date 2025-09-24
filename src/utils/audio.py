@@ -75,6 +75,87 @@ def wav_bytes_to_ogg_bytes(wav_bytes: bytes) -> bytes:
     return ogg_io.read()
 
 
+def caf_bytes_to_ogg_bytes(caf_bytes: bytes) -> bytes:
+    """
+    Convert CAF audio bytes to OGG/Opus bytes (mono, 16 kHz).
+
+    Args:
+        caf_bytes: Raw audio in CAF format.
+
+    Returns:
+        OGG/Opus encoded audio as bytes.
+    """
+    # Load CAF from bytes
+    caf_io = BytesIO(caf_bytes)
+    sound = AudioSegment.from_file(caf_io, format="caf")
+
+    # Export to OGG/Opus in memory
+    ogg_io = BytesIO()
+    sound.export(
+        ogg_io,
+        format="ogg",
+        codec="libopus",
+        parameters=["-ac", "1", "-ar", "16000"]  # mono, 16 kHz
+    )
+
+    # Rewind and return raw bytes
+    ogg_io.seek(0)
+    return ogg_io.read()
+
+
+def ogg_bytes_to_caf_bytes(ogg_bytes: bytes) -> bytes:
+    """
+    Convert OGG/Opus audio bytes to CAF bytes (mono, 16 kHz).
+
+    Args:
+        ogg_bytes: Raw audio in OGG/Opus format.
+
+    Returns:
+        CAF encoded audio as bytes.
+    """
+    # Load from bytes
+    ogg_io = BytesIO(ogg_bytes)
+    sound = AudioSegment.from_file(ogg_io, format="ogg")
+
+    # Export to CAF in memory
+    caf_io = BytesIO()
+    sound.export(
+        caf_io,
+        format="caf",
+        parameters=["-ac", "1", "-ar", "16000"]  # mono, 16 kHz
+    )
+
+    # Rewind and return raw bytes
+    caf_io.seek(0)
+    return caf_io.read()
+
+def caf_path_to_ogg_bytes(caf_path: str) -> bytes:
+    """
+    Convert a CAF audio file on disk to OGG/Opus bytes (mono, 16 kHz).
+
+    Args:
+        caf_path: Path to a .caf file.
+
+    Returns:
+        OGG/Opus encoded audio as bytes.
+    """
+    # Load CAF from path
+    sound = AudioSegment.from_file(caf_path, format="caf")
+
+    # Export to OGG/Opus in memory
+    from io import BytesIO
+    ogg_io = BytesIO()
+    sound.export(
+        ogg_io,
+        format="ogg",
+        codec="libopus",
+        parameters=["-ac", "1", "-ar", "16000"]  # mono, 16 kHz
+    )
+
+    # Rewind and return raw bytes
+    ogg_io.seek(0)
+    return ogg_io.read()
+
 
 def wave_file(pcm: bytes, channels: int = 1, rate: int = 24000, sample_width: int = 2, filename: str | None = None):
     """

@@ -27,6 +27,7 @@ from src.tools.basic import create_basic_tools
 from src.tools.web import create_web_tools
 from src.tools.dropbox import create_dropbox_tools
 from src.tools.playwright import create_playwright_tools
+from src.tools.preference_tools import create_preference_tools
 import src.tools.mock_tools as mock_tools
 
 logger = setup_logger(__name__)
@@ -37,8 +38,8 @@ class AgentToolsFactory:
     def __init__(self, config, db_manager):
         self.config = config
         self.db_manager = db_manager
-    
-    async def create_tools(self, user_context: UserContext, metadata: Optional[Dict] = None) -> List:
+
+    async def create_tools(self, user_context: UserContext, metadata: Optional[Dict] = None,user_time_zone: str = 'America/New_York') -> List:
         """Create tools based on agent configuration by instantiating integration clients."""
         tools = []
         user_id = user_context.user_id
@@ -107,7 +108,7 @@ class AgentToolsFactory:
         except Exception as e:
             logger.error(f"Error creating scheduling tools: {e}", exc_info=True)
         try:
-            tools.extend(create_basic_tools())
+            tools.extend(create_basic_tools(user_time_zone))
         except Exception as e:
             logger.error(f"Error creating basic tools: {e}", exc_info=True)
         try:
@@ -115,6 +116,10 @@ class AgentToolsFactory:
         except Exception as e:
             logger.error(f"Error creating web tools: {e}", exc_info=True)
 
+        try:
+            tools.extend(create_preference_tools(user_id))
+        except Exception as e:
+            logger.error(f"Error creating preference tools: {e}", exc_info=True)
         # --- Browser Tools ---
         try:
             tools.extend(create_playwright_tools())

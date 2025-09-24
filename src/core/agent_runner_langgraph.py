@@ -677,7 +677,8 @@ class LangGraphAgentRunner:
                         if image_blob_url:
                             output_blobs.append({"url": image_blob_url, "file_type": "image", "file_name": image_file_name})
                     if final_response.output_modality in {"audio", "voice"}:
-                        audio_blob_url, audio_file_name = await output_generator.generate_speech(generation_instructions, prefix)
+                        is_imessage = final_response.delivery_platform == "imessage"
+                        audio_blob_url, audio_file_name = await output_generator.generate_speech(generation_instructions, prefix, is_imessage)
                         if audio_blob_url:
                             output_blobs.append({"url": audio_blob_url, "file_type": "audio", "file_name": audio_file_name})
                     if final_response.output_modality == "video":

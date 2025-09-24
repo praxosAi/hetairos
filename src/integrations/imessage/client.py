@@ -29,19 +29,12 @@ class IMessageClient:
         
         return await self._make_request("POST", f"{self.base_url}/send-message", payload)
 
-    async def send_media(self, to_number: str, blob_name: str, caption: str = ""):
+    async def send_media(self, to_number: str, file_obj: str):
         """Send media message via Sendblue iMessage API"""
-        media_url = await get_blob_sas_url(blob_name)
-        headers = {
-            "sb-api-key-id": self.api_key,
-            "sb-api-secret-key": self.api_secret,
-            "Content-Type": "application/json"
-        }
-        
+        url = file_obj.get("url")
         payload = {
             "number": to_number,
-            "content": caption,
-            "media_url": media_url
+            "media_url": url
         }
         
         return await self._make_request("POST", f"{self.base_url}/send-message", payload)

@@ -82,6 +82,9 @@ class EgressService:
                         return
                 if response_text:
                     await self.imessage_client.send_message(phone_number, response_text)
+                if response_files:
+                    for file_obj in response_files:
+                        await self.imessage_client.send_media(phone_number, file_obj)
                 # Note: Sending media via iMessage is not implemented here.
                 logger.info(f"Successfully sent response to iMessage user {phone_number}")
             elif event.get("output_type") == "telegram" or (event.get("source") == "telegram" and event.get("output_type") is None):

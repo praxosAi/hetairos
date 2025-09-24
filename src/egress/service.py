@@ -3,6 +3,7 @@ from src.config.settings import settings
 from src.utils.redis_client import publish_message
 from src.integrations.whatsapp.client import WhatsAppClient
 from src.integrations.telegram.client import TelegramClient
+from src.integrations.imessage.client import IMessageClient
 from src.integrations.email.email_bot_client import send_unauthorised_user_bot_reply, send_bot_reply, send_new_email_bot
 from src.utils.logging import setup_logger
 from src.services.integration_service import integration_service
@@ -13,7 +14,7 @@ class EgressService:
     def __init__(self):
         self.whatsapp_client = WhatsAppClient()
         self.telegram_client = TelegramClient()
-
+        self.imessage_client = IMessageClient()
     async def send_response(self, event: dict, result: dict):
         """
         Routes the final response to the appropriate channel based on the event source.
@@ -27,7 +28,7 @@ class EgressService:
             return
 
         logger.info(f"Routing response for source: {source}, output_type: {event.get('output_type')}")
-        if event.get('output_type') not in ['email','websocket','telegram','whatsapp'] and event.get('source') in ['scheduled','recurring']:
+        if event.get('output_type') not in ['email','websocket','telegram','whatsapp','imessage'] and event.get('source') in ['scheduled','recurring']:
             logger.info('incorrect output type for scheduled or recurring event')
             if event.get('metadata',{}).get('original_source', None):
                 logger.info(f"Overriding event source from {event['output_type']} to {event['metadata']['original_source']}")
@@ -63,7 +64,26 @@ class EgressService:
                     for file_obj in response_files:
                         await self.whatsapp_client.send_media_from_link(phone_number, file_obj)
                 logger.info(f"Successfully sent response to WhatsApp user {phone_number}")
-
+            elif event.get("output_type") == "imessage" or (event.get("source") == "imessage" and event.get("output_type") is None):
+                phone_number = event.get("output_phone_number")
+                if not phone_number and event.get("user_id"):
+                    try:
+                        user_record = user_service.get_user_by_id(event.get("user_id"))
+                        if user_record:
+                            phone_number = user_record.get("phone_number")
+                        else:
+                            logger.error(f"No user record found for iMessage message. Event: {event}")
+                            return
+                        if not phone_number:
+                            logger.error(f"No phone_number in user record for iMessage message. Event: {event}")
+                            return
+                    except Exception as e:
+                        logger.error(f"no phone number found for iMessage output type. Event: {event}", exc_info=True)
+                        return
+                if response_text:
+                    await self.imessage_client.send_message(phone_number, response_text)
+                # Note: Sending media via iMessage is not implemented here.
+                logger.info(f"Successfully sent response to iMessage user {phone_number}")
             elif event.get("output_type") == "telegram" or (event.get("source") == "telegram" and event.get("output_type") is None):
                 chat_id = event.get("output_chat_id")
                 if not chat_id:

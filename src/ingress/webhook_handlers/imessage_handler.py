@@ -14,25 +14,17 @@ from src.utils.database import db_manager
 logger = setup_logger(__name__)
 router = APIRouter()
 
-def verify_webhook_signature(payload: bytes, signature: str) -> bool:
-    """Verify Sendblue webhook signature"""
-    if not signature:
-        return False
-    
-    expected_signature = hmac.new(
-        settings.SENDBLUE_SIGNING_SECRET.encode(),
-        payload,
-        hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(signature, expected_signature)
+
 
 @router.post("/imessage")
 async def handle_imessage_webhook(request: Request):
     """Handles incoming iMessage updates from Sendblue."""
     body_bytes = await request.body()
     signature = request.headers.get("sb-signing-secret")
-
-    if settings.SENDBLUE_SIGNING_SECRET and not verify_webhook_signature(body_bytes, signature):
+    logger.info(f"Received iMessage webhook with signature: {signature}")
+    logger.info(f"request is: {request}")
+    if settings.SENDBLUE_SIGNING_SECRET and signature != settings.SENDBLUE_SIGNING_SECRET:
+        logger.info(f"Invalid signature for iMessage webhook")
         raise HTTPException(status_code=403, detail="Invalid signature")
 
     try:

@@ -121,7 +121,7 @@ class ExecutionWorker:
                     files=event["payload"]["files"],
                 )
 
-            elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram"]:
+            elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram",'imessage']:
                 # --- Handle Agent Task ---
                 if source == "recurring":
                     try:

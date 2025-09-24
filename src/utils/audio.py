@@ -103,6 +103,31 @@ def caf_bytes_to_ogg_bytes(caf_bytes: bytes) -> bytes:
     return ogg_io.read()
 
 
+def ogg_bytes_to_caf_bytes(ogg_bytes: bytes) -> bytes:
+    """
+    Convert OGG/Opus audio bytes to CAF bytes (mono, 16 kHz).
+
+    Args:
+        ogg_bytes: Raw audio in OGG/Opus format.
+
+    Returns:
+        CAF encoded audio as bytes.
+    """
+    # Load from bytes
+    ogg_io = BytesIO(ogg_bytes)
+    sound = AudioSegment.from_file(ogg_io, format="ogg")
+
+    # Export to CAF in memory
+    caf_io = BytesIO()
+    sound.export(
+        caf_io,
+        format="caf",
+        parameters=["-ac", "1", "-ar", "16000"]  # mono, 16 kHz
+    )
+
+    # Rewind and return raw bytes
+    caf_io.seek(0)
+    return caf_io.read()
 
 def caf_path_to_ogg_bytes(caf_path: str) -> bytes:
     """

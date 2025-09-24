@@ -127,33 +127,47 @@ class UserService:
         Update or upsert user preferences.
 
         Args:
-            user_id: str or ObjectId
-            preferences: dict of fields to update
-            append: if True, values under 'annotations' are appended (deduplicated).
+            user_id: str or ObjectId of the user
+            preferences: dict of fields to update (do NOT include 'user_id' or '_id')
+            append: if True, values under 'annotations' are appended (de-duplicated via $addToSet)
         """
         db = self._get_database()
         preferences_collection = db.user_preferences
 
-        update_doc = {"$set": {"updated_at": datetime.now(pytz.UTC)}}
-        logger.info(f"Updating preferences for user {user_id}: {preferences} (append={append})")
-        # If appending annotations
-        if append and "annotations" in preferences:
-            annotations = preferences.get("annotations", [])
+        # sanitize incoming prefs; never allow user_id/_id to be overwritten
+        prefs = dict(preferences or {})
+        prefs.pop("user_id", None)
+        prefs.pop("_id", None)
+
+        now = datetime.now(timezone.utc)
+
+        update_doc = {
+            "$set": {"updated_at": now},
+            "$setOnInsert": {
+                "user_id": ObjectId(user_id),
+                "created_at": now,
+            },
+        }
+
+        if append and "annotations" in prefs:
+            annotations = prefs.pop("annotations")
             if not isinstance(annotations, list):
-                raise ValueError("Annotations must be a list when append=True")
+                raise ValueError("annotations must be a list when append=True")
+            # Create $addToSet only for annotations; this will create the field if missing
             update_doc["$addToSet"] = {"annotations": {"$each": annotations}}
-            # still include other fields
-            for k, v in preferences.items():
-                if k != "annotations":
-                    update_doc["$set"][k] = v
-        else:
-            update_doc["$set"].update(preferences)
+
+        # set any remaining scalar/top-level fields
+        if prefs:
+            update_doc["$set"].update(prefs)
+
+        logger.info(f"Updating preferences for user {user_id}: {preferences} (append={append})")
 
         result = preferences_collection.update_one(
             {"user_id": ObjectId(user_id)},
             update_doc,
             upsert=True
         )
+
         return result.modified_count > 0 or result.upserted_id is not None
 
 # Global instance

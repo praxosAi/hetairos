@@ -79,7 +79,6 @@ def create_preference_tools(user_id: str) -> list:
             payload = {
                 "annotations": merged,
                 "updated_at": _utc_now_iso(),
-                "user_id": user_id,  # ensure key consistency in upsert (service converts to ObjectId)
             }
             ok = user_service.add_new_preference_annotations(user_id, payload)
             return {
@@ -88,7 +87,7 @@ def create_preference_tools(user_id: str) -> list:
                 "updated": {"annotations": merged, "updated_at": payload["updated_at"]},
             }
         except Exception as e:
-            return {"ok": False, "message": f"Failed to add annotations: {e}"}
+            return {"ok": False, "message": f"Failed to add annotations"}
 
     @tool
     def set_assistant_name(assistant_name: str) -> Dict[str, Any]:

@@ -97,7 +97,12 @@ class EgressService:
                     except Exception as e:
                         logger.error(f"No chat_id in user record for Telegram message. Event: {event}, error: {e}", exc_info=True)
                         return
-                await self.telegram_client.send_message(chat_id, response_text)
+                
+                if response_text:
+                    await self.telegram_client.send_message(chat_id, response_text)
+                    if response_files:
+                        for file_obj in response_files:
+                            await self.telegram_client.send_media(chat_id, file_obj)
                 logger.info(f"Successfully sent response to Telegram user {chat_id}")
 
             elif source == "websocket":

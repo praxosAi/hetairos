@@ -12,9 +12,11 @@ from src.utils.database import db_manager
 @router.post("/telegram")
 async def handle_telegram_webhook(request: Request):
     """Handles incoming Telegram updates."""
+    
     try:
         data = await request.json()
     except Exception as e:
+        logger.info(f"Invalid JSON in Telegram webhook: {e}")
         raise HTTPException(status_code=400, detail="Invalid JSON")
     telegram_client = TelegramClient()
     logger.info(f"Received data from telegram webhook: {data}")

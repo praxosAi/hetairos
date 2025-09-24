@@ -54,8 +54,8 @@ class OutputGenerator:
         logger.info(f"speech generated")
         data = response.candidates[0].content.parts[0].inline_data
         if data and data.data:
-            wave_file = wave_file(data.data) 
-            ogg_bytes = wav_bytes_to_ogg_bytes(wave_file)
+            wave_bytes = wave_file(data.data) 
+            ogg_bytes = wav_bytes_to_ogg_bytes(wave_bytes)
             file_name = f"{datetime.datetime.utcnow().isoformat()}_{uuid.uuid4()}.ogg"
             audio_blob_name = await upload_bytes_to_blob_storage(ogg_bytes,  f"{prefix}/generated_audio/{file_name}", content_type="audio/ogg")
             audio_blob_sas_url = await get_blob_sas_url(audio_blob_name)

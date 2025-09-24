@@ -19,6 +19,7 @@ from langchain_core.utils.function_calling import convert_to_openai_function
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chat_models import init_chat_model
 import uuid
+from src.services.output_generator.generator import OutputGenerator
 from bson import ObjectId
 from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64
 from src.utils.audio import convert_ogg_b64_to_wav_b64
@@ -47,11 +48,21 @@ async def _gather_bounded(coros: List[Any], limit: int = 8):
     # Order of results matches order of coros
     return await asyncio.gather(*(_run(c) for c in coros), return_exceptions=True)
 # --- 1. Define the Structured Output and State ---
+class FileLink(BaseModel):
+    url: str = Field(description="URL to the file.")
+    file_type: Optional[str] = Field(description="Type of the file, e.g., image, document, etc.", enum=["image", "document", "audio", "video","other_file"])
+    file_name: Optional[str] = Field(description=" name of the file, if available. if not, come up with a descriptive name based on the content of the file.")
 class AgentFinalResponse(BaseModel):
     """The final structured response from the agent."""
     response: str = Field(description="The final, user-facing response to be delivered.")
-    delivery_modality: str = Field(description="The channel for the response. Should be the same as the input source.", enum=["email", "whatsapp", "websocket", "telegram"])
+    delivery_platform: str = Field(description="The channel for the response. Should be the same as the input source.", enum=["email", "whatsapp", "websocket", "telegram",'imessage'])
     execution_notes: Optional[str] = Field(description="Internal notes about the execution, summarizing tool calls or errors.")
+    output_modality: Optional[str] = Field(description="The modality of the output, e.g., text, image, file, etc. unless otherwise specified by user needs, this should be text", enum=["text", "voice", "image", "video",'file'])
+    generation_instructions: Optional[str] = Field(description="Instructions for generating audio, video, or image if applicable.")
+    file_links: Optional[List[FileLink]] = Field(description="Links to any files generated or used in the response.")
+    class Config:
+        extra = "forbid"
+        arbitrary_types_allowed = True
 
 class AgentState(MessagesState):
     user_context: UserContext
@@ -112,7 +123,12 @@ class LangGraphAgentRunner:
             "use the available tools to schedule the task."
             "do not confirm the scheduling with the user, just do it, unless the user specifically asks you to confirm it with them."
             "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
+            "if the user requests generation of audio, video or image, you should simply set the appropriate flag on output_modality, and generation_instructions, and not use any tool to generate them. this will be handled after your response is processed, with systems that are capable of generating them. your response in the final_response field should always simply be to acknowledge the request and say you would be happy to help. you will then describe the media in detail in the appropriate field, using the generation_instructions field, as well as setting the output modality field to the appropriate value for what the user actually wants."
         )
+        praxos_prompt = """
+        this assistant service has been developed by Praxos AI. the user can register and manage their account at https://www.mypraxos.com.
+        the user can see the web application at https://app.mypraxos.com and can see their integrations at https://app.mypraxos.com/integrations. if the user is missing an integration they want, direct them there.
+        """
         preferences = user_service.get_user_preferences(user_context.user_id) 
         preferences = preferences if preferences else {}
         timezone_name = preferences.get('timezone', 'America/New_York')
@@ -148,7 +164,7 @@ class LangGraphAgentRunner:
          "Pay attention to pronouns and formality levels in the prefered language, pronoun rules, and other similar nuances. mirror the user's language style and formality level in your responses."
         )
 
-        return base_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt
+        return base_prompt + praxos_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt
 
     async def _build_payload_entry(self, file: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Create a single payload dict for a file entry."""
@@ -279,10 +295,10 @@ class LangGraphAgentRunner:
         base_message_prefix: str = "",
         user_context: UserContext = None,
         max_concurrency: int = 8,
-    ) -> List[BaseMessage]:
+    ) -> Tuple[List[BaseMessage], bool]:
         """Parallel version of _generate_user_messages with better performance."""
         logger.info(f"Processing {len(input_messages)} grouped messages with parallel file handling")
-        
+        has_media = False
         # Phase 1: Build structure and collect file tasks
         message_structure = []
         all_file_tasks = []
@@ -343,6 +359,7 @@ class LangGraphAgentRunner:
             
             # Add file messages
             if file_count > 0:
+                has_media = True
                 message_payloads = file_payloads[file_start:file_start + file_count]
                 for file_info, payload in zip(files_info, message_payloads):
                     if isinstance(payload, Exception) or payload is None:
@@ -372,7 +389,7 @@ class LangGraphAgentRunner:
                 
                 logger.info(f"Added {file_count} files for message {i+1}/{len(input_messages)}")
         
-        return messages
+        return messages, has_media
 
     # ---------------------------------------------------
     # Generate file messages (parallel, order preserved)
@@ -520,9 +537,7 @@ class LangGraphAgentRunner:
 
             # Get conversation history first (before adding new messages)
             history, has_media = await self._get_conversation_history(conversation_id)
-            if has_media:
-                logger.info(f"Conversation {conversation_id} has media; switching to media-capable LLM")
-                self.llm = self.media_llm
+
             
 
 
@@ -535,7 +550,7 @@ class LangGraphAgentRunner:
             if isinstance(input, list):
                 # Grouped messages - use the parallel method
                 base_message_prefix = f'message sent on date {current_time_user} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
-                history = await self._generate_user_messages_parallel(
+                history, has_media = await self._generate_user_messages_parallel(
                     input, 
                     history, 
                     conversation_id=conversation_id,
@@ -558,16 +573,18 @@ class LangGraphAgentRunner:
                         message_prefix=message_prefix
                     )
             else:
-                return AgentFinalResponse(response="Invalid input format.", delivery_modality=source, execution_notes="Input must be a dict or list of dicts.")            
+                return AgentFinalResponse(response="Invalid input format.", delivery_platform=source, execution_notes="Input must be a dict or list of dicts.", output_modality="text", file_links=[], generation_instructions=None)            
 
 
-
+            if has_media:
+                logger.info(f"Conversation {conversation_id} has media; switching to media-capable LLM")
+                self.llm = self.media_llm
 
             
             if all_forwarded:
                 logger.info("All input messages are forwarded; verify with the user before taking actions.")
-                return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_modality=source, execution_notes="All input messages were marked as forwarded.")
-                
+                return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_platform=source, execution_notes="All input messages were marked as forwarded.", output_modality="text", file_links=[], generation_instructions=None)
+
             tools = await self.tools_factory.create_tools(user_context, metadata)
 
             tool_executor = ToolNode(tools)
@@ -584,10 +601,10 @@ class LangGraphAgentRunner:
             try:
                 if input_text and len(input_text) > 5 and praxos_api_key:
                     praxos_client = PraxosClient(f"env_for_{user_context.user_record.get('email')}", api_key=praxos_api_key)
-
-                    long_term_memory_context = await self._get_long_term_memory(praxos_client, input_text)
-                    if long_term_memory_context:
-                        system_prompt += long_term_memory_context
+                    ### @TODO: this needs a more intelligent approach. for example, if the input is just "hi" or "hello", we don't need to fetch long term memory.
+                    # long_term_memory_context = await self._get_long_term_memory(praxos_client, input_text)
+                    # if long_term_memory_context:
+                    #     system_prompt += long_term_memory_context
             except Exception as e:
                 logger.error(f"Error fetching long-term memory: {e}", exc_info=True)
 
@@ -613,7 +630,8 @@ class LangGraphAgentRunner:
                 prompt = (
                     f"Given the final response from an agent: '{final_message}', "
                     f"and knowing the initial request came from the '{source}' channel, "
-                    "format this into the required JSON structure. The delivery_modality must match the source channel."
+                    "format this into the required JSON structure. The delivery_platform must match the source channel, unless the user indicates or implies otherwise, or the command requires a different channel. "
+                    "If the response requires generating audio, video, or image, set the output_modality and generation_instructions fields accordingly.  the response should simply acknowledge the request to generate the media, and not attempt to generate it yourself. this is not a task for you. simply trust in the systems that will handle it after you. "
                 )
                 response = await self.structured_llm.ainvoke(prompt)
                 return {"final_response": response}
@@ -645,15 +663,45 @@ class LangGraphAgentRunner:
             final_state = await app.ainvoke(initial_state,{"recursion_limit": 100})
             
             final_response = final_state['final_response']
+            output_blobs = []
             await self.conversation_manager.add_assistant_message(conversation_id, final_response.response)
-
+            logger.info(f"Final response generated for execution {execution_id}: {final_response.model_dump_json(indent=2)}")
+            try:
+                if final_response.output_modality and final_response.output_modality != "text":
+                    logger.info(f"Non-text output modality '{final_response.output_modality}' detected; invoking output generator")
+                    generation_instructions = final_response.generation_instructions or f"Generate a {final_response.output_modality} based on the following text: {final_response.response}"
+                    output_generator = OutputGenerator()
+                    prefix = f"{user_context.user_id}/{source}/{conversation_id}/"
+                    if final_response.output_modality == "image":
+                        image_blob_url, image_file_name = await output_generator.generate_image(generation_instructions, prefix)
+                        if image_blob_url:
+                            output_blobs.append({"url": image_blob_url, "file_type": "image", "file_name": image_file_name})
+                    if final_response.output_modality in {"audio", "voice"}:
+                        audio_blob_url, audio_file_name = await output_generator.generate_speech(generation_instructions, prefix)
+                        if audio_blob_url:
+                            output_blobs.append({"url": audio_blob_url, "file_type": "audio", "file_name": audio_file_name})
+                    if final_response.output_modality == "video":
+                        video_blob_url, video_file_name = await output_generator.generate_video(generation_instructions, prefix)
+                        if video_blob_url:
+                            output_blobs.append({"url": video_blob_url, "file_type": "video", "file_name": video_file_name})
+            except Exception as e:
+                logger.error(f"Error during output generation: {e}", exc_info=True)
+                # Append error message to final response
+                final_response.response += "\n\n(Note: There was an error generating the requested media output. Please try again later.)"
+                # Downgrade to text-only response
+                final_response.output_modality = "text"
+                final_response.generation_instructions = None
+            if not final_response.file_links:
+                final_response.file_links = []
+            final_response.file_links.extend(output_blobs)
+            execution_record["status"] = "completed"
             return final_response
 
         except Exception as e:
             logger.error(f"Error during agent run {execution_id}: {e}", exc_info=True)
             execution_record["status"] = "failed"
             execution_record["error_message"] = str(e)
-            return AgentFinalResponse(response="I'm sorry, I'm having trouble processing your request. Please try again later.", delivery_modality=source, execution_notes=str(e))
+            return AgentFinalResponse(response="I'm sorry, I'm having trouble processing your request. Please try again later.", delivery_platform=source, execution_notes=str(e), output_modality="text", file_links=[], generation_instructions=None)
 
         finally:
             execution_record["completed_at"] = datetime.utcnow()

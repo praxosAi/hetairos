@@ -121,7 +121,7 @@ class ExecutionWorker:
                     files=event["payload"]["files"],
                 )
 
-            elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram"]:
+            elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram",'imessage']:
                 # --- Handle Agent Task ---
                 if source == "recurring":
                     try:
@@ -159,8 +159,8 @@ class ExecutionWorker:
             logger.error(f"Error processing single event {event}: {e}", exc_info=True)
 
     async def post_process_langgraph_response(self, result: dict, event: dict):
-        event["output_type"] = result.delivery_modality
-        await egress_service.send_response(event, {"response": result.response})
+        event["output_type"] = result.delivery_platform
+        await egress_service.send_response(event, {"response": result.response, "file_links": result.file_links})
 
 
     async def determine_media_presence(self, event: dict) -> bool:

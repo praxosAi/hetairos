@@ -22,6 +22,11 @@ class Settings:
     
     # Telegram
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+    # Sendblue (iMessage)
+    SENDBLUE_API_KEY = os.getenv("SENDBLUE_API_KEY")
+    SENDBLUE_API_SECRET = os.getenv("SENDBLUE_API_SECRET")
+    SENDBLUE_SIGNING_SECRET = os.getenv("SENDBLUE_SIGNING_SECRET")
     
     # OpenAI
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")

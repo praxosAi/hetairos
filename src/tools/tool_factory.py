@@ -4,7 +4,7 @@ from src.utils.logging import setup_logger
 from langchain_core.tools import Tool
 from langchain_google_community import GoogleSearchAPIWrapper
 from langchain_community.tools import GooglePlacesTool
-
+import asyncio
 # Integration Clients
 from src.integrations.notion.notion_client import NotionIntegration
 from src.integrations.microsoft.graph_client import MicrosoftGraphIntegration
@@ -46,40 +46,46 @@ class AgentToolsFactory:
 
         have_email_tool = False
         have_calendar_tool = False
-
         if not user_id:
             return []
-
-        # --- Google Integrations ---
         gcal_integration = GoogleCalendarIntegration(user_id)
-        if await gcal_integration.authenticate():
+        gmail_integration = GmailIntegration(user_id)
+        gdrive_integration = GoogleDriveIntegration(user_id)
+        outlook_integration = MicrosoftGraphIntegration(user_id)
+        notion_integration = NotionIntegration(user_id)
+        dropbox_integration = DropboxIntegration(user_id)
+        tasks = [gcal_integration.authenticate(), gmail_integration.authenticate(), gdrive_integration.authenticate(), outlook_integration.authenticate(), notion_integration.authenticate(), dropbox_integration.authenticate()]
+        authenticated_integrations = await asyncio.gather(*tasks, return_exceptions=True)
+        gcal_auth_result = authenticated_integrations[0]
+        gmail_auth_result = authenticated_integrations[1]
+        gdrive_auth_result = authenticated_integrations[2]
+        outlook_auth_result = authenticated_integrations[3]
+        notion_auth_result = authenticated_integrations[4]
+        dropbox_auth_result = authenticated_integrations[5]
+
+        if gcal_auth_result is True:
             tools.extend(create_calendar_tools(gcal_integration))
             have_calendar_tool = True
 
-        gmail_integration = GmailIntegration(user_id)
-        if await gmail_integration.authenticate():
+        if gmail_auth_result is True:
             tools.extend(create_gmail_tools(gmail_integration))
             have_email_tool = True
 
-        gdrive_integration = GoogleDriveIntegration(user_id)
-        if await gdrive_integration.authenticate():
+        if gdrive_auth_result is True:
             tools.extend(create_drive_tools(gdrive_integration))
         
         # --- Microsoft Integration ---
-        outlook_integration = MicrosoftGraphIntegration(user_id)
-        if await outlook_integration.authenticate():
+        if outlook_auth_result is True:
             tools.extend(create_outlook_tools(outlook_integration))
             have_email_tool = True
             have_calendar_tool = True
 
         # --- Notion Integration ---
-        notion_integration = NotionIntegration(user_id)
-        if await notion_integration.authenticate():
+        if notion_auth_result is True:
             tools.extend(create_notion_tools(notion_integration))
 
         # --- Dropbox Integration ---
-        dropbox_integration = DropboxIntegration(user_id)
-        if await dropbox_integration.authenticate():
+        if dropbox_auth_result is True:
             tools.extend(create_dropbox_tools(dropbox_integration))
 
         # --- Praxos & Other Core Tools ---

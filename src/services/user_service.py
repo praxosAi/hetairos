@@ -6,7 +6,7 @@ from src.config.settings import settings
 from bson import ObjectId
 from src.utils.logging.base_logger import setup_logger
 logger = setup_logger(__name__)
-from datetime import timezone, timedelta
+from datetime import timezone, timedelta, datetime
 class UserService:
     def __init__(self):
         self._client = None
@@ -118,7 +118,22 @@ class UserService:
         db = self._get_database()
         preferences_collection = db.user_preferences
         preference = preferences_collection.find_one({"user_id": ObjectId(user_id)})
-        return preference 
+        return preference
+
+    def can_have_access(self, user:dict=None, user_id=None):
+        if not user:
+            if not user_id:
+                raise Exception("either user or user_id should be passed in")
+            user = self.get_user_by_id(user_id)
+
+        if not user:
+            return False
+        
+        if user.get('trial_end_date') and user.get('trial_end_date') > datetime.now():
+            return True
+        
+        if not user.get("billing_setup_completed") or (user.get('payment_status') in ['pending', 'incomplete', 'incomplete_expired']):
+            return False
 
     # def get_user_timezone(self,user_id: str) -> ZoneInfo:
     #     """

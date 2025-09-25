@@ -6,6 +6,7 @@ from typing import Dict, Any, List
 
 from src.config.settings import settings
 from src.utils.logging.base_logger import setup_logger
+from src.services.user_service import user_service
 
 logger = setup_logger(__name__)
 
@@ -111,12 +112,26 @@ class AzureEventQueue:
                     f"files={has_files}, count={message_count}, final={delay}")
         
         return delay
+    
+    def _should_be_suspended(self, event: Dict[str, Any]):
+        user_id = event.get('user_id')
+
+        if not user_id:
+            return True
+        
+        return user_service.can_have_access(user_id=user_id)
 
     async def publish(self, event: Dict[str, Any], session_id: str = None):
         """
         Publish an event to the Service Bus queue with a session for message grouping.
         Session ID is auto-generated based on user_id and source if not provided.
         """
+
+        if self._should_be_suspended(event):
+            from src.core.suspended_event_queue import suspended_event_queue
+            await suspended_event_queue.publish(event)
+            return
+
         from azure.servicebus.aio import ServiceBusClient
         from azure.servicebus import ServiceBusMessage
         try:
@@ -139,6 +154,11 @@ class AzureEventQueue:
         """
         Publish an event to the Service Bus queue, at a specific timestamp.
         """
+        if self._should_be_suspended(event):
+            from src.core.suspended_event_queue import suspended_event_queue
+            await suspended_event_queue.publish_scheduled_event(event, timestamp)
+            return
+        
         from azure.servicebus.aio import ServiceBusClient
         from azure.servicebus import ServiceBusMessage
         try:

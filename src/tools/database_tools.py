@@ -32,4 +32,5 @@ def create_database_access_tools(user_id: str) -> list:
         except Exception as e:
             logger.error(f"Error fetching integration records for user {user_id}: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e), user_message="Failed to fetch integration records.")
+    ### TODO: media tool, and praxos call for media tool with source id
     return [fetch_latest_messages, get_user_integration_records]

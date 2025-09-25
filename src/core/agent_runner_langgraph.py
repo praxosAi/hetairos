@@ -649,22 +649,22 @@ class LangGraphAgentRunner:
             llm_with_tools = self.llm.bind_tools(tools)
 
             system_prompt = self._create_system_prompt(user_context, source, metadata)
-            
-            from src.config.settings import settings
-            if settings.OPERATING_MODE == "local":
-                praxos_api_key = settings.PRAXOS_API_KEY
-            else:
-                praxos_api_key = user_context.user_record.get("praxos_api_key")
+            ### this creates unnecessary overhead and latency, so we'll disable it for now.
+            # from src.config.settings import settings
+            # if settings.OPERATING_MODE == "local":
+            #     praxos_api_key = settings.PRAXOS_API_KEY
+            # else:
+            #     praxos_api_key = user_context.user_record.get("praxos_api_key")
 
-            try:
-                if input_text and len(input_text) > 5 and praxos_api_key:
-                    praxos_client = PraxosClient(f"env_for_{user_context.user_record.get('email')}", api_key=praxos_api_key)
-                    ### @TODO: this needs a more intelligent approach. for example, if the input is just "hi" or "hello", we don't need to fetch long term memory.
-                    # long_term_memory_context = await self._get_long_term_memory(praxos_client, input_text)
-                    # if long_term_memory_context:
-                    #     system_prompt += long_term_memory_context
-            except Exception as e:
-                logger.error(f"Error fetching long-term memory: {e}", exc_info=True)
+            # try:
+            #     if input_text and len(input_text) > 5 and praxos_api_key:
+            #         praxos_client = PraxosClient(f"env_for_{user_context.user_record.get('email')}", api_key=praxos_api_key)
+            #         ### @TODO: this needs a more intelligent approach. for example, if the input is just "hi" or "hello", we don't need to fetch long term memory.
+            #         # long_term_memory_context = await self._get_long_term_memory(praxos_client, input_text)
+            #         # if long_term_memory_context:
+            #         #     system_prompt += long_term_memory_context
+            # except Exception as e:
+            #     logger.error(f"Error fetching long-term memory: {e}", exc_info=True)
 
 
 

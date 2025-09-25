@@ -13,7 +13,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient) -> list:
     async def query_praxos_memory(query: str) -> ToolExecutionResponse:
         """
         Queries the Praxos knowledge base to retrieve context and information. This will have past converesations and information about the user and their preferences.
-        Use this for questions about past interactions, user preferences, or stored knowledge. this is often a good first step. you may use it to obtain information about the user and their preferences.
+        Use this for questions about past interactions, user preferences, or stored knowledge. this is often a good first step. you may use it to obtain information about the user and their preferences. However, do not blindly use it if you do not feel that more info is necessary.
         
 
         Try to make the query itself rich, adding information when needed. short queries are unlikely to get good results.

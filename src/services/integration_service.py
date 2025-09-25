@@ -9,8 +9,11 @@ from src.utils.database import db_manager
 from src.services.token_encryption import decrypt_token, encrypt_token
 from bson import ObjectId
 from src.utils.logging.base_logger import setup_logger
+from src.utils.redis_client import redis_client
+from src.services.user_service import user_service
 logger = setup_logger(__name__)
 import json
+import re
 
 class IntegrationService:
     """Manages all user integrations, including capabilities and authentication."""
@@ -76,8 +79,28 @@ class IntegrationService:
         else:
             return None
 
+    async def add_integration_for_messaging_app(self, user_id: str,  name: str, connected_account: str,telegram_chat_id = None) -> str:
+        new_integration_record = {
+            "user_id": ObjectId(user_id),
+            'name': name,
+            'type': 'messaging',
+            'provider': name,
+            'connected_account': connected_account,
+            'status': 'active',
+            'created_at': datetime.now(timezone.utc),
+            'updated_at': datetime.now(timezone.utc),
+            'metadata': {'connected_at': datetime.now(timezone.utc).isoformat(),'consent_timestamp': datetime.now(timezone.utc).isoformat(),'phone_verified': True},
 
+        }
+        if name == "telegram":
+            new_integration_record['telegram_chat_id'] = telegram_chat_id
+        
+        result = await self.db_manager.db["integrations"].insert_one(new_integration_record)
 
+        if result:
+            return new_integration_record
+        else:
+            return None
     async def get_integration_token(self, user_id: str, name: str) -> Optional[Dict[str, Any]]:
         """Get the decrypted token for a specific user and provider."""
         if settings.OPERATING_MODE == "local":
@@ -125,11 +148,48 @@ class IntegrationService:
             return None
     async def is_authorized_user(self, integration_name: str, connected_account: str) -> bool:
         """Check if a phone number belongs to an authorized user"""
-        integration = await self.db_manager.db["integrations"].find_one({"name": integration_name, "connected_account": connected_account})
+        integration = await self.db_manager.db["integrations"].find_one({"name": integration_name, "connected_account": connected_account,'status':'active'})
         if integration:
             return integration
         else:
             return False
+
+    async def is_authorized_or_authorizable_user(self, integration_name: str, connected_account: str, message_text: str=None, telegram_chat_id = None) -> bool:
+        # Step 1: check if user already authorized
+        pre_authorized = await self.is_authorized_user(integration_name, connected_account)
+        if pre_authorized:
+            return pre_authorized
+        if not message_text:
+            return False
+        # Step 2: check for init handshake
+        try:
+            if "INITIALIZE COMMUNICATION PROTOCOL" in message_text.upper():
+                # Step 3: extract code inside brackets
+                match = re.search(r"\[(.*?)\]", message_text)
+                if match:
+                    auth_code = match.group(1).strip()
+                    # Step 4: try to authorize using this code
+                    redis_key = f"messaging_auth_code:{auth_code}"
+                    try:
+                        user_id = await redis_client.get(redis_key)
+                        logger.info(f"Retrieved user_id {user_id} from Redis for auth_code {auth_code}")
+                        if user_id:
+                            # Check if the user exists
+                            user = await user_service.get_user_by_id(user_id)
+                            if user:
+                                #### we can now create the integration record
+                                new_record = await self.add_integration_for_messaging_app(user_id, integration_name, connected_account,telegram_chat_id)
+                                if new_record:
+                                    return new_record
+                            else:
+                                logger.warning(f"No user found with ID {user_id} for auth_code {auth_code}")
+                    except Exception as e:
+                        logger.error(f"Error retrieving user_id from Redis for auth_code {auth_code}: {e}")
+        except Exception as e:
+            logger.error(f"Error authorizing user for auth_code {auth_code}: {e}")
+
+
+        return False
     async def create_google_credentials(self, user_id: str, name: str) -> Optional[Credentials]:
         """Creates a Google Credentials object from a user's stored token."""
         token_doc = await self.get_integration_token(user_id, name)

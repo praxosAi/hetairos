@@ -130,7 +130,13 @@ class AzureEventQueue:
 
         if self._should_be_suspended(event):
             from src.core.suspended_event_queue import suspended_event_queue
+            from src.egress.service import egress_service
+            import copy 
             await suspended_event_queue.publish(event)
+            response_event = copy.deepcopy(event)
+            response_event['responce'] = "Your subscription has been deactivated, due to either end of trial preoid or billing issue.\nPlease, loggin to app.mypraxos.com and complete your payment."
+            response_event['output_type'] = response_event.get('source')
+            egress_service.send_response(response_event)
             return
 
         from azure.servicebus.aio import ServiceBusClient
@@ -157,7 +163,13 @@ class AzureEventQueue:
         """
         if self._should_be_suspended(event):
             from src.core.suspended_event_queue import suspended_event_queue
+            from src.egress.service import egress_service
+            import copy 
             await suspended_event_queue.publish_scheduled_event(event, timestamp)
+            response_event = copy.deepcopy(event)
+            response_event['responce'] = "Your subscription has been deactivated, due to either end of trial preoid or billing issue.\nPlease, loggin to app.mypraxos.com and complete your payment."
+            response_event['output_type'] = response_event.get('source')
+            egress_service.send_response(response_event)
             return
         
         from azure.servicebus.aio import ServiceBusClient

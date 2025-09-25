@@ -8,7 +8,7 @@ metadata:
     # 1. Enable sticky sessions (Cookie-based Affinity)
     appgw.ingress.kubernetes.io/cookie-based-affinity: "true"
     appgw.ingress.kubernetes.io/affinity-cookie-name: "HETAIROI_STICKY_SESSION"
-
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
     # 2. Set a long timeout for persistent connections like WebSockets
     appgw.ingress.kubernetes.io/request-timeout: "3600"
 spec:

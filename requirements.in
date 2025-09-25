@@ -29,6 +29,7 @@ langgraph
 langgraph-prebuilt
 langchain[openai]
 langchain-community
+google-genai
 google-ai-generativelanguage==0.7.0
 langchain-google-genai==2.1.12
 langchain_google_community
@@ -42,7 +43,6 @@ azure-keyvault-secrets
 azure-identity
 redis
 azure-servicebus
-
 starlette
 anyio
 pydub

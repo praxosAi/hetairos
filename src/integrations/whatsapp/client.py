@@ -5,7 +5,10 @@ import os
 from typing import Dict, Tuple, Optional
 from src.config.settings import settings
 from src.utils.logging import setup_logger
-
+from src.utils.blob_utils import download_from_blob_storage
+import mimetypes
+from src.utils.text_chunker import TextChunker
+import uuid
 class WhatsAppClient:
     def __init__(self):
         self.access_token = settings.WHATSAPP_ACCESS_TOKEN
@@ -13,54 +16,83 @@ class WhatsAppClient:
         self.api_version = settings.WHATSAPP_API_VERSION
         self.base_url = f"https://graph.facebook.com/{self.api_version}/{self.phone_number_id}"
         self.logger = setup_logger("whatsapp_client")
+
+    async def upload_media(self, file_path: str, mime_type: str) -> Optional[str]:
+        """Upload media to WhatsApp and get a media ID"""
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+        url = f"{self.base_url}/media"
         
-    async def send_message(self, to_phone: str, message: str, conversation_id: int = None):
-        """Send text message via WhatsApp Business API"""
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": to_phone,
-            "type": "text",
-            "text": {"body": message}
-        }
+        with open(file_path, 'rb') as file:
+            form_data = aiohttp.FormData()
+            form_data.add_field('file', file, filename=os.path.basename(file_path), content_type=mime_type)
+            form_data.add_field('messaging_product', 'whatsapp')
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, headers=headers, data=form_data) as response:
+                        response.raise_for_status()
+                        data = await response.json()
+                        return data.get("id")
+            except aiohttp.ClientError as e:
+                self.logger.error(f"WhatsApp media upload error: {e}")
+                return None
 
         
-        timeout = aiohttp.ClientTimeout(total=10) 
+    async def send_message(self, to_phone: str, message: str, conversation_id: int = None):
+        """Send text message via WhatsApp Business API, chunking smartly if it's too long."""
+        responses = []
+        # WhatsApp's official limit is higher, but 1600 is a widely cited safe limit.
+        chunker = TextChunker(max_length=1600)
         
-        try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(
-                    f"{self.base_url}/messages",
-                    headers=headers,
-                    json=payload
-                ) as response:
-                    response.raise_for_status()
-                    result = await response.json()
-                    
-                    if conversation_id and "messages" in result:
-                        message_id = result["messages"][0]["id"]
-                        from src.utils.database import conversation_db
+        chunks = list(chunker.chunk(message))
+        
+        for i, chunk in enumerate(chunks):
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": to_phone,
+                "type": "text",
+                "text": {"body": chunk}
+            }
+
+            timeout = aiohttp.ClientTimeout(total=10) 
+            
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(
+                        f"{self.base_url}/messages",
+                        headers=headers,
+                        json=payload
+                    ) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        responses.append(result)
                         
-                        db = conversation_db
-                        await db.store_message_status(
-                            message_id=message_id,
-                            conversation_id=conversation_id,
-                            platform="whatsapp",
-                            status="sent"
-                        )
-                    
-                    return result
-        except asyncio.TimeoutError:
-            self.logger.error(f"WhatsApp API timeout for message to {to_phone}")
-            return {"error": "timeout", "message": "Message sending timed out"}
-        except aiohttp.ClientError as e:
-            self.logger.error(f"WhatsApp send message error: {e}")
-            return {"error": str(e)}
+                        # Only store the status for the last message in the chunk
+                        if conversation_id and "messages" in result and i == len(chunks) - 1:
+                            message_id = result["messages"][0]["id"]
+                            from src.utils.database import conversation_db
+                            
+                            db = conversation_db
+                            await db.store_message_status(
+                                message_id=message_id,
+                                conversation_id=conversation_id,
+                                platform="whatsapp",
+                                status="sent"
+                            )
+            except asyncio.TimeoutError:
+                self.logger.error(f"WhatsApp API timeout for message to {to_phone}")
+                responses.append({"error": "timeout", "message": "Message sending timed out"})
+            except aiohttp.ClientError as e:
+                self.logger.error(f"WhatsApp send message error: {e}")
+                responses.append({"error": str(e)})
+        
+        return responses
     
     async def mark_as_read(self, message_id: str):
         """Mark message as read"""
@@ -138,6 +170,89 @@ class WhatsAppClient:
         
         return {"error": f"Failed after {max_retries} retries"}
     
+    async def send_media(self, to_phone: str, blob_name: str, media_type: str, caption: str = ""):
+        """Send a media message via WhatsApp."""
+        file_data = await download_from_blob_storage(blob_name)
+        if not file_data:
+            self.logger.error(f"Failed to download {blob_name} from blob storage.")
+            return None
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(blob_name)[1]) as temp_file:
+            temp_file.write(file_data)
+            temp_file_path = temp_file.name
+        
+        mime_type = mimetypes.guess_type(temp_file_path)[0]
+        if not mime_type:
+            self.logger.error(f"Could not determine mime type for {temp_file_path}")
+            os.unlink(temp_file_path)
+            return None
+
+        media_id = await self.upload_media(temp_file_path, mime_type)
+        os.unlink(temp_file_path)
+
+        if not media_id:
+            self.logger.error("Failed to upload media to WhatsApp.")
+            return None
+
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to_phone,
+            "type": media_type,
+            media_type: {
+                "id": media_id,
+            }
+        }
+        if media_type == "document":
+            payload[media_type]["filename"] = os.path.basename(blob_name)
+
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{self.base_url}/messages", headers=headers, json=payload) as response:
+                    response.raise_for_status()
+                    return await response.json()
+        except aiohttp.ClientError as e:
+            self.logger.error(f"WhatsApp send media error: {e}")
+            return None
+    async def send_media_from_link(self, to_phone: str, media_link_object: Dict):
+        """Send a media message via WhatsApp."""
+        self.logger.info(f"Sending media via WhatsApp to {to_phone} with link object: {media_link_object}")
+        url = media_link_object.get("url")
+        media_type = media_link_object.get("file_type", "document")
+        file_name = media_link_object.get("file_name", uuid.uuid4().hex)
+        if not url:
+            self.logger.error(f"No URL provided in media link object: {media_link_object}")
+            return None
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to_phone,
+            "type": media_type,
+            media_type: {
+                "link": url,
+            }
+        }
+        if media_type == "document":
+            payload[media_type]["filename"] = file_name
+
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{self.base_url}/messages", headers=headers, json=payload) as response:
+                    response.raise_for_status()
+                    return await response.json()
+        except aiohttp.ClientError as e:
+            self.logger.error(f"WhatsApp send media error: {e}")
+            return None
     async def get_media_url(self, media_id: str) -> Optional[str]:
         """Get media download URL from WhatsApp API"""
         headers = {

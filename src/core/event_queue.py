@@ -6,6 +6,7 @@ from typing import Dict, Any, List
 
 from src.config.settings import settings
 from src.utils.logging.base_logger import setup_logger
+from azure.servicebus.exceptions import OperationTimeoutError
 from src.services.user_service import user_service
 
 logger = setup_logger(__name__)
@@ -320,8 +321,12 @@ class AzureEventQueue:
                                         await receiver.abandon_message(msg)
                             return  # Exit the session retry loop
                         elif "no messages available" not in str(session_error).lower():
-                            logger.error(f"Session processing error: {session_error}", exc_info=True)
-                        await asyncio.sleep(1)  # Brief pause before trying again
+                            if isinstance(session_error, OperationTimeoutError):
+                                logger.info("Session receive operation timed out, retrying...")
+                                await asyncio.sleep(1)
+                            else:
+                                logger.error(f"Session processing error: {session_error}", exc_info=True)
+                          # Brief pause before trying again
             
             except Exception as e:
                 logger.error(f"Service Bus connection error in session consumer: {e}. Reconnecting in 10 seconds...", exc_info=True)

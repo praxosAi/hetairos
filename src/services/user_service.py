@@ -6,7 +6,9 @@ from src.config.settings import settings
 from bson import ObjectId
 from src.utils.logging.base_logger import setup_logger
 logger = setup_logger(__name__)
-from datetime import timezone, timedelta, datetime
+ 
+from datetime import timezone, timedelta,datetime
+import pytz
 class UserService:
     def __init__(self):
         self._client = None
@@ -135,35 +137,53 @@ class UserService:
         if not user.get("billing_setup_completed") or (user.get('payment_status') in ['pending', 'incomplete', 'incomplete_expired']):
             return False
 
-    # def get_user_timezone(self,user_id: str) -> ZoneInfo:
-    #     """
-    #     Get the user's timezone as a ZoneInfo object from their stored
-    #     IANA timezone name. Defaults to UTC if not found or invalid.
-    #     """
-    #     try:
-    #         db = self._get_database()
-    #         user = db.users.find_one({"_id": ObjectId(user_id)})
-            
-    #         # Use a safe default of 'UTC' if user or timezone field is missing
-    #         if user and user.get("timezone"):
-    #             timezone_str = user["timezone"]
-    #             try:
-    #                 # This line converts the string into a rich timezone object
-    #                 return ZoneInfo(timezone_str)
-    #             except ZoneInfoNotFoundError:
-    #                 logger.warning(
-    #                     f"User {user_id} has an invalid timezone stored: '{timezone_str}'. "
-    #                     "Defaulting to UTC."
-    #                 )
-    #                 # Default to UTC if the string is not a valid IANA name
-    #                 return ZoneInfo("UTC")
-    #         else:
-    #             return ZoneInfo("UTC")
-                
-    #     except Exception as e:
-    #         logger.error(f"Unexpected error retrieving timezone for user {user_id}: {e}")
-    #         # Return a safe, unambiguous default in case of any database error
-    #         return ZoneInfo("UTC")
+    def add_new_preference_annotations(self, user_id: str | ObjectId, preferences: dict, append: bool = False):
+        """
+        Update or upsert user preferences.
+
+        Args:
+            user_id: str or ObjectId of the user
+            preferences: dict of fields to update (do NOT include 'user_id' or '_id')
+            append: if True, values under 'annotations' are appended (de-duplicated via $addToSet)
+        """
+        db = self._get_database()
+        preferences_collection = db.user_preferences
+
+        # sanitize incoming prefs; never allow user_id/_id to be overwritten
+        prefs = dict(preferences or {})
+        prefs.pop("user_id", None)
+        prefs.pop("_id", None)
+
+        now = datetime.now(timezone.utc)
+
+        update_doc = {
+            "$set": {"updated_at": now},
+            "$setOnInsert": {
+                "user_id": ObjectId(user_id),
+                "created_at": now,
+            },
+        }
+
+        if append and "annotations" in prefs:
+            annotations = prefs.pop("annotations")
+            if not isinstance(annotations, list):
+                raise ValueError("annotations must be a list when append=True")
+            # Create $addToSet only for annotations; this will create the field if missing
+            update_doc["$addToSet"] = {"annotations": {"$each": annotations}}
+
+        # set any remaining scalar/top-level fields
+        if prefs:
+            update_doc["$set"].update(prefs)
+
+        logger.info(f"Updating preferences for user {user_id}: {preferences} (append={append})")
+
+        result = preferences_collection.update_one(
+            {"user_id": ObjectId(user_id)},
+            update_doc,
+            upsert=True
+        )
+
+        return result.modified_count > 0 or result.upserted_id is not None
 
 # Global instance
 user_service = UserService()

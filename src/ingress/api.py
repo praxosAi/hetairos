@@ -7,6 +7,7 @@ from src.ingress.webhook_handlers import gmail_handler
 from src.ingress.webhook_handlers import telegram_handler
 from src.ingress.webhook_handlers import notion_handler
 from src.ingress.webhook_handlers import outlook_handler
+from src.ingress.webhook_handlers import imessage_handler
 from src.workers.execution_worker import execution_task
 from src.workers.conversation_consolidator import ConversationConsolidator
 
@@ -31,6 +32,7 @@ app.include_router(gmail_handler.router, prefix="/webhooks")
 app.include_router(telegram_handler.router, prefix="/webhooks")
 app.include_router(notion_handler.router, prefix="/webhooks")
 app.include_router(outlook_handler.router, prefix="/webhooks")
+app.include_router(imessage_handler.router, prefix="/webhooks")
 
 @app.get("/")
 async def root():

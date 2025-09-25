@@ -134,8 +134,13 @@ class ConversationDatabase:
         cursor = self.messages.find(
             {"user_id": ObjectId(user_id)}
         ).sort("timestamp", -1).limit(limit)
-        messages = await cursor.to_list(length=limit)
-        return list(reversed(messages))  # Return in chronological order
+        messages_raw = await cursor.to_list(length=limit)
+        messages = list(reversed(messages_raw))  # Return in chronological order
+        for message in messages:
+            message.pop("_id", None)  # Remove MongoDB internal ID
+            message.pop("user_id", None)  # Remove user_id for privacy
+            message.pop("conversation_id", None)  # Remove conversation_id for privacy
+        return messages
     async def bulk_update_messages(self, messages_dict: Dict[str, Any]):
         """Bulk update multiple messages."""
         if not messages_dict:

@@ -10,7 +10,7 @@ def create_database_access_tools(user_id: str) -> list:
     @tool
     async def fetch_latest_messages(limit: int = 5) -> ToolExecutionResponse:
         """
-        Fetches the latest messages for the user.
+        Fetches the latest messages for the user. do not use this for long term memory, use it if you are confused about most recent messages, or a message feels like it was part of a conversation recently.
         """
         try:
             # Placeholder for actual database fetching logic

@@ -29,23 +29,24 @@ class ConversationManager:
         """Check if conversation is still within the inactivity timeout"""
         return not await self.db.is_conversation_expired(conversation_id, self.INACTIVITY_TIMEOUT // 60,payload)
     
-    async def add_user_message(self, conversation_id: str, content: str, metadata: Dict = None) -> str:
+    async def add_user_message(self, user_id: str,  conversation_id: str, content: str, metadata: Dict = None) -> str:
         """Add user message to conversation"""
-        return await self.db.add_message(conversation_id, 'user', content, 'text', metadata)
+        return await self.db.add_message(user_id, conversation_id, 'user', content, 'text', metadata)
 
-    async def add_user_media_message(self, conversation_id: str, content: str, inserted_id: str, message_type: str = 'media', metadata: Dict = None) -> str:
+    async def add_user_media_message(self, user_id:str, conversation_id: str, content: str, inserted_id: str, message_type: str = 'media', metadata: Dict = None) -> str:
         """Add user media message to conversation"""
-        return await self.db.add_message(conversation_id, 'user', content + f" PLACEHOLDER FOR {inserted_id}", message_type, metadata)
-    async def add_assistant_message(self, conversation_id: str, content: str, 
+        return await self.db.add_message(user_id, conversation_id, 'user', content + f" PLACEHOLDER FOR {inserted_id}", message_type, metadata)
+
+    async def add_assistant_message(self, user_id: str, conversation_id: str, content: str, 
                              message_type: str = 'text', metadata: Dict = None) -> str:
         """Add assistant message to conversation"""
         if not content or content.replace(' ', '').lower() == '':
             content = "No response from the assistant."
-        return await self.db.add_message(conversation_id, 'assistant', content, message_type, metadata)
-    
-    async def add_system_message(self, conversation_id: str, content: str, metadata: Dict = None) -> str:
+        return await self.db.add_message(user_id, conversation_id, 'assistant', content, message_type, metadata)
+
+    async def add_system_message(self, user_id: str, conversation_id: str, content: str, metadata: Dict = None) -> str:
         """Add system message to conversation"""
-        return await self.db.add_message(conversation_id, 'system', content, 'system', metadata)
+        return await self.db.add_message(user_id, conversation_id, 'system', content, 'system', metadata)
     
     async def get_conversation_context(self, conversation_id: str) -> Dict:
         """Get comprehensive conversation context for processing"""

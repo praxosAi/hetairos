@@ -124,6 +124,7 @@ class AgentToolsFactory:
         
         try:
             tools.extend(create_integration_tools(user_id))
+            logger.info("Integration tools created successfully.")
         except Exception as e:
             logger.error(f"Error creating integration tools: {e}", exc_info=True)
 

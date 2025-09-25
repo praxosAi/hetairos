@@ -100,14 +100,15 @@ class ConversationDatabase:
             {"$set": {"praxos_source_id": source_id}}
         )
 
-    async def add_message(self, conversation_id: str, role: str, content: str, 
+    async def add_message(self, user_id: str,conversation_id: str, role: str, content: str, 
                            message_type: str = 'text', metadata: Dict = None) -> str:
         """Add a message to a conversation and update last_activity."""
         if metadata is None:
             metadata = {}
         
         message_doc = {
-            "conversation_id": conversation_id,
+            "conversation_id": ObjectId(conversation_id),
+            "user_id": ObjectId(user_id),
             "role": role,
             "content": content,
             "message_type": message_type,
@@ -128,7 +129,13 @@ class ConversationDatabase:
         ).sort("timestamp", 1)
         return await cursor.to_list()
 
-    
+    async def get_recent_messages(self, conversation_id: str, limit: int = 10) -> List[Dict]:
+        """Get the most recent messages for a conversation."""
+        cursor = self.messages.find(
+            {"conversation_id": conversation_id}
+        ).sort("timestamp", -1).limit(limit)
+        messages = await cursor.to_list(length=limit)
+        return list(reversed(messages))  # Return in chronological order
     async def bulk_update_messages(self, messages_dict: Dict[str, Any]):
         """Bulk update multiple messages."""
         if not messages_dict:

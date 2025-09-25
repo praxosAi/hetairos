@@ -73,7 +73,7 @@ def create_integration_tools(user_id: str) -> list[Tool]:
         Tool(
             name="get_oauth_initiation_url",
             description=(
-                "Generates a secure, single-use URL for a user to connect a new integration "
+                "Generates a secure, single-use URL for a user to connect a new integration. if the user wants to use a tool for an integration they haven't connected yet, or asks to integrate it, use this tool."
                 "like Gmail, Outlook, Notion, etc. The user must be asked to click this link "
                 "to complete the authentication. Provide the 'integration_name' as an argument."
             ),

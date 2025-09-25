@@ -39,7 +39,12 @@ class IMessageClient:
         }
         
         return await self._make_request("POST", f"{self.base_url}/send-message", payload)
-
+    async def send_contact_card(self, to_number: str):
+        payload ={
+            'number': to_number,
+            'media_url': 'https://mypraxospublic.blob.core.windows.net/static/praxos.vcf'
+        }
+        return await self._make_request("POST", f"{self.base_url}/send-message", payload)
     async def send_media(self, to_number: str, file_obj: str):
         """Send media message via Sendblue iMessage API"""
         url = file_obj.get("url")

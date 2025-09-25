@@ -63,16 +63,34 @@ async def handle_imessage_webhook(request: Request):
     if not phone_number:
         logger.warning("No phone number in webhook payload")
         return {"status": "ok"}
-
+    imessage_client = IMessageClient()
+    text = data.get("content")
     integration_record = await integration_service.is_authorized_user("imessage", phone_number)
     if not integration_record:
-        logger.warning(f"User {phone_number} is not authorized to use the bot")
-        imessage_client = IMessageClient()
-        await imessage_client.send_message(phone_number, "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com")
-        return {"status": "ok"}
+        logger.info(f"Authorizing user for phone number {phone_number}")
+        try:
+            integration_record,user = await integration_service.is_authorizable_user("imessage", phone_number, text)
+            if integration_record and user:
+                try:
+                    welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n iMessage communication initialized. \n\n Welcome to Praxos, {user.get('first_name')}. \n phone number {phone_number} has been saved. You can now issue orders and communicate with Praxos over iMessage. \n\n Recommended action: Save the following contact card:"
+                    await imessage_client.send_message(phone_number, welcome_message)
+                    await imessage_client.send_contact_card(phone_number)
+                except Exception as e:
+                    logger.error(f"Failed to send contact card to {phone_number}: {e}")
+                integration_record = integration_record
+                return {"status": "ok"}
+            else:
+                logger.warning(f"Unauthorized user: {phone_number}")
+                await imessage_client.send_message(phone_number, "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com")
+                return {"status": "ok"}
+        except Exception as e:
+            logger.error(f"Error authorizing user {phone_number}: {e}")
+            await imessage_client.send_message(phone_number, "Error authorizing user. Please try again later.")
+            return {"status": "ok"}
+
 
     user_id = str(integration_record["user_id"])
-    text = data.get("content")
+    
     
     if text:
         event = {

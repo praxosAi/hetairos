@@ -30,16 +30,17 @@ async def handle_telegram_webhook(request: Request):
             return {"status": "ok"}
         integration_record = await integration_service.is_authorized_user("telegram", username)
         if not integration_record:
+            logger.info(f"User {username} not authorized, attempting to authorize.")
             try:
                 message_text = message.get("text","")
-                integration_record_new,user_record = await integration_service.is_authorizable_user(username,username, "telegram")
+                integration_record_new,user_record = await integration_service.is_authorizable_user('telegram',username, message_text, chat_id)
                 if integration_record_new:
                     try:
-                        welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n WHATSAPP COMMUNICATION INITIALIZED. \n\n Welcome to Praxos, {user_record.get('first_name')}."
+                        welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n Telegram communication initialized. \n\n Welcome to Praxos, {user_record.get('first_name')}. User name @{username} has been saved. You can now issue orders and communicate with Praxos over Telegram."
                         await telegram_client.send_message(message["chat"]["id"], welcome_message)
                        
                     except Exception as e:
-                        logger.error(f"Failed to send contact card to {username}: {e}")
+                        logger.error(f"Failed to send welcome message to {username}: {e}")
                     integration_record = integration_record_new
                     return
                 else:

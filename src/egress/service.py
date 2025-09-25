@@ -16,7 +16,7 @@ class EgressService:
         self.telegram_client = TelegramClient()
         self.imessage_client = IMessageClient()
 
-    async def send_email_response(self, event: dict, response_text: str):
+    async def _send_email_response(self, event: dict, response_text: str):
         if event.get("email_type") == "unauthorised_user":
             await send_unauthorised_user_bot_reply(event.get("original_message"))
         elif event.get("email_type") == "new":
@@ -24,7 +24,7 @@ class EgressService:
         else:
             await send_bot_reply(event.get('metadata',{}).get("original_message"), response_text)
 
-    async def send_whatsapp_reponse(self, event: dict, response_text, response_files):
+    async def _send_whatsapp_reponse(self, event: dict, response_text, response_files):
         phone_number = event.get("output_phone_number")
         if not phone_number and event.get("user_id"):
             try:
@@ -47,7 +47,7 @@ class EgressService:
                 await self.whatsapp_client.send_media_from_link(phone_number, file_obj)
         logger.info(f"Successfully sent response to WhatsApp user {phone_number}")
 
-    async def send_imessage_response(self, event:dict, response_text, response_files):
+    async def _send_imessage_response(self, event:dict, response_text, response_files):
         phone_number = event.get("output_phone_number")
         if not phone_number and event.get("user_id"):
             try:
@@ -71,7 +71,7 @@ class EgressService:
         # Note: Sending media via iMessage is not implemented here.
         logger.info(f"Successfully sent response to iMessage user {phone_number}")
 
-    async def send_telegram_response(self, event, response_text, response_files):
+    async def _send_telegram_response(self, event, response_text, response_files):
         chat_id = event.get("output_chat_id")
         if not chat_id:
             try:
@@ -92,7 +92,7 @@ class EgressService:
                     await self.telegram_client.send_media(chat_id, file_obj)
         logger.info(f"Successfully sent response to Telegram user {chat_id}")
 
-    async def send_webhook_reponse(self, event, response_text):
+    async def _send_webhook_reponse(self, event, response_text):
         logging.info('attempting to publish to websocket')
         token = event.get("metadata", {}).get("token")
         if not token:
@@ -103,8 +103,6 @@ class EgressService:
         channel = f"ws-out:{token}"
         await publish_message(channel, response_text)
         logger.info(f"Successfully published response to Redis channel '{channel}' for token {token}, which belongs to user {event.get('user_id')}")
-
-
 
     async def send_response(self, event: dict, result: dict):
         """
@@ -128,19 +126,19 @@ class EgressService:
         try:
             final_output_type = event.get("output_type", source)
             if final_output_type == "email":
-                await self.send_email_response(event, response_text)
+                await self._send_email_response(event, response_text)
 
             elif final_output_type == "whatsapp":
-                await self.send_whatsapp_reponse(event, response_text, response_files)
+                await self._send_whatsapp_reponse(event, response_text, response_files)
 
             elif final_output_type == "imessage":
-                await self.send_imessage_response(event, response_text, response_files)
+                await self._send_imessage_response(event, response_text, response_files)
 
             elif final_output_type == "telegram":
-                await self.send_telegram_response(event, response_text, response_files)
+                await self._send_telegram_response(event, response_text, response_files)
 
             elif final_output_type == "websocket":
-                await self.send_webhook_reponse(event, response_text)
+                await self._send_webhook_reponse(event, response_text)
                 
             else:
                 logger.warning(f"Unknown output target '{final_output_type}'. Cannot route response.")

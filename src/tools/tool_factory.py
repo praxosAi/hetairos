@@ -28,6 +28,7 @@ from src.tools.web import create_web_tools
 from src.tools.dropbox import create_dropbox_tools
 from src.tools.playwright import create_playwright_tools
 from src.tools.preference_tools import create_preference_tools
+from src.tools.integration_tools import create_integration_tools
 import src.tools.mock_tools as mock_tools
 
 logger = setup_logger(__name__)
@@ -120,6 +121,12 @@ class AgentToolsFactory:
             tools.extend(create_preference_tools(user_id))
         except Exception as e:
             logger.error(f"Error creating preference tools: {e}", exc_info=True)
+        
+        try:
+            tools.extend(create_integration_tools(user_id))
+        except Exception as e:
+            logger.error(f"Error creating integration tools: {e}", exc_info=True)
+
         # --- Browser Tools ---
         try:
             tools.extend(create_playwright_tools())

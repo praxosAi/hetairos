@@ -125,7 +125,7 @@ class ConversationDatabase:
     async def get_conversation_messages(self, conversation_id: str, limit: int = 50) -> List[Dict]:
         """Get messages for a conversation, ordered by timestamp."""
         cursor = self.messages.find(
-            {"conversation_id": conversation_id}
+            {"conversation_id": ObjectId(conversation_id)}
         ).sort("timestamp", 1)
         return await cursor.to_list()
 

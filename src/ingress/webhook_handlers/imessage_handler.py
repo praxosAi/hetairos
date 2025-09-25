@@ -72,7 +72,7 @@ async def handle_imessage_webhook(request: Request):
             integration_record,user = await integration_service.is_authorizable_user("imessage", phone_number, text)
             if integration_record and user:
                 try:
-                    welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n iMessage communication initialized. \n\n Welcome to Praxos, {user.get('first_name')}. \n phone number {phone_number} has been saved. You can now issue orders and communicate with Praxos over iMessage. \n\n Recommended action: Save the following contact card:"
+                    welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n\niMessage communication initialized. \n\nWelcome to Praxos, {user.get('first_name')}.\nPhone number {phone_number} has been saved. You can now issue orders and communicate with Praxos over iMessage. \n\nRecommended action: Save the following contact card:"
                     await imessage_client.send_message(phone_number, welcome_message)
                     await imessage_client.send_contact_card(phone_number)
                 except Exception as e:

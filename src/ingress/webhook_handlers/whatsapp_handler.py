@@ -78,7 +78,7 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                 integration_record_new,user_record = await integration_service.is_authorizable_user('whatsapp',phone_number,message_text)
                                 if integration_record_new:
                                     webhook_logger.info(f"Authorized new user for whatsapp with phone number {phone_number}")
-                                    welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n Whatsapp Connection Initialized. \n\n Welcome to Praxos, {user_record.get('first_name')}.\n\n Phone number {phone_number} has been saved. You can now issue orders and communicate with Praxos over WhatsApp. Recommended action: Save the following contact card:"
+                                    welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n\nWhatsapp Connection Initialized. \n\nWelcome to Praxos, {user_record.get('first_name')}.\n\nPhone number {phone_number} has been saved. You can now issue orders and communicate with Praxos over WhatsApp. \n\nRecommended action: Save the following contact card:"
                                     await whatsapp_client.send_message(phone_number, welcome_message)
                                     try:
                                         await whatsapp_client.send_praxos_contact_card(phone_number)

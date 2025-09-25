@@ -36,9 +36,9 @@ async def handle_telegram_webhook(request: Request):
                 integration_record_new,user_record = await integration_service.is_authorizable_user('telegram',username, message_text, chat_id)
                 if integration_record_new:
                     try:
-                        welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n Telegram communication initialized. \n\n Welcome to Praxos, {user_record.get('first_name')}. User name @{username} has been saved. You can now issue orders and communicate with Praxos over Telegram."
+                        welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n\nTelegram communication initialized. \n\nWelcome to Praxos, {user_record.get('first_name')}.\nUser name @{username} has been saved. You can now issue orders and communicate with Praxos over Telegram."
                         await telegram_client.send_message(message["chat"]["id"], welcome_message)
-                       
+                        return {"status": "ok"}
                     except Exception as e:
                         logger.error(f"Failed to send welcome message to {username}: {e}")
                     integration_record = integration_record_new

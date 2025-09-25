@@ -396,7 +396,8 @@ class WhatsAppClient:
                     "phones": [
                         {
                             "phone": phone,
-                            "type": "CELL"
+                            "type": "CELL",
+                            'wa_id': phone
                         }
                     ]
                 }

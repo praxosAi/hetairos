@@ -7,6 +7,8 @@ from src.config.settings import settings
 from src.utils.logging import setup_logger
 from src.utils.blob_utils import get_blob_sas_url
 
+
+
 class IMessageClient:
     def __init__(self):
         self.api_key = settings.SENDBLUE_API_KEY
@@ -20,6 +22,7 @@ class IMessageClient:
             "media_url": media_url
         }
         response = await self._make_request("POST", f"{self.base_url}/upload-media-object", payload)
+        self.logger.info(f"Upload media response: {response}")
         if response and "mediaObjectId" in response:
             return f"https://storage.googleapis.com/inbound-file-store/{response['mediaObjectId']}"
     async def send_message(self, to_number: str, message: str):

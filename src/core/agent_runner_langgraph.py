@@ -135,11 +135,12 @@ class LangGraphAgentRunner:
         annotations = preferences.get('annotations', [])
 
         if annotations:
+            logger.info(f"User has provided additional context and preferences: {annotations}")
             praxos_prompt += f"\n\nThe user has provided the following additional context and preferences for you to consider in your responses: {'\n'.join(annotations)}\n"
         nyc_tz = pytz.timezone(timezone_name)
         current_time_nyc = datetime.now(nyc_tz).isoformat()
         time_prompt = f"\nThe current time in the user's timezone is {current_time_nyc}. You should always assume the user is in the '{timezone_name}' timezone unless specified otherwise."
-
+        logger.info(time_prompt)
         tool_output_prompt = (
             "\nThe output format of most tools will be an object containing information, including the status of the tool execution. "
             "If the execution is successful, the status will be 'success'. In cases where the tool execution is not successful, "

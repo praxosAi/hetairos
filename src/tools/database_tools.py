@@ -8,13 +8,14 @@ from enum import Enum
 def create_database_access_tools(user_id: str) -> list:
     """Create database access tools bound to a specific user_id."""
     @tool
-    async def fetch_latest_messages(limit: int = 5, platform: str = None) -> ToolExecutionResponse:
+    async def fetch_latest_messages(limit: int = 5) -> ToolExecutionResponse:
         """
-        Fetches the latest messages for the user. you may specify a platform, or leave it None to get from all platforms.
+        Fetches the latest messages for the user.
         """
         try:
             # Placeholder for actual database fetching logic
-            messages = await conversation_db.get_recent_messages(user_id=user_id, limit=limit, platform=platform)
+            messages = await conversation_db.get_recent_messages(user_id=user_id, limit=limit)
             return ToolExecutionResponse(status="success", result=messages)
         except Exception as e:
             return ToolExecutionResponse(status="error", system_error=str(e), user_message="Failed to fetch messages.")
+    return [fetch_latest_messages]

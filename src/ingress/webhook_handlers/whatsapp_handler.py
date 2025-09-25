@@ -71,12 +71,29 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                         whatsapp_client = WhatsAppClient()
                         phone_number = message["from"]
                         message_text = message.get("text", {}).get("body", "")
-                        integration_record = await integration_service.is_authorized_or_authorizable_user('whatsapp',phone_number,message_text)
+                        integration_record = await integration_service.is_authorized_user('whatsapp',phone_number)
                         if not integration_record:
-                            webhook_logger.warning(f"Unauthorized user: {phone_number}")
-                            await whatsapp_client.send_message(phone_number, "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com")
-                            continue
-
+                            ## try to authorize with code:
+                            try:
+                                integration_record_new,user_record = await integration_service.is_authorizable_user('whatsapp',phone_number,message_text)
+                                if integration_record_new:
+                                    webhook_logger.info(f"Authorized new user for whatsapp with phone number {phone_number}")
+                                    welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n WHATSAPP COMMUNICATION INITIALIZED. \n\n Welcome to Praxos, {user_record.get('first_name')}.\n\n Recommended action: Save the following contact card:"
+                                    await whatsapp_client.send_message(phone_number, welcome_message)
+                                    try:
+                                        await whatsapp_client.send_praxos_contact_card(phone_number)
+                                    except Exception as e:
+                                        webhook_logger.error(f"Failed to send contact card to {phone_number}: {e}")
+                                    integration_record = integration_record_new
+                                    return
+                                else:
+                                    webhook_logger.warning(f"Unauthorized user: {phone_number}")
+                                    await whatsapp_client.send_message(phone_number, "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com")
+                                    return
+                            except Exception as e:
+                                webhook_logger.error(f"Error during authorization attempt for {phone_number}: {e}")
+                                await whatsapp_client.send_message(phone_number, "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com. if this message seems to be an error, please contact support on discord.")
+                                return
 
                         webhook_logger.info(f"Marking message as read on webhook with base url {whatsapp_client.base_url}")
                         await whatsapp_client.mark_as_read(message["id"])

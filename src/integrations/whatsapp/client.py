@@ -368,3 +368,53 @@ class WhatsAppClient:
         
         self.logger.error(f"Failed to download media {media_id} after {max_retries + 1} attempts. Last error: {last_error}")
         return None, 0
+
+    async def send_praxos_contact_card(self, to_phone: str):
+        """Send the Praxos contact card via WhatsApp Business API."""
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Retrieve Praxos contact details from settings
+        formatted_name = 'Praxos Bot'
+        first_name = 'Praxos'
+        last_name = 'Bot'
+        phone = '15557575272'
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to_phone,
+            "type": "contacts",
+            "contacts": [
+                {
+                    "name": {
+                        "formatted_name": formatted_name,
+                        "first_name": first_name,
+                        "last_name": last_name
+                    },
+                    "phones": [
+                        {
+                            "phone": phone,
+                            "type": "CELL"
+                        }
+                    ]
+                }
+            ]
+        }
+
+        timeout = aiohttp.ClientTimeout(total=10)
+        
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    f"{self.base_url}/messages",
+                    headers=headers,
+                    json=payload
+                ) as response:
+                    response.raise_for_status()
+                    self.logger.info(f"Successfully sent Praxos contact card to {to_phone}")
+                    return await response.json()
+        except aiohttp.ClientError as e:
+            self.logger.error(f"WhatsApp send_praxos_contact_card error: {e}")
+            return {"error": str(e)}

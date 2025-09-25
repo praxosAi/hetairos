@@ -154,11 +154,8 @@ class IntegrationService:
         else:
             return False
 
-    async def is_authorized_or_authorizable_user(self, integration_name: str, connected_account: str, message_text: str=None, telegram_chat_id = None) -> bool:
-        # Step 1: check if user already authorized
-        pre_authorized = await self.is_authorized_user(integration_name, connected_account)
-        if pre_authorized:
-            return pre_authorized
+    async def is_authorizable_user(self, integration_name: str, connected_account: str, message_text: str=None, telegram_chat_id = None) -> bool:
+
         if not message_text:
             return False
         # Step 2: check for init handshake
@@ -175,21 +172,21 @@ class IntegrationService:
                         logger.info(f"Retrieved user_id {user_id} from Redis for auth_code {auth_code}")
                         if user_id:
                             # Check if the user exists
-                            user = await user_service.get_user_by_id(user_id)
+                            user =  user_service.get_user_by_id(user_id)
                             if user:
                                 #### we can now create the integration record
                                 new_record = await self.add_integration_for_messaging_app(user_id, integration_name, connected_account,telegram_chat_id)
                                 if new_record:
-                                    return new_record
+                                    return new_record,user
                             else:
                                 logger.warning(f"No user found with ID {user_id} for auth_code {auth_code}")
                     except Exception as e:
                         logger.error(f"Error retrieving user_id from Redis for auth_code {auth_code}: {e}")
         except Exception as e:
-            logger.error(f"Error authorizing user for auth_code {auth_code}: {e}")
+            logger.error(f"Error authorizing user for auth_code {auth_code}: {e}",exc_info=True)
 
 
-        return False
+        return False,None
     async def create_google_credentials(self, user_id: str, name: str) -> Optional[Credentials]:
         """Creates a Google Credentials object from a user's stored token."""
         token_doc = await self.get_integration_token(user_id, name)

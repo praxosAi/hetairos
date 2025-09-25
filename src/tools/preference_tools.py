@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Dict, Any
 import pytz
-
+from src.utils.logging import setup_logger
 from langchain_core.tools import tool
 from src.services.user_service import user_service  # uses the global instance you showed
 
@@ -54,7 +54,7 @@ def _validate_language(lang_code: str) -> str:
 
 def create_preference_tools(user_id: str) -> list:
     """Create basic user preference tools bound to a specific user_id."""
-
+    logger = setup_logger(f"preference_tools")
     @tool
     def add_user_preference_annotation(new_preference_text: List[str]) -> Dict[str, Any]:
         """
@@ -158,9 +158,43 @@ def create_preference_tools(user_id: str) -> list:
         except Exception as e:
             return {"ok": False, "message": f"Failed to update language: {e}"}
 
+    @tool
+    def delete_user_preference_annotations(annotations_to_delete: List[str]) -> Dict[str, Any]:
+        """
+        Delete one or more annotations from the user's preferences.
+        Only 'annotations' are affected—no other fields can be deleted.
+        Args:
+            annotations_to_delete: List of exact annotation strings to remove.
+        Returns:
+            { "ok": bool, "message": str, "updated": { "annotations": [...], "updated_at": iso } }
+        """
+        try:
+            # Reuse your validator to ensure list[str] with trimming & de-dupe
+            to_delete = _ensure_list_of_str(annotations_to_delete)
+            if not to_delete:
+                return {"ok": False, "message": "No annotations provided to delete."}
+
+            ok = user_service.remove_preference_annotations(user_id, to_delete)
+
+            # Fetch the latest state to return an accurate view
+            current = user_service.get_user_preferences(user_id) or {}
+            updated_at = _utc_now_iso()  # reflect current call time in response (db has its own UTC too)
+            annotations = current.get("annotations", [])
+            if not isinstance(annotations, list):
+                annotations = []
+
+            return {
+                "ok": bool(ok),
+                "message": "Annotations deleted." if ok else "No matching annotations found.",
+                "updated": {"annotations": annotations, "updated_at": updated_at},
+            }
+        except Exception as e:
+            logger.error(f"Failed to delete annotations: {str(e)}", exc_info=True)
+            return {"ok": False, "message": f"Failed to delete annotations: {e}"}
     return [
         add_user_preference_annotation,
         set_assistant_name,
         set_timezone,
         set_language_response,
+        delete_user_preference_annotations,
     ]

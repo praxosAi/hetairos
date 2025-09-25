@@ -55,7 +55,7 @@ def create_integration_tools(user_id: str) -> list:
             
             # Store the token in Redis with the user's ID. Set a 5-minute expiry
             # to limit the time window for authentication.
-            await redis_client.set(f"login_token:{login_token}", user_id, ex=300)
+            await redis_client.set(f"login_token:{login_token}", str(user_id), ex=300)
             
             # Construct the full URL pointing to the backend's messaging OAuth endpoint.
             oauth_url = (

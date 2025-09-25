@@ -29,6 +29,7 @@ from src.tools.dropbox import create_dropbox_tools
 from src.tools.playwright import create_playwright_tools
 from src.tools.preference_tools import create_preference_tools
 from src.tools.integration_tools import create_integration_tools
+from src.tools.database_tools import create_database_access_tools
 import src.tools.mock_tools as mock_tools
 
 logger = setup_logger(__name__)
@@ -128,6 +129,11 @@ class AgentToolsFactory:
         except Exception as e:
             logger.error(f"Error creating integration tools: {e}", exc_info=True)
 
+
+        try:
+            tools.extend(create_database_access_tools(user_id))
+        except Exception as e:
+            logger.error(f"Error creating database access tools: {e}", exc_info=True)
         # --- Browser Tools ---
         try:
             tools.extend(create_playwright_tools())
@@ -145,6 +151,7 @@ class AgentToolsFactory:
             tools.append(GooglePlacesTool())
         except Exception as e:
             logger.error(f"Error creating Google places tool: {e}", exc_info=True)
+
 
         # --- Mock Tools ---
         if not have_calendar_tool:

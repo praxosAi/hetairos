@@ -60,8 +60,14 @@ class IntegrationService:
         """Get all of a user's configured integrations."""
         return await self.db_manager.db["integrations"].find({"user_id": ObjectId(user_id)}).to_list(length=100)
 
-
-
+    async def get_user_integrations_llm_info(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all of a user's configured integrations without userid and id and other sensitive information."""
+        integrations = await self.db_manager.db["integrations"].find({"user_id": ObjectId(user_id)}).to_list(length=100)
+        for integ in integrations:
+            integ.pop("sync_frequency", None)
+            integ.pop("_id", None)
+            integ.pop("user_id", None)
+        return integrations
     async def get_integration_record_for_user_and_name(self, user_id: str, name: str) -> Optional[Dict[str, Any]]:
         """Get the integration record for a specific user and name."""
         integration_record = await self.db_manager.db["integrations"].find_one({"user_id": ObjectId(user_id), "name": name})

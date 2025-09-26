@@ -63,7 +63,8 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             log_entry["exception"] = self.formatException(record.exc_info)
         
-        return json.dumps(log_entry, default=str,indent=2)
+        # Use separators for compact output and default=str for robustness
+        return json.dumps(log_entry, separators=(',', ':'), default=str)
 
 def setup_logger(name: str, level: int = logging.INFO, json_format: bool = True) -> logging.Logger:
     """Setup a logger with colored output or JSON formatting with context."""

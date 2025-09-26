@@ -80,12 +80,14 @@ class LangGraphAgentRunner:
         from src.utils.portkey_headers_isolation import create_port_key_headers
         portkey_headers , portkey_gateway_url = create_port_key_headers(trace_id=trace_id)
         ### note that this is not OpenAI, this is azure. we will use portkey to access OAI Azure.
-        self.llm = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
+        # self.llm = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
+        ### temporary, investigating refusals.
         self.media_llm =ChatGoogleGenerativeAI(
             model="gemini-2.5-pro",
             api_key=settings.GEMINI_API_KEY,
             temperature=0.2,
             )
+        self.llm = self.media_llm
         if has_media:
             self.llm = self.media_llm   
         self.structured_llm = self.llm.with_structured_output(AgentFinalResponse)

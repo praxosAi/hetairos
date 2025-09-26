@@ -179,34 +179,43 @@ class NotionIntegration(BaseIntegration):
                 logger.error(f"Error searching Notion pages: {e}")
                 raise
 
-    async def create_page(self, parent_page_id: str, title: str, content: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def create_page(
+        self, 
+        title: str, 
+        content: List[Dict[str, Any]], 
+        parent_page_id: str = None, 
+        database_id: str = None,
+        properties: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
         """
-        Creates a new page in Notion.
-
-        Args:
-            parent_page_id: The ID of the parent page.
-            title: The title of the new page.
-            content: The content of the page, as a list of block objects.
+        Creates a new page in Notion, either as a sub-page or in a database.
         """
         if not self.api_key:
             raise Exception("Notion client not authenticated.")
+        if not parent_page_id and not database_id:
+            raise ValueError("Either parent_page_id or database_id must be provided.")
 
         url = f"{self.base_url}/pages"
+        
+        # Determine the parent
+        parent_data = {}
+        if database_id:
+            parent_data = {"database_id": database_id}
+        else:
+            parent_data = {"page_id": parent_page_id}
+
+        # Setup properties, ensuring the title is correctly formatted
+        page_properties = properties or {}
+        page_properties["title"] = {
+            "title": [{"text": {"content": title}}]
+        }
+
         data = {
-            "parent": {"page_id": parent_page_id},
-            "properties": {
-                "title": {
-                    "title": [
-                        {
-                            "text": {
-                                "content": title,
-                            },
-                        },
-                    ],
-                },
-            },
+            "parent": parent_data,
+            "properties": page_properties,
             "children": content,
         }
+
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.post(url, headers=self.headers, json=data) as response:
@@ -214,4 +223,119 @@ class NotionIntegration(BaseIntegration):
                     return await response.json()
             except aiohttp.ClientError as e:
                 logger.error(f"Error creating Notion page: {e}")
+                raise
+
+    async def list_databases(self) -> List[Dict[str, Any]]:
+        """Lists all databases accessible to the integration."""
+        if not self.api_key:
+            raise Exception("Notion client not authenticated.")
+
+        url = f"{self.base_url}/search"
+        data = {
+            "filter": {
+                "value": "database",
+                "property": "object"
+            }
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(url, headers=self.headers, json=data) as response:
+                    response.raise_for_status()
+                    results = await response.json()
+                    
+                    databases = []
+                    for db in results.get("results", []):
+                        title = "Untitled Database"
+                        if db.get("title"):
+                            title = db["title"][0].get("plain_text", title)
+                        
+                        databases.append({
+                            "id": db["id"],
+                            "title": title,
+                            "url": db.get("url")
+                        })
+                    return databases
+            except aiohttp.ClientError as e:
+                logger.error(f"Error listing Notion databases: {e}")
+                raise
+
+    async def query_database(self, database_id: str, filter: Dict = None, sorts: List[Dict] = None) -> List[Dict[str, Any]]:
+        """
+        Queries a Notion database with optional filters and sorts.
+        """
+        if not self.api_key:
+            raise Exception("Notion client not authenticated.")
+
+        url = f"{self.base_url}/databases/{database_id}/query"
+        data = {}
+        if filter:
+            data["filter"] = filter
+        if sorts:
+            data["sorts"] = sorts
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(url, headers=self.headers, json=data) as response:
+                    response.raise_for_status()
+                    results = await response.json()
+                    
+                    # Simplified parsing of results
+                    pages = []
+                    for page in results.get("results", []):
+                        title = "Untitled"
+                        # Check for the 'title' property, which might have a different name in some databases
+                        for prop_name, prop_value in page.get("properties", {}).items():
+                            if prop_value.get("type") == "title":
+                                if prop_value["title"]:
+                                    title = prop_value["title"][0].get("plain_text", "Untitled")
+                                break
+                        
+                        pages.append({
+                            "id": page["id"],
+                            "title": title,
+                            "url": page.get("url"),
+                            "properties": page.get("properties") # Include all properties
+                        })
+                    return pages
+            except aiohttp.ClientError as e:
+                logger.error(f"Error querying Notion database {database_id}: {e}")
+                raise
+
+    async def append_block_children(self, block_id: str, children: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Appends a list of blocks to a given block (page or other).
+        """
+        if not self.api_key:
+            raise Exception("Notion client not authenticated.")
+
+        url = f"{self.base_url}/blocks/{block_id}/children"
+        data = {"children": children}
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.patch(url, headers=self.headers, json=data) as response:
+                    response.raise_for_status()
+                    return await response.json()
+            except aiohttp.ClientError as e:
+                logger.error(f"Error appending blocks to {block_id}: {e}")
+                raise
+
+    async def update_page_properties(self, page_id: str, properties: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Updates the properties of a Notion page.
+        """
+        if not self.api_key:
+            raise Exception("Notion client not authenticated.")
+
+        url = f"{self.base_url}/pages/{page_id}"
+        data = {"properties": properties}
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.patch(url, headers=self.headers, json=data) as response:
+                    response.raise_for_status()
+                    return await response.json()
+            except aiohttp.ClientError as e:
+                logger.error(f"Error updating page properties for {page_id}: {e}")
                 raise

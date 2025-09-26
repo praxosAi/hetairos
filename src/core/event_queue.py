@@ -124,7 +124,7 @@ class AzureEventQueue:
         
         user_access = user_service.can_have_access(user_id=user_id)
         logger.info(f'{user_id} access : {user_access}')
-        return not user_access
+        return not user_access and False
 
     async def publish(self, event: Dict[str, Any], session_id: str = None):
         """

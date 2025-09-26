@@ -74,73 +74,80 @@ class SuspendedEventQueue:
         except Exception as e:
             logger.error(f"Failed to publish scheduled event to Azure Service Bus: {e}", exc_info=True)
 
-    async def resend_suspended_events(self, user_id:str):
-        """
-        Forward all suspended events for a user to event queue
-        """
-        from azure.servicebus.aio import ServiceBusClient
-        while True:
-            try:
-                async with ServiceBusClient.from_connection_string(settings.AZURE_SERVICEBUS_CONNECTION_STRING) as client:
-                    # Try session-based approach first
-                    try:
-                        session_receiver = client.get_queue_receiver(
-                            settings.AZURE_SERVICEBUS_SUSPENDED_QUEUE_NAME,
-                            session_id=user_id,
-                            max_wait_time=60  # Wait up to 60 seconds for a session to become available
-                        )
-                        
-                        async with session_receiver:
-                            session_id = session_receiver.session.session_id
-                            logger.info(f"Resending messsage from {user_id} by session {session_id}")
-                            
-                            # Collect messages counter for logging purposes
-                            messages_counter = 0
-                            
-                            while True:
-                                from src.core.event_queue import event_queue
-                                try:
-                                    batch = await session_receiver.receive_messages(max_message_count=10)
-
-                                    if not batch:
-                                        logger.info(f"All suspended messages ({messages_counter}) of {user_id} by session {session_id} has been collected")
-                                        break
-
-                                    for msg in batch:
-                                        try:
-                                            message_body = json.loads(str(msg))
-                                            messages_counter += 1
-                                            await session_receiver.complete_message(msg)
-                                            message_type = message_body.get('type')
-                                            event = message_body.get('event')
-                                            if not event:
-                                                logger.error(f"there is no event in the suspended message {message_body}" )
-                                                continue
-
-                                            if message_type == NORMAL_EVENT_KEY:
-                                                await event_queue.publish(event)
-                                            elif message_type == SCHEDULE_EVENT_KEY:
-                                                schedule_time = message_body.get('schedule_time')
-                                                if not schedule_time:
-                                                    logger.error(f"can't find schedule time for schedule suspended message {message_body}")
-                                                    continue
-                                                await event_queue.publish_scheduled_event(event, datetime.fromisoformat(schedule_time))
-                                            else:
-                                                logger.error(f'message type {message_type} is not supported')
-                                                continue
-                                            
-                                        except Exception as e:
-                                            logger.error(f"Error processing message: {e}", exc_info=True)
-                                            await session_receiver.abandon_message(msg)
-
-                                except Exception as batch_error:
-                                    logger.error(f"Error receiving message batch: {batch_error}", exc_info=True)
-                                    break
-                    
-                    except Exception as session_error:
-                        logger.error(f"Session processing error: {session_error}", exc_info=True)
-            
-            except Exception as e:
-                logger.error(f"Service Bus connection error in session consumer: {e}. Reconnecting in 10 seconds...", exc_info=True)
-
 suspended_event_queue = SuspendedEventQueue()
+
+async def _process_suspended_events_background(user_id: str):
+    """
+    Background task to process suspended events for a user
+    """
+    try:
+        from azure.servicebus.aio import ServiceBusClient
+        async with ServiceBusClient.from_connection_string(settings.AZURE_SERVICEBUS_CONNECTION_STRING) as client:
+            session_receiver = client.get_queue_receiver(
+                settings.AZURE_SERVICEBUS_SUSPENDED_QUEUE_NAME,
+                session_id=user_id,
+                max_wait_time=30
+            )
+
+            async with session_receiver:
+                logger.info(f"Processing suspended events for user {user_id}")
+
+                messages_counter = 0
+
+                while True:
+                    from src.core.event_queue import event_queue
+                    try:
+                        batch = await session_receiver.receive_messages(max_message_count=10)
+
+                        if not batch:
+                            logger.info(f"Completed processing {messages_counter} suspended events for user {user_id}")
+                            return
+
+                        for msg in batch:
+                            try:
+                                message_body = json.loads(str(msg))
+                                messages_counter += 1
+                                await session_receiver.complete_message(msg)
+                                message_type = message_body.get('type')
+                                event = message_body.get('event')
+                                if not event:
+                                    logger.error(f"there is no event in the suspended message {message_body}" )
+                                    continue
+
+                                if message_type == NORMAL_EVENT_KEY:
+                                    await event_queue.publish(event)
+                                elif message_type == SCHEDULE_EVENT_KEY:
+                                    schedule_time = message_body.get('schedule_time')
+                                    if not schedule_time:
+                                        logger.error(f"can't find schedule time for schedule suspended message {message_body}")
+                                        continue
+                                    await event_queue.publish_scheduled_event(event, datetime.fromisoformat(schedule_time))
+                                else:
+                                    logger.error(f'message type {message_type} is not supported')
+                                    continue
+
+                            except Exception as e:
+                                logger.error(f"Error processing message: {e}", exc_info=True)
+                                await session_receiver.abandon_message(msg)
+
+                    except Exception as batch_error:
+                        logger.error(f"Error receiving message batch: {batch_error}", exc_info=True)
+                        break
+    except Exception as e:
+        logger.error(f"Background processing error for user {user_id}: {e}", exc_info=True)
+
+from fastapi import APIRouter, status, Query
+router = APIRouter()
+
+@router.post("/reprocess", status_code=status.HTTP_202_ACCEPTED)
+async def resend_suspended_events(user_id: str = Query(...)):
+    """
+    Forward all suspended events for a user to event queue
+    """
+    import asyncio
+
+    # Start background processing without waiting
+    asyncio.create_task(_process_suspended_events_background(user_id))
+
+    # Return immediately with 202 status
+    return {"message": "Processing started"}

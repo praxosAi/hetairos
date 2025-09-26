@@ -125,11 +125,11 @@ class UserService:
     def can_have_access(self, user:dict=None, user_id=None):
         if not user:
             if not user_id:
-                logger.error("either user or user_id should be passed in")
+                logger.error("Either user or user_id should be passed in")
                 return True
             user = self.get_user_by_id(user_id)
             if not user:
-                logger.error(f"can't find user from {user_id} id")
+                logger.error(f"Can't find user from {user_id} id")
                 return True
 
         if user.get('trial_end_date') and user.get('trial_end_date') > datetime.now():

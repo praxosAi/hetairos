@@ -115,15 +115,13 @@ class AzureEventQueue:
         return delay
     
     def _should_be_suspended(self, event: Dict[str, Any]):
-        logger.info(f'checking {event} suspension')
         user_id = event.get('user_id')
 
         if not user_id:
-            logger.info(f'there is no user id')
+            logger.error(f'there is no user id, access is granted')
             return False
         
         user_access = user_service.can_have_access(user_id=user_id)
-        logger.info(f'{user_id} access : {user_access}')
         return not user_access
     
     async def _send_suspend_reply(self, event):

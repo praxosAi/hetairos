@@ -133,21 +133,48 @@ class NotionIntegration(BaseIntegration):
         response = await self.notion_client.databases.query(database_id=database_id, **query_params)
         return response.get("results", [])
 
+    async def create_database(self, parent_page_id: str, title: str, properties: Dict[str, Any]) -> Dict[str, Any]:
+        """Creates a new database."""
+        if not self.notion_client:
+            raise Exception("Notion client not authenticated.")
+
+        parent = {"page_id": parent_page_id}
+        title = [{"type": "text", "text": {"content": title}}]
+
+        return await self.notion_client.databases.create(
+            parent=parent,
+            title=title,
+            properties=properties
+        )
+
     async def create_page(self, title: str, content: List[Dict[str, Any]], parent_page_id: str = None, database_id: str = None, properties: Dict[str, Any] = None) -> Dict[str, Any]:
         """Creates a new page or database entry."""
         if not self.notion_client:
             raise Exception("Notion client not authenticated.")
-        # if not parent_page_id and not database_id:
-        #     raise ValueError("Either parent_page_id or database_id must be provided.")
+        
         if database_id:
             parent = {"database_id": database_id}
         elif parent_page_id:
             parent = {"page_id": parent_page_id}
         else:
-            ## workspace is the root.
-            parent = {'type':'workspace','workspace':True}
+            # workspace is the root.
+            parent = {'type': 'workspace', 'workspace': True}
+
         page_properties = properties or {}
-        page_properties["title"] = {"title": [{"text": {"content": title}}]}
+        
+        # Ensure title is correctly formatted
+        if "title" not in page_properties:
+            page_properties["title"] = {"title": [{"text": {"content": title}}]}
+
+        # Fix for date property validation
+        for prop, value in page_properties.items():
+            if isinstance(value, dict) and value.get("type") == "date" and "date" in value and "start" not in value["date"]:
+                # Assuming if a date is provided, it's meant to be the start date
+                # The Notion API requires a start date for date properties.
+                # This is a minimal fix; a more robust solution might involve more complex logic
+                # to determine start and end dates based on input.
+                if isinstance(value["date"], str): # Handle case where date is just a string
+                    page_properties[prop]["date"] = {"start": value["date"]}
 
         return await self.notion_client.pages.create(
             parent=parent,

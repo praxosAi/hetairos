@@ -92,30 +92,74 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             return ToolExecutionResponse(status="error", system_error=str(e))
 
     @tool
-    async def create_notion_page_or_database_entry(
+    async def create_notion_page(
         title: str,
         content: List[Dict[str, Any]],
-        parent_page_id: Optional[str] = None,
-        database_id: Optional[str] = None,
+        parent_page_id: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """
+        Creates a new page in Notion.
+        - To create a sub-page, provide 'parent_page_id'.
+        - If 'parent_page_id' is not provided, the page will be created at the workspace root.
+        """
+        logger.info(f"Creating Notion page with title: {title}")
+        try:
+            page = await notion_client.create_page(
+                title=title, content=content, parent_page_id=parent_page_id
+            )
+            response = ToolExecutionResponse(status="success", result={"page_link": page.get('url')})
+            logger.info(f"Create Notion page response: {response.result}")
+            return response
+        except Exception as e:
+            logger.error(f"Error creating Notion page: {e}", exc_info=True)
+            return ToolExecutionResponse(status="error", system_error=str(e))
+
+    @tool
+    async def create_notion_database_entry(
+        database_id: str,
+        title: str,
+        content: List[Dict[str, Any]],
         properties: Optional[Dict[str, Any]] = None
     ) -> ToolExecutionResponse:
         """
-        Creates a new page or a database entry in Notion.
-        - To create a sub-page, provide 'parent_page_id'.
-        - To create a database entry, provide 'database_id' and the 'properties' for the entry.
-        - If neither is provided, the page will be created at the workspace root.
+        Creates a new entry in a Notion database.
+        - 'database_id' is required to specify the target database.
+        - 'properties' should be provided to populate the database entry's fields.
         """
-        logger.info(f"Creating Notion page/entry with title: {title}")
+        logger.info(f"Creating Notion database entry with title: {title}")
         try:
             page = await notion_client.create_page(
-                title=title, content=content, parent_page_id=parent_page_id,
-                database_id=database_id, properties=properties
+                title=title, content=content, database_id=database_id, properties=properties
             )
             response = ToolExecutionResponse(status="success", result={"page_link": page.get('url')})
-            logger.info(f"Create Notion page/entry response: {response.result}")
+            logger.info(f"Create Notion database entry response: {response.result}")
             return response
         except Exception as e:
-            logger.error(f"Error creating Notion page/entry: {e}", exc_info=True)
+            logger.error(f"Error creating Notion database entry: {e}", exc_info=True)
+            return ToolExecutionResponse(status="error", system_error=str(e))
+
+    @tool
+    async def create_notion_database(
+        parent_page_id: str,
+        title: str,
+        properties: Dict[str, Any]
+    ) -> ToolExecutionResponse:
+        """
+        Creates a new database in Notion.
+        - 'parent_page_id' is required to specify where the database should be created.
+        - 'title' is the title of the new database.
+        - 'properties' defines the schema of the database.
+        """
+        logger.info(f"Creating Notion database with title: {title}")
+        try:
+            database = await notion_client.create_database(
+                parent_page_id=parent_page_id, title=title, properties=properties
+            )
+            response = ToolExecutionResponse(status="success", result={"database_link": database.get('url')})
+            logger.info(f"Create Notion database response: {response.result}")
+            return response
+        except Exception as e:
+            logger.error(f"Error creating Notion database: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
 
     @tool
@@ -168,7 +212,9 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
         list_notion_pages,
         query_notion_database,
         search_notion_pages_by_keyword,
-        create_notion_page_or_database_entry,
+        create_notion_page,
+        create_notion_database_entry,
+        create_notion_database,
         append_to_notion_page,
         update_notion_page_properties,
         get_notion_page_content,

@@ -127,10 +127,9 @@ class UserService:
             if not user_id:
                 raise Exception("either user or user_id should be passed in")
             user = self.get_user_by_id(user_id)
+            if not user:
+                raise Exception(f"can't find user from {user_id} id")
 
-        if not user:
-            return False
-        
         if user.get('trial_end_date') and user.get('trial_end_date') > datetime.now():
             return True
         

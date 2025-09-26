@@ -96,7 +96,11 @@ class ExecutionWorker:
                     
         except Exception as e:
             logger.error(f"Error processing grouped events from session {session_id}: {e}", exc_info=True)
-
+        finally:
+            # Reset context variables after processing the group
+            user_id_var.set('SYSTEM_LEVEL')
+            request_id_var.set('SYSTEM_LEVEL')
+            modality_var.set('SYSTEM_LEVEL')
     def combine_chat_messages(self, events):
         """Combine multiple chat messages into a structured payload list"""
         combined_payload = []
@@ -179,7 +183,11 @@ class ExecutionWorker:
 
         except Exception as e:
             logger.error(f"Error processing single event {event}: {e}", exc_info=True)
-
+        finally:
+            # Reset context variables after processing the event
+            user_id_var.set('SYSTEM_LEVEL')
+            request_id_var.set('SYSTEM_LEVEL')
+            modality_var.set('SYSTEM_LEVEL')
     async def post_process_langgraph_response(self, result: dict, event: dict):
         event["output_type"] = result.delivery_platform
         await egress_service.send_response(event, {"response": result.response, "file_links": result.file_links})

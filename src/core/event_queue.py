@@ -125,6 +125,19 @@ class AzureEventQueue:
         user_access = user_service.can_have_access(user_id=user_id)
         logger.info(f'{user_id} access : {user_access}')
         return not user_access
+    
+    async def _send_suspend_reply(self, event):
+        from src.egress.service import egress_service
+        import copy
+        response_event = copy.deepcopy(event)
+        response_event['output_type'] = response_event.get('source')
+        result = {
+            'response': (
+                "Your subscription has been deactivated due to either the end of your trial period or a billing issue.\n"
+                "Please log in to app.mypraxos.com and complete your payment to restore access."
+            )
+        }
+        await egress_service.send_response(response_event, result)
 
     async def publish(self, event: Dict[str, Any], session_id: str = None):
         """
@@ -134,18 +147,8 @@ class AzureEventQueue:
 
         if self._should_be_suspended(event):
             from src.core.suspended_event_queue import suspended_event_queue
-            from src.egress.service import egress_service
-            import copy 
             await suspended_event_queue.publish(event)
-            response_event = copy.deepcopy(event)
-            response_event['output_type'] = response_event.get('source')
-            result = {
-                'response': (
-                    "Your subscription has been deactivated due to either the end of your trial period or a billing issue.\n"
-                    "Please log in to app.mypraxos.com and complete your payment to restore access."
-                )
-            }
-            egress_service.send_response(response_event, result)
+            await self._send_suspend_reply(event)
             return
 
         from azure.servicebus.aio import ServiceBusClient
@@ -172,18 +175,8 @@ class AzureEventQueue:
         """
         if self._should_be_suspended(event):
             from src.core.suspended_event_queue import suspended_event_queue
-            from src.egress.service import egress_service
-            import copy 
             await suspended_event_queue.publish_scheduled_event(event, timestamp)
-            response_event = copy.deepcopy(event)
-            response_event['output_type'] = response_event.get('source')
-            result = {
-                'response': (
-                    "Your subscription has been deactivated due to either the end of your trial period or a billing issue.\n"
-                    "Please log in to app.mypraxos.com and complete your payment to restore access."
-                )
-            }
-            egress_service.send_response(response_event, result)
+            await self._send_suspend_reply(event)
             return
         
         from azure.servicebus.aio import ServiceBusClient

@@ -67,29 +67,45 @@ class AgentToolsFactory:
         dropbox_auth_result = authenticated_integrations[5]
 
         if gcal_auth_result is True:
-            tools.extend(create_calendar_tools(gcal_integration))
-            have_calendar_tool = True
-
+            try:
+                tools.extend(create_calendar_tools(gcal_integration))
+                have_calendar_tool = True
+            except Exception as e:
+                logger.error(f"Error creating calendar tools: {e}", exc_info=True)
         if gmail_auth_result is True:
-            tools.extend(create_gmail_tools(gmail_integration))
-            have_email_tool = True
-
+            try:
+                tools.extend(create_gmail_tools(gmail_integration))
+                have_email_tool = True
+            except Exception as e:
+                logger.error(f"Error creating email tools: {e}", exc_info=True)
         if gdrive_auth_result is True:
-            tools.extend(create_drive_tools(gdrive_integration))
-        
+            try:
+                tools.extend(create_drive_tools(gdrive_integration))
+            except Exception as e:
+                logger.error(f"Error creating drive tools: {e}", exc_info=True)
+
         # --- Microsoft Integration ---
         if outlook_auth_result is True:
-            tools.extend(create_outlook_tools(outlook_integration))
-            have_email_tool = True
-            have_calendar_tool = True
+            try:
+                tools.extend(create_outlook_tools(outlook_integration))
+                have_email_tool = True
+                have_calendar_tool = True
+            except Exception as e:
+                logger.error(f"Error creating Outlook tools: {e}", exc_info=True)
 
         # --- Notion Integration ---
         if notion_auth_result is True:
-            tools.extend(create_notion_tools(notion_integration))
+            try:
+                tools.extend(create_notion_tools(notion_integration))
+            except Exception as e:
+                logger.error(f"Error creating Notion tools: {e}", exc_info=True)
 
         # --- Dropbox Integration ---
         if dropbox_auth_result is True:
-            tools.extend(create_dropbox_tools(dropbox_integration))
+            try:
+                tools.extend(create_dropbox_tools(dropbox_integration))
+            except Exception as e:
+                logger.error(f"Error creating Dropbox tools: {e}", exc_info=True)
 
         # --- Praxos & Other Core Tools ---
         from src.config.settings import settings

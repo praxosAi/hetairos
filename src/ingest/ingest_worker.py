@@ -77,7 +77,8 @@ class IngestWorker:
                     )
                     
                     if result:
-                        if  file_data.get("metadata", {}).get("skip_db_record", False):
+                        ### uploaded file case.
+                        if not file_data.get("metadata", {}).get("skip_db_record", False):
                             blob_name = f"{user_id}/ingested/{upload_filename}"
                             await upload_to_blob_storage(temp_file_path, blob_name)
                             source_id = result['id']

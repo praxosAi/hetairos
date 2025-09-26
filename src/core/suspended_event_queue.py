@@ -76,39 +76,32 @@ class SuspendedEventQueue:
 
 suspended_event_queue = SuspendedEventQueue()
 
-from fastapi import APIRouter, status, Query
-router = APIRouter()
-
-@router.post("/reprocess", status_code=status.HTTP_202_ACCEPTED)
-async def resend_suspended_events(user_id: str = Query(...)):
+async def _process_suspended_events_background(user_id: str):
     """
-    Forward all suspended events for a user to event queue
+    Background task to process suspended events for a user
     """
     try:
         from azure.servicebus.aio import ServiceBusClient
         async with ServiceBusClient.from_connection_string(settings.AZURE_SERVICEBUS_CONNECTION_STRING) as client:
-            # Try session-based approach first
             session_receiver = client.get_queue_receiver(
                 settings.AZURE_SERVICEBUS_SUSPENDED_QUEUE_NAME,
                 session_id=user_id,
-                max_wait_time=30  # Wait up to 60 seconds for a session to become available
+                max_wait_time=30
             )
-            
+
             async with session_receiver:
-                session_id = session_receiver.session.session_id
-                logger.info(f"Resending messsage from {user_id} by session {session_id}")
-                
-                # Collect messages counter for logging purposes
+                logger.info(f"Processing suspended events for user {user_id}")
+
                 messages_counter = 0
-                
+
                 while True:
                     from src.core.event_queue import event_queue
                     try:
                         batch = await session_receiver.receive_messages(max_message_count=10)
 
                         if not batch:
-                            logger.info(f"All suspended messages ({messages_counter}) of {user_id} by session {session_id} has been collected")
-                            return {"message": f"Successfully resent {messages_counter} suspended events for user {user_id}", "count": messages_counter}
+                            logger.info(f"Completed processing {messages_counter} suspended events for user {user_id}")
+                            return
 
                         for msg in batch:
                             try:
@@ -132,7 +125,7 @@ async def resend_suspended_events(user_id: str = Query(...)):
                                 else:
                                     logger.error(f'message type {message_type} is not supported')
                                     continue
-                                
+
                             except Exception as e:
                                 logger.error(f"Error processing message: {e}", exc_info=True)
                                 await session_receiver.abandon_message(msg)
@@ -141,4 +134,20 @@ async def resend_suspended_events(user_id: str = Query(...)):
                         logger.error(f"Error receiving message batch: {batch_error}", exc_info=True)
                         break
     except Exception as e:
-        logger.error(f"Session processing error: {e}", exc_info=True)
+        logger.error(f"Background processing error for user {user_id}: {e}", exc_info=True)
+
+from fastapi import APIRouter, status, Query
+router = APIRouter()
+
+@router.post("/reprocess", status_code=status.HTTP_202_ACCEPTED)
+async def resend_suspended_events(user_id: str = Query(...)):
+    """
+    Forward all suspended events for a user to event queue
+    """
+    import asyncio
+
+    # Start background processing without waiting
+    asyncio.create_task(_process_suspended_events_background(user_id))
+
+    # Return immediately with 202 status
+    return {"message": "Processing started"}

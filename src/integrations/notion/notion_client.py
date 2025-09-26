@@ -1,7 +1,7 @@
 import logging
 from typing import List, Dict, Any, Optional
 from notion_client import AsyncClient
-
+from datetime import datetime, timedelta
 from src.integrations.base_integration import BaseIntegration
 from src.services.integration_service import integration_service
 from src.utils.logging import setup_logger
@@ -23,7 +23,7 @@ class NotionIntegration(BaseIntegration):
         self.notion_client = AsyncClient(auth=token_info['access_token'])
         return True
 
-    async def fetch_recent_data(self, since: Optional[datetime] = None) -> List[Dict]:
+    async def fetch_recent_data(self) -> List[Dict]:
         """Fetches pages that have been recently edited in Notion."""
         if not self.notion_client:
             raise Exception("Notion client not authenticated.")
@@ -137,11 +137,15 @@ class NotionIntegration(BaseIntegration):
         """Creates a new page or database entry."""
         if not self.notion_client:
             raise Exception("Notion client not authenticated.")
-        if not parent_page_id and not database_id:
-            raise ValueError("Either parent_page_id or database_id must be provided.")
-
-        parent = {"database_id": database_id} if database_id else {"page_id": parent_page_id}
-        
+        # if not parent_page_id and not database_id:
+        #     raise ValueError("Either parent_page_id or database_id must be provided.")
+        if database_id:
+            parent = {"database_id": database_id}
+        elif parent_page_id:
+            parent = {"page_id": parent_page_id}
+        else:
+            ## workspace is the root.
+            parent = {'type':'workspace','workspace':True}
         page_properties = properties or {}
         page_properties["title"] = {"title": [{"text": {"content": title}}]}
 

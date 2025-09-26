@@ -11,28 +11,18 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
     """Create a comprehensive suite of Notion-related tools."""
 
     @tool
-    async def list_workspace_content() -> ToolExecutionResponse:
+    async def list_databases() -> ToolExecutionResponse:
         """
         Provides a high-level overview of the Notion workspace by listing all accessible databases and top-level pages.
         This should be the first tool used to understand the structure of the user's Notion workspace.
         """
-        logger.info("Listing Notion workspace content...")
+        logger.info("Listing Notion databases...")
         try:
             # Fetch all databases
             databases = await notion_client.list_databases()
-            
-            # Fetch all pages that are NOT in a database
-            standalone_pages_filter = {
-                "and": [
-                    {"property": "object", "value": "page"},
-                    {"property": "parent", "database_id": {"is_empty": True}}
-                ]
-            }
-            standalone_pages = await notion_client.search_pages(query="", custom_filter=standalone_pages_filter)
-            
+
             result = {
                 "databases": databases,
-                "standalone_pages": standalone_pages
             }
             response = ToolExecutionResponse(status="success", result=json.dumps(result))
             logger.info(f"Notion workspace content response: {response.result}")
@@ -41,6 +31,19 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             logger.error(f"Error listing Notion workspace content: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
 
+
+    async def list_notion_pages() -> List[Dict[str, Any]]:
+        """
+        Lists all top-level pages in the Notion workspace.
+        """
+        logger.info("Listing Notion top-level pages...")
+        try:
+            pages = await notion_client.search_pages(query="")
+            response = ToolExecutionResponse(status="success", result=json.dumps(pages))
+            return response
+        except Exception as e:
+            logger.error(f"Error listing Notion top-level pages: {e}", exc_info=True)
+            return []
     @tool
     async def query_notion_database(database_id: str, filter: Dict = None, sorts: List[Dict] = None) -> ToolExecutionResponse:
         """
@@ -100,6 +103,7 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
         Creates a new page or a database entry in Notion.
         - To create a sub-page, provide 'parent_page_id'.
         - To create a database entry, provide 'database_id' and the 'properties' for the entry.
+        - If neither is provided, the page will be created at the workspace root.
         """
         logger.info(f"Creating Notion page/entry with title: {title}")
         try:
@@ -160,7 +164,8 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             return ToolExecutionResponse(status="error", system_error=str(e))
 
     return [
-        list_workspace_content,
+        list_databases,
+        list_notion_pages,
         query_notion_database,
         search_notion_pages_by_keyword,
         create_notion_page_or_database_entry,

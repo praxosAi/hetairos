@@ -105,27 +105,23 @@ def caf_bytes_to_ogg_bytes(caf_bytes: bytes) -> bytes:
 
 def ogg_bytes_to_caf_bytes(ogg_bytes: bytes) -> bytes:
     """
-    Convert OGG/Opus audio bytes to CAF bytes (mono, 16 kHz).
-
-    Args:
-        ogg_bytes: Raw audio in OGG/Opus format.
-
-    Returns:
-        CAF encoded audio as bytes.
+    Convert OGG/Opus bytes -> CAF (libopus, 48000 Hz, mono) bytes in memory.
+    Requires FFmpeg with libopus support.
     """
-    # Load from bytes
     ogg_io = BytesIO(ogg_bytes)
     sound = AudioSegment.from_file(ogg_io, format="ogg")
 
-    # Export to CAF in memory
     caf_io = BytesIO()
     sound.export(
         caf_io,
         format="caf",
-        parameters=["-ac", "1", "-ar", "16000"]  # mono, 16 kHz
+        codec="libopus",
+        parameters=[
+            "-ar", "48000",   # sample rate 48 kHz
+            "-ac", "1",       # mono
+            "-f", "caf"       # container
+        ]
     )
-
-    # Rewind and return raw bytes
     caf_io.seek(0)
     return caf_io.read()
 

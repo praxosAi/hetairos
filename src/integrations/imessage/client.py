@@ -7,6 +7,8 @@ from src.config.settings import settings
 from src.utils.logging import setup_logger
 from src.utils.blob_utils import get_blob_sas_url
 
+
+
 class IMessageClient:
     def __init__(self):
         self.api_key = settings.SENDBLUE_API_KEY
@@ -20,6 +22,7 @@ class IMessageClient:
             "media_url": media_url
         }
         response = await self._make_request("POST", f"{self.base_url}/upload-media-object", payload)
+        self.logger.info(f"Upload media response: {response}")
         if response and "mediaObjectId" in response:
             return f"https://storage.googleapis.com/inbound-file-store/{response['mediaObjectId']}"
     async def send_message(self, to_number: str, message: str):
@@ -36,7 +39,12 @@ class IMessageClient:
         }
         
         return await self._make_request("POST", f"{self.base_url}/send-message", payload)
-
+    async def send_contact_card(self, to_number: str):
+        payload ={
+            'number': to_number,
+            'media_url': 'https://mypraxospublic.blob.core.windows.net/static/praxos.vcf'
+        }
+        return await self._make_request("POST", f"{self.base_url}/send-message", payload)
     async def send_media(self, to_number: str, file_obj: str):
         """Send media message via Sendblue iMessage API"""
         url = file_obj.get("url")

@@ -170,5 +170,45 @@ class UserService:
 
         return result.modified_count > 0 or result.upserted_id is not None
 
+
+    def remove_preference_annotations(self, user_id: str | ObjectId, annotations: list[str]) -> bool:
+        """
+        Remove one or more strings from the 'annotations' array only.
+        No other fields may be deleted via this method.
+
+        Args:
+            user_id: str or ObjectId of the user.
+            annotations: list of exact strings to remove from 'annotations'.
+
+        Returns:
+            bool indicating if an update or upsert occurred.
+        """
+        if not annotations:
+            return False
+
+        db = self._get_database()
+        preferences_collection = db.user_preferences
+
+        now = datetime.now(timezone.utc)
+
+        update_doc = {
+            # Remove any occurrences of the provided values
+            "$pullAll": {"annotations": annotations},
+            # Always bump updated_at
+            "$set": {"updated_at": now},
+            # If the doc doesn't exist, create the shell with user_id/created_at
+            "$setOnInsert": {
+                "user_id": ObjectId(user_id),
+                "created_at": now,
+            },
+        }
+
+        result = preferences_collection.update_one(
+            {"user_id": ObjectId(user_id)},
+            update_doc,
+            upsert=True,  # harmless if doc doesn't exist; no annotations will be created
+        )
+
+        return result.modified_count > 0 or result.upserted_id is not None
 # Global instance
 user_service = UserService()

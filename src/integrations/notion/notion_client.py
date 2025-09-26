@@ -1,8 +1,7 @@
-import aiohttp
 import logging
 from typing import List, Dict, Any, Optional
+from notion_client import AsyncClient
 from datetime import datetime, timedelta
-
 from src.integrations.base_integration import BaseIntegration
 from src.services.integration_service import integration_service
 from src.utils.logging import setup_logger
@@ -12,43 +11,30 @@ logger = setup_logger(__name__)
 class NotionIntegration(BaseIntegration):
     def __init__(self, user_id: str):
         super().__init__(user_id)
-        self.api_key = None
-        self.base_url = "https://api.notion.com/v1"
-        self.headers = {}
+        self.notion_client: Optional[AsyncClient] = None
 
     async def authenticate(self) -> bool:
-        """Fetches the Notion API key from the database."""
+        """Fetches the Notion API key and initializes the AsyncClient."""
         token_info = await integration_service.get_integration_token(self.user_id, 'notion')
         if not token_info or 'access_token' not in token_info:
             logger.error(f"Failed to retrieve Notion API key for user {self.user_id}")
             return False
         
-        self.api_key = token_info['access_token']
-        self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "Notion-Version": "2022-06-28",
-        }
+        self.notion_client = AsyncClient(auth=token_info['access_token'])
         return True
 
-    async def fetch_recent_data(self, since: Optional[datetime] = None) -> List[Dict]:
-        """
-        Fetches pages that have been recently edited in Notion.
-        """
-        if not self.api_key:
-            logger.error("Notion client not authenticated.")
-            return []
+    async def fetch_recent_data(self) -> List[Dict]:
+        """Fetches pages that have been recently edited in Notion."""
+        if not self.notion_client:
+            raise Exception("Notion client not authenticated.")
 
         if since is None:
             since = datetime.utcnow() - timedelta(days=7)
 
-        url = f"{self.base_url}/search"
-        data = {
+        search_params = {
             "filter": {
                 "property": "last_edited_time",
-                "timestamp": {
-                    "after": since.isoformat()
-                }
+                "timestamp": {"after": since.isoformat()}
             },
             "sort": {
                 "direction": "descending",
@@ -56,35 +42,30 @@ class NotionIntegration(BaseIntegration):
             }
         }
         
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.post(url, headers=self.headers, json=data) as response:
-                    response.raise_for_status()
-                    search_results = await response.json()
-                    
-                    # Fetch content for each page
-                    pages = []
-                    for result in search_results.get("results", []):
-                        if result.get("object") == "page":
-                            page_content_blocks = await self.get_page_content(result["id"])
-                            page_text_content = self._convert_blocks_to_text(page_content_blocks)
-                            
-                            title = "Untitled"
-                            if result.get("properties", {}).get("title", {}).get("title"):
-                                title = result["properties"]["title"]["title"][0].get("plain_text", "Untitled")
+        response = await self.notion_client.search(**search_params)
+        
+        pages = []
+        for result in response.get("results", []):
+            if result.get("object") == "page":
+                page_content_blocks = await self.get_page_content(result["id"])
+                page_text_content = self._convert_blocks_to_text(page_content_blocks)
+                
+                title = "Untitled"
+                # Find the title property, which is not always named 'title'
+                for prop_name, prop_value in result.get("properties", {}).items():
+                    if prop_value.get("type") == "title" and prop_value.get("title"):
+                        title = prop_value["title"][0].get("plain_text", "Untitled")
+                        break
 
-                            pages.append({
-                                "id": result["id"],
-                                "title": title,
-                                "url": result.get("url"),
-                                "last_edited_time": result.get("last_edited_time"),
-                                "content": page_text_content, # For potential future use
-                                "raw_blocks": page_content_blocks 
-                            })
-                    return pages
-            except aiohttp.ClientError as e:
-                logger.error(f"Error searching Notion pages: {e}")
-                return []
+                pages.append({
+                    "id": result["id"],
+                    "title": title,
+                    "url": result.get("url"),
+                    "last_edited_time": result.get("last_edited_time"),
+                    "content": page_text_content,
+                    "raw_blocks": page_content_blocks 
+                })
+        return pages
 
     def _convert_blocks_to_text(self, blocks: List[Dict]) -> str:
         """Converts a list of Notion blocks to a single string of plain text."""
@@ -94,124 +75,109 @@ class NotionIntegration(BaseIntegration):
             if block_type and block.get(block_type, {}).get("rich_text"):
                 for text_item in block[block_type]["rich_text"]:
                     text_parts.append(text_item.get("plain_text", ""))
-            if block.get("has_children"):
-                # Recursively process child blocks, adding indentation
-                child_text = self._convert_blocks_to_text(block.get("children", []))
-                for line in child_text.split('\n'):
-                    if line: # Avoid indenting empty lines
-                        text_parts.append(f"\t{line}")
-
         return "\n".join(text_parts)
 
+    async def list_databases(self) -> List[Dict[str, Any]]:
+        """Lists all databases accessible to the integration."""
+        if not self.notion_client:
+            raise Exception("Notion client not authenticated.")
+        
+        response = await self.notion_client.search(filter={"property": "object", "value": "database"})
+        databases = []
+        for db in response.get("results", []):
+            title = "Untitled Database"
+            title_list = db.get("title", [])
+            if title_list:
+                title = title_list[0].get("plain_text", title)
+            databases.append({"id": db["id"], "title": title, "url": db.get("url")})
+        return databases
+    async def get_all_workspace_entries(self) -> List[Dict[str, Any]]:
+        """Fetches all top-level pages and databases in the Notion workspace."""
+        if not self.notion_client:
+            raise Exception("Notion client not authenticated.")
+        
+        entries = []
+        start_cursor = None
+        while True:
+            response = await self.notion_client.search(start_cursor=start_cursor)
+            entries.extend(response.get("results", []))
+            if not response.get("has_more"):
+                break
+            start_cursor = response.get("next_cursor")
+        return entries
+    async def search_pages(self, query: str = "", custom_filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """Searches for pages, optionally with a custom filter."""
+        if not self.notion_client:
+            raise Exception("Notion client not authenticated.")
+        
+        search_params = {"query": query}
+        if custom_filter:
+            search_params["filter"] = custom_filter
+        else:
+            search_params["filter"] = {"property": "object", "value": "page"}
+            
+        response = await self.notion_client.search(**search_params)
+        return response.get("results", [])
+
+    async def query_database(self, database_id: str, filter: Dict = None, sorts: List[Dict] = None) -> List[Dict[str, Any]]:
+        """Queries a Notion database."""
+        if not self.notion_client:
+            raise Exception("Notion client not authenticated.")
+        
+        query_params = {}
+        if filter:
+            query_params["filter"] = filter
+        if sorts:
+            query_params["sorts"] = sorts
+            
+        response = await self.notion_client.databases.query(database_id=database_id, **query_params)
+        return response.get("results", [])
+
+    async def create_page(self, title: str, content: List[Dict[str, Any]], parent_page_id: str = None, database_id: str = None, properties: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Creates a new page or database entry."""
+        if not self.notion_client:
+            raise Exception("Notion client not authenticated.")
+        # if not parent_page_id and not database_id:
+        #     raise ValueError("Either parent_page_id or database_id must be provided.")
+        if database_id:
+            parent = {"database_id": database_id}
+        elif parent_page_id:
+            parent = {"page_id": parent_page_id}
+        else:
+            ## workspace is the root.
+            parent = {'type':'workspace','workspace':True}
+        page_properties = properties or {}
+        page_properties["title"] = {"title": [{"text": {"content": title}}]}
+
+        return await self.notion_client.pages.create(
+            parent=parent,
+            properties=page_properties,
+            children=content
+        )
+
+    async def append_block_children(self, block_id: str, children: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Appends blocks to a page or another block."""
+        if not self.notion_client:
+            raise Exception("Notion client not authenticated.")
+        return await self.notion_client.blocks.children.append(block_id=block_id, children=children)
+
+    async def update_page_properties(self, page_id: str, properties: Dict[str, Any]) -> Dict[str, Any]:
+        """Updates the properties of a page."""
+        if not self.notion_client:
+            raise Exception("Notion client not authenticated.")
+        return await self.notion_client.pages.update(page_id=page_id, properties=properties)
+
     async def get_page_content(self, page_id: str) -> List[Dict[str, Any]]:
-        """Retrieves the content of a Notion page, including nested blocks."""
-        return await self._get_all_blocks(page_id)
-
-    async def _get_block_children(self, block_id: str) -> List[Dict[str, Any]]:
-        """Retrieves the children of a specific block."""
-        url = f"{self.base_url}/blocks/{block_id}/children"
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(url, headers=self.headers) as response:
-                    response.raise_for_status()
-                    return (await response.json()).get("results", [])
-            except aiohttp.ClientError as e:
-                logger.error(f"Error getting block children: {e}")
-                raise
-
-    async def _get_all_blocks(self, block_id: str) -> List[Dict[str, Any]]:
-        """Recursively retrieves all blocks and their children."""
-        blocks = await self._get_block_children(block_id)
-        for block in blocks:
-            if block.get("has_children"):
-                block["children"] = await self._get_all_blocks(block["id"])
-        return blocks
-
-    async def search_pages(self, query: str) -> List[Dict[str, Any]]:
-        """
-        Searches for pages in Notion using a text query.
-
-        Args:
-            query: The search query string.
-
-        Returns:
-            A list of page objects matching the search query.
-        """
-        if not self.api_key:
+        """Retrieves all blocks from a page."""
+        if not self.notion_client:
             raise Exception("Notion client not authenticated.")
-
-        url = f"{self.base_url}/search"
-        data = {
-            "query": query,
-            "filter": {
-                "value": "page",
-                "property": "object"
-            },
-            "sort": {
-                "direction": "descending",
-                "timestamp": "last_edited_time"
-            }
-        }
-
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.post(url, headers=self.headers, json=data) as response:
-                    response.raise_for_status()
-                    search_results = await response.json()
-                    
-                    pages = []
-                    for result in search_results.get("results", []):
-                        if result.get("object") == "page":
-                            title = "Untitled"
-                            if result.get("properties", {}).get("title", {}).get("title"):
-                                title = result["properties"]["title"]["title"][0].get("plain_text", "Untitled")
-                            
-                            pages.append({
-                                "id": result["id"],
-                                "title": title,
-                                "url": result.get("url"),
-                                "last_edited_time": result.get("last_edited_time"),
-                                "created_time": result.get("created_time")
-                            })
-                    
-                    return pages
-            except aiohttp.ClientError as e:
-                logger.error(f"Error searching Notion pages: {e}")
-                raise
-
-    async def create_page(self, parent_page_id: str, title: str, content: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Creates a new page in Notion.
-
-        Args:
-            parent_page_id: The ID of the parent page.
-            title: The title of the new page.
-            content: The content of the page, as a list of block objects.
-        """
-        if not self.api_key:
-            raise Exception("Notion client not authenticated.")
-
-        url = f"{self.base_url}/pages"
-        data = {
-            "parent": {"page_id": parent_page_id},
-            "properties": {
-                "title": {
-                    "title": [
-                        {
-                            "text": {
-                                "content": title,
-                            },
-                        },
-                    ],
-                },
-            },
-            "children": content,
-        }
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.post(url, headers=self.headers, json=data) as response:
-                    response.raise_for_status()
-                    return await response.json()
-            except aiohttp.ClientError as e:
-                logger.error(f"Error creating Notion page: {e}")
-                raise
+        
+        all_blocks = []
+        start_cursor = None
+        while True:
+            response = await self.notion_client.blocks.children.list(block_id=page_id, start_cursor=start_cursor)
+            all_blocks.extend(response.get("results", []))
+            if not response.get("has_more"):
+                break
+            start_cursor = response.get("next_cursor")
+        return all_blocks

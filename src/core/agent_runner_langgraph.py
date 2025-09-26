@@ -80,12 +80,14 @@ class LangGraphAgentRunner:
         from src.utils.portkey_headers_isolation import create_port_key_headers
         portkey_headers , portkey_gateway_url = create_port_key_headers(trace_id=trace_id)
         ### note that this is not OpenAI, this is azure. we will use portkey to access OAI Azure.
-        self.llm = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
+        # self.llm = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
+        ### temporary, investigating refusals.
         self.media_llm =ChatGoogleGenerativeAI(
             model="gemini-2.5-pro",
             api_key=settings.GEMINI_API_KEY,
             temperature=0.2,
             )
+        self.llm = self.media_llm
         if has_media:
             self.llm = self.media_llm   
         self.structured_llm = self.llm.with_structured_output(AgentFinalResponse)
@@ -135,11 +137,12 @@ class LangGraphAgentRunner:
         annotations = preferences.get('annotations', [])
 
         if annotations:
+            logger.info(f"User has provided additional context and preferences: {annotations}")
             praxos_prompt += f"\n\nThe user has provided the following additional context and preferences for you to consider in your responses: {'\n'.join(annotations)}\n"
         nyc_tz = pytz.timezone(timezone_name)
         current_time_nyc = datetime.now(nyc_tz).isoformat()
         time_prompt = f"\nThe current time in the user's timezone is {current_time_nyc}. You should always assume the user is in the '{timezone_name}' timezone unless specified otherwise."
-
+        logger.info(time_prompt)
         tool_output_prompt = (
             "\nThe output format of most tools will be an object containing information, including the status of the tool execution. "
             "If the execution is successful, the status will be 'success'. In cases where the tool execution is not successful, "
@@ -166,8 +169,8 @@ class LangGraphAgentRunner:
          f"The prefered language to use is '{preferred_language}'. You must always respond in the prefered language, unless the user specifically asks you to respond in a different language. If the user uses a different language than the prefered one, you can respond in the language the user used. if the user asks you to use a different language, you must comply."
          "Pay attention to pronouns and formality levels in the prefered language, pronoun rules, and other similar nuances. mirror the user's language style and formality level in your responses."
         )
-
-        return base_prompt + praxos_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt
+        total_system_capabilities_prompt = "The system is capable of integrating with various third party services. these are, Notion, Dropbox, Gmail, Google Drive, Google Calendar, Outlook and Outlook Calendar, One Drive, WhatsApp, Telegram, iMessage. The given user, however, may have not integrated any, or only integrated a subset. the user may ask for tasks that require an integration you do not have. in such cases, use the integration tool to help them integrate the tool."
+        return base_prompt + praxos_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt + total_system_capabilities_prompt
 
     async def _build_payload_entry(self, file: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Create a single payload dict for a file entry."""
@@ -242,6 +245,7 @@ class LangGraphAgentRunner:
                 
                 # Add text to conversation DB first
                 await self.conversation_manager.add_user_message(
+                    user_context.user_id,
                     conversation_id, 
                     full_message, 
                     metadata
@@ -265,6 +269,7 @@ class LangGraphAgentRunner:
                 full_message = message_prefix + text_content
                 
                 await self.conversation_manager.add_user_message(
+                    user_context.user_id,
                     conversation_id, 
                     full_message, 
                     metadata
@@ -356,7 +361,7 @@ class LangGraphAgentRunner:
             # Add text message
             if text_content:
                 full_message = message_prefix + text_content
-                await self.conversation_manager.add_user_message(conversation_id, full_message, metadata)
+                await self.conversation_manager.add_user_message(user_context.user_id, conversation_id, full_message, metadata)
                 messages.append(HumanMessage(content=full_message))
                 logger.info(f"Added text for message {i+1}/{len(input_messages)}")
             
@@ -375,12 +380,14 @@ class LangGraphAgentRunner:
                     
                     if inserted_id and conversation_id:
                         await self.conversation_manager.add_user_media_message(
+                            user_context.user_id,
                             conversation_id, message_prefix, inserted_id,
                             message_type=ftype,
                             metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
                         )
                         if caption:
                             await self.conversation_manager.add_user_message(
+                                user_context.user_id,
                                 conversation_id,
                                 message_prefix + " as caption for media in the previous message: " + caption,
                                 metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
@@ -405,6 +412,7 @@ class LangGraphAgentRunner:
         conversation_id: str = None,
         message_prefix: str = "",
         max_concurrency: int = 8,
+        user_id: str = None,
     ) -> List[BaseMessage]:
         logger.info(f"Generating file messages; current messages length: {len(messages)}")
 
@@ -425,6 +433,7 @@ class LangGraphAgentRunner:
             # Persist to conversation log first, in-order
             if ins_id and conversation_id:
                 await self.conversation_manager.add_user_media_message(
+                    user_id,
                     conversation_id,
                     message_prefix,
                     ins_id,
@@ -433,6 +442,7 @@ class LangGraphAgentRunner:
                 )
                 if cap:
                     await self.conversation_manager.add_user_message(
+                        user_id,
                         conversation_id,
                         message_prefix + " as caption for media in the previous message: " + cap,
                         metadata={"inserted_id": ins_id, "timestamp": datetime.utcnow().isoformat()},
@@ -445,8 +455,55 @@ class LangGraphAgentRunner:
 
         return messages
 
+    async def process_media_output(self,final_response:AgentFinalResponse, user_context: UserContext, source: str, conversation_id: str) -> AgentFinalResponse:
+        try:
+            output_blobs = []
+            if final_response.output_modality and final_response.output_modality != "text":
+                logger.info(f"Non-text output modality '{final_response.output_modality}' detected; invoking output generator")
+                generation_instructions = final_response.generation_instructions or f"Generate a {final_response.output_modality} based on the following text: {final_response.response}"
+                output_generator = OutputGenerator()
+                prefix = f"{user_context.user_id}/{source}/{conversation_id}/"
+                if final_response.output_modality == "image":
+                    try:
+                        image_blob_url, image_file_name = await output_generator.generate_image(generation_instructions, prefix)
+                        if image_blob_url:
+                            output_blobs.append({"url": image_blob_url, "file_type": "image", "file_name": image_file_name})
+                            await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we generated an image for the user. this image was described as follows: " + generation_instructions)
+                    except Exception as e:
+                        logger.info(f"Error generating image output: {e}", exc_info=True)
+                        await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we failed to generate an image for the user. there was an error: " + str(e) + " the image was described as follows: " + generation_instructions)
+                if final_response.output_modality in {"audio", "voice"}:
+                    is_imessage = final_response.delivery_platform == "imessage"
+                    logger.info(f"Generating audio with is_imessage={is_imessage}")
+                    try:
+                        audio_blob_url, audio_file_name = await output_generator.generate_speech(generation_instructions, prefix, is_imessage)
+                        if audio_blob_url:
+                            output_blobs.append({"url": audio_blob_url, "file_type": "audio", "file_name": audio_file_name})
+                            await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we generated audio for the user. this audio was described as follows: " + generation_instructions)
+                    except Exception as e:
+                        logger.info(f"Error generating audio output: {e}", exc_info=True)
+                        await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we failed to generate audio for the user. there was an error: " + str(e) + " the audio was described as follows: " + generation_instructions)
 
-   
+                if final_response.output_modality == "video":
+                    try:
+                        video_blob_url, video_file_name = await output_generator.generate_video(generation_instructions, prefix)
+                        if video_blob_url:
+                            output_blobs.append({"url": video_blob_url, "file_type": "video", "file_name": video_file_name})
+                            await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we generated a video for the user. this video was described as follows: " + generation_instructions)
+                    except Exception as e:
+                        logger.info(f"Error generating video output: {e}", exc_info=True)
+                        await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we failed to generate a video for the user. there was an error: " + str(e) + " the video was described as follows: " + generation_instructions)
+        except Exception as e:
+            logger.error(f"Error during output generation: {e}", exc_info=True)
+            # Append error message to final response
+            final_response.response += "\n\n(Note: There was an error generating the requested media output. Please try again later.)"
+            # Downgrade to text-only response
+            final_response.output_modality = "text"
+            final_response.generation_instructions = None
+        if not final_response.file_links:
+            final_response.file_links = []
+        final_response.file_links.extend(output_blobs)
+        return final_response
     async def _get_conversation_history(
         self,
         conversation_id: str,
@@ -564,7 +621,7 @@ class LangGraphAgentRunner:
                 # Single message - existing logic
                 message_prefix = f'message sent on date {current_time_user} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
                 if input_text:
-                    await self.conversation_manager.add_user_message(conversation_id, message_prefix + input_text, metadata)
+                    await self.conversation_manager.add_user_message(user_context.user_id, conversation_id, message_prefix + input_text, metadata)
                     history.append(HumanMessage(content=message_prefix + input_text))
                 
                 # Handle files for single message
@@ -594,22 +651,22 @@ class LangGraphAgentRunner:
             llm_with_tools = self.llm.bind_tools(tools)
 
             system_prompt = self._create_system_prompt(user_context, source, metadata)
-            
-            from src.config.settings import settings
-            if settings.OPERATING_MODE == "local":
-                praxos_api_key = settings.PRAXOS_API_KEY
-            else:
-                praxos_api_key = user_context.user_record.get("praxos_api_key")
+            ### this creates unnecessary overhead and latency, so we'll disable it for now.
+            # from src.config.settings import settings
+            # if settings.OPERATING_MODE == "local":
+            #     praxos_api_key = settings.PRAXOS_API_KEY
+            # else:
+            #     praxos_api_key = user_context.user_record.get("praxos_api_key")
 
-            try:
-                if input_text and len(input_text) > 5 and praxos_api_key:
-                    praxos_client = PraxosClient(f"env_for_{user_context.user_record.get('email')}", api_key=praxos_api_key)
-                    ### @TODO: this needs a more intelligent approach. for example, if the input is just "hi" or "hello", we don't need to fetch long term memory.
-                    # long_term_memory_context = await self._get_long_term_memory(praxos_client, input_text)
-                    # if long_term_memory_context:
-                    #     system_prompt += long_term_memory_context
-            except Exception as e:
-                logger.error(f"Error fetching long-term memory: {e}", exc_info=True)
+            # try:
+            #     if input_text and len(input_text) > 5 and praxos_api_key:
+            #         praxos_client = PraxosClient(f"env_for_{user_context.user_record.get('email')}", api_key=praxos_api_key)
+            #         ### @TODO: this needs a more intelligent approach. for example, if the input is just "hi" or "hello", we don't need to fetch long term memory.
+            #         # long_term_memory_context = await self._get_long_term_memory(praxos_client, input_text)
+            #         # if long_term_memory_context:
+            #         #     system_prompt += long_term_memory_context
+            # except Exception as e:
+            #     logger.error(f"Error fetching long-term memory: {e}", exc_info=True)
 
 
 
@@ -667,38 +724,9 @@ class LangGraphAgentRunner:
             
             final_response = final_state['final_response']
             output_blobs = []
-            await self.conversation_manager.add_assistant_message(conversation_id, final_response.response)
+            await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, final_response.response)
             logger.info(f"Final response generated for execution {execution_id}: {final_response.model_dump_json(indent=2)}")
-            try:
-                if final_response.output_modality and final_response.output_modality != "text":
-                    logger.info(f"Non-text output modality '{final_response.output_modality}' detected; invoking output generator")
-                    generation_instructions = final_response.generation_instructions or f"Generate a {final_response.output_modality} based on the following text: {final_response.response}"
-                    output_generator = OutputGenerator()
-                    prefix = f"{user_context.user_id}/{source}/{conversation_id}/"
-                    if final_response.output_modality == "image":
-                        image_blob_url, image_file_name = await output_generator.generate_image(generation_instructions, prefix)
-                        if image_blob_url:
-                            output_blobs.append({"url": image_blob_url, "file_type": "image", "file_name": image_file_name})
-                    if final_response.output_modality in {"audio", "voice"}:
-                        is_imessage = final_response.delivery_platform == "imessage"
-                        logger.info(f"Generating audio with is_imessage={is_imessage}")
-                        audio_blob_url, audio_file_name = await output_generator.generate_speech(generation_instructions, prefix, is_imessage)
-                        if audio_blob_url:
-                            output_blobs.append({"url": audio_blob_url, "file_type": "audio", "file_name": audio_file_name})
-                    if final_response.output_modality == "video":
-                        video_blob_url, video_file_name = await output_generator.generate_video(generation_instructions, prefix)
-                        if video_blob_url:
-                            output_blobs.append({"url": video_blob_url, "file_type": "video", "file_name": video_file_name})
-            except Exception as e:
-                logger.error(f"Error during output generation: {e}", exc_info=True)
-                # Append error message to final response
-                final_response.response += "\n\n(Note: There was an error generating the requested media output. Please try again later.)"
-                # Downgrade to text-only response
-                final_response.output_modality = "text"
-                final_response.generation_instructions = None
-            if not final_response.file_links:
-                final_response.file_links = []
-            final_response.file_links.extend(output_blobs)
+            final_response = await self.process_media_output(final_response, user_context, source, conversation_id)
             execution_record["status"] = "completed"
             return final_response
 

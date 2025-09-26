@@ -127,26 +127,28 @@ class NotionIntegration(BaseIntegration):
                 block["children"] = await self._get_all_blocks(block["id"])
         return blocks
 
-    async def search_pages(self, query: str) -> List[Dict[str, Any]]:
+    async def search_pages(self, query: str, custom_filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
-        Searches for pages in Notion using a text query.
+        Searches for pages in Notion using a text query and an optional filter.
 
         Args:
             query: The search query string.
-
-        Returns:
-            A list of page objects matching the search query.
+            custom_filter: An optional Notion API filter object.
         """
         if not self.api_key:
             raise Exception("Notion client not authenticated.")
 
         url = f"{self.base_url}/search"
+        
+        # Use the custom filter if provided, otherwise default to searching for pages
+        search_filter = custom_filter or {
+            "value": "page",
+            "property": "object"
+        }
+
         data = {
             "query": query,
-            "filter": {
-                "value": "page",
-                "property": "object"
-            },
+            "filter": search_filter,
             "sort": {
                 "direction": "descending",
                 "timestamp": "last_edited_time"
@@ -161,10 +163,14 @@ class NotionIntegration(BaseIntegration):
                     
                     pages = []
                     for result in search_results.get("results", []):
+                        # Ensure we only process pages, even with custom filters
                         if result.get("object") == "page":
                             title = "Untitled"
-                            if result.get("properties", {}).get("title", {}).get("title"):
-                                title = result["properties"]["title"]["title"][0].get("plain_text", "Untitled")
+                            # Find the title property, which is not always named 'title'
+                            for prop_name, prop_value in result.get("properties", {}).items():
+                                if prop_value.get("type") == "title" and prop_value.get("title"):
+                                    title = prop_value["title"][0].get("plain_text", "Untitled")
+                                    break
                             
                             pages.append({
                                 "id": result["id"],

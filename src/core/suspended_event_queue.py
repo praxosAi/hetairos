@@ -13,11 +13,8 @@ SCHEDULE_EVENT_KEY = "schedule"
 
 class SuspendedEventQueue:
 
-    def _generate_session_id(self, event: Dict[str, Any], session_id: str = None) -> str:
+    def _generate_session_id(self, event: Dict[str, Any]) -> str:
         """Generate a session ID based on event data if not provided"""
-        if session_id:
-            return session_id
-            
         # Generate session based on user and source for grouping
         user_id = event.get('user_id')
         
@@ -27,7 +24,7 @@ class SuspendedEventQueue:
             # Fallback for system/non-user events
             return f"system"
 
-    async def publish(self, event: Dict[str, Any], session_id: str = None):
+    async def publish(self, event: Dict[str, Any]):
         """
         Publish an event to the Service Bus queue with a session for message grouping.
         Session ID is auto-generated based on user_id and source if not provided.

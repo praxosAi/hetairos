@@ -1,6 +1,5 @@
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
-from fastapi.middleware.cors import CORSMiddleware
 from src.ingress.webhook_handlers import whatsapp_handler
 from src.ingress.webhook_handlers import http_handler
 from src.ingress.webhook_handlers import gmail_handler
@@ -8,10 +7,7 @@ from src.ingress.webhook_handlers import telegram_handler
 from src.ingress.webhook_handlers import notion_handler
 from src.ingress.webhook_handlers import outlook_handler
 from src.ingress.webhook_handlers import imessage_handler
-from src.workers.execution_worker import execution_task
-from src.workers.conversation_consolidator import ConversationConsolidator
-
-from src.utils.database import conversation_db
+from src.core import suspended_event_queue
 
 from src.utils.redis_client import subscribe_to_channel
 from src.utils.logging import setup_logger
@@ -33,6 +29,7 @@ app.include_router(telegram_handler.router, prefix="/webhooks")
 app.include_router(notion_handler.router, prefix="/webhooks")
 app.include_router(outlook_handler.router, prefix="/webhooks")
 app.include_router(imessage_handler.router, prefix="/webhooks")
+app.include_router(suspended_event_queue.router, prefix="/admin/suspended-events")
 
 @app.get("/")
 async def root():

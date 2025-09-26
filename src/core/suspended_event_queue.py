@@ -67,7 +67,7 @@ class SuspendedEventQueue:
                     suspended_message = {
                         "event": event,
                         "type": NORMAL_EVENT_KEY,
-                        "schedule_time": timestamp #@todo check the serialization 
+                        "schedule_time": timestamp.isoformat() if timestamp else None
                     }
                     message_body = json.dumps(suspended_message)
                     message = ServiceBusMessage(message_body)
@@ -111,12 +111,27 @@ class SuspendedEventQueue:
 
                                     for msg in batch:
                                         try:
-                                            event = json.loads(str(msg))
+                                            message_body = json.loads(str(msg))
                                             messages_counter += 1
                                             await session_receiver.complete_message(msg)
-                                            #@todo send properly based on the event type
-                                            await event_queue.publish(event)
+                                            message_type = message_body.get('type')
+                                            event = message_body.get('event')
+                                            if not event:
+                                                logger.error(f"there is no event in the suspended message {message_body}" )
+                                                continue
 
+                                            if message_type == NORMAL_EVENT_KEY:
+                                                await event_queue.publish(event)
+                                            elif message_type == SCHEDULE_EVENT_KEY:
+                                                schedule_time = message_body.get('schedule_time')
+                                                if not schedule_time:
+                                                    logger.error(f"can't find schedule time for schedule suspended message {message_body}")
+                                                    continue
+                                                await event_queue.publish_scheduled_event(event, datetime.fromisoformat(schedule_time))
+                                            else:
+                                                logger.error(f'message type {message_type} is not supported')
+                                                continue
+                                            
                                         except Exception as e:
                                             logger.error(f"Error processing message: {e}", exc_info=True)
                                             await session_receiver.abandon_message(msg)

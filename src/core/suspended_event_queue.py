@@ -63,7 +63,7 @@ class SuspendedEventQueue:
                 async with sender:
                     suspended_message = {
                         "event": event,
-                        "type": NORMAL_EVENT_KEY,
+                        "type": SCHEDULE_EVENT_KEY,
                         "schedule_time": timestamp.isoformat() if timestamp else None
                     }
                     message_body = json.dumps(suspended_message)

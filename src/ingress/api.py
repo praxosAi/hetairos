@@ -1,5 +1,7 @@
 import asyncio
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+import os
+import uuid
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Request
 from src.ingress.webhook_handlers import whatsapp_handler
 from src.ingress.webhook_handlers import http_handler
 from src.ingress.webhook_handlers import gmail_handler
@@ -8,18 +10,38 @@ from src.ingress.webhook_handlers import notion_handler
 from src.ingress.webhook_handlers import outlook_handler
 from src.ingress.webhook_handlers import imessage_handler
 from src.core import suspended_event_queue
-
+from src.utils.logging.base_logger import request_id_var, user_id_var, modality_var
 from src.utils.redis_client import subscribe_to_channel
 from src.utils.logging import setup_logger
 
-logger = setup_logger(__name__)
+# Check an environment variable to decide on log format
+# In your deployment (e.g., Dockerfile or Kubernetes YAML), set JSON_LOGGING="true"
+json_logging = True
+logger = setup_logger(__name__, json_format=json_logging)
 
 app = FastAPI(title="Hetairoi Agent Ingress")
 
+@app.middleware("http")
+async def logging_middleware(request: Request, call_next):
+    # Generate a unique request ID for each incoming request
+    request_id = str(uuid.uuid4())
+    request_id_var.set(request_id)
+    
+    # Set default modality. This can be overridden in specific handlers.
+    modality_var.set("http")
 
+    logger.info(f"Request started: {request.method} {request.url.path}")
 
-
-
+    response = await call_next(request)
+    
+    logger.info(f"Request finished: {response.status_code}")
+    
+    # Clean up context variables
+    request_id_var.set('SYSTEM_LEVEL')
+    user_id_var.set('SYSTEM_LEVEL')
+    modality_var.set('SYSTEM_LEVEL')
+    
+    return response
 
 # Mount the webhook handlers
 app.include_router(whatsapp_handler.router, prefix="/webhooks")

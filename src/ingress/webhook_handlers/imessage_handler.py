@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request, HTTPException
 from src.core.event_queue import event_queue
 from src.services.integration_service import integration_service
-from src.utils.logging import setup_logger
+from src.utils.logging.base_logger import setup_logger,user_id_var, modality_var, request_id_var
 from src.integrations.imessage.client import IMessageClient
 from src.utils.blob_utils import upload_to_blob_storage,upload_bytes_to_blob_storage
 from src.utils.audio import caf_bytes_to_ogg_bytes
@@ -44,6 +44,7 @@ async def handle_imessage_webhook(request: Request):
     body_bytes = await request.body()
     signature = request.headers.get("sb-signing-secret")
     logger.info(f"Received iMessage webhook with signature: {signature}")
+    modality_var.set("imessage")
     logger.info(f"request is: {request}")
     if settings.SENDBLUE_SIGNING_SECRET and signature != settings.SENDBLUE_SIGNING_SECRET:
         logger.info(f"Invalid signature for iMessage webhook")
@@ -72,6 +73,7 @@ async def handle_imessage_webhook(request: Request):
             integration_record,user = await integration_service.is_authorizable_user("imessage", phone_number, text)
             if integration_record and user:
                 try:
+                    user_id_var.set(str(user["_id"]))
                     welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n\niMessage communication initialized. \n\nWelcome to Praxos, {user.get('first_name')}.\nPhone number {phone_number} has been saved. You can now issue orders and communicate with Praxos over iMessage. \n\nRecommended action: Save the following contact card:"
                     await imessage_client.send_message(phone_number, welcome_message)
                     await imessage_client.send_contact_card(phone_number)
@@ -90,7 +92,7 @@ async def handle_imessage_webhook(request: Request):
 
 
     user_id = str(integration_record["user_id"])
-    
+    user_id_var.set(user_id)
     
     if text:
         event = {
@@ -99,6 +101,7 @@ async def handle_imessage_webhook(request: Request):
             'output_phone_number': phone_number,
             "source": "imessage",
             "payload": {"text": text},
+            "logging_context": {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
             "metadata": {'message_id': data.get("message_handle"), 'source':'iMessage', 'timestamp': data.get("date_sent")}
         }
         await event_queue.publish(event)
@@ -136,6 +139,7 @@ async def handle_imessage_webhook(request: Request):
                 'output_type': 'imessage',
                 'output_phone_number': phone_number,
                 "source": "imessage",
+                "logging_context": {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
                 "payload": {"files": [{'type': file_type, 'blob_path': blob_name, 'mime_type': mime_type, 'caption': '', 'inserted_id': str(inserted_id)}]},
                 "metadata": {'message_id': data.get("message_handle"), 'source':'iMessage', 'timestamp': data.get("date_sent")}
             }

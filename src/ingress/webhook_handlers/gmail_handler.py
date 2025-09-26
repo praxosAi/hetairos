@@ -8,7 +8,7 @@ from src.services.conversation_manager import ConversationManager
 from src.utils.database import conversation_db
 from src.services.integration_service import integration_service
 router = APIRouter()
-from src.utils.logging.base_logger import setup_logger
+from src.utils.logging.base_logger import setup_logger,user_id_var, modality_var, request_id_var
 logger = setup_logger(__name__)
 
 @router.post("/gmail")
@@ -55,10 +55,13 @@ async def handle_gmail_webhook(request: Request):
         input_text = f"New email from {message.get('from')}. Subject: {message.get('subject')}. Body: {message.get('snippet')}"
 
         for user_id in user_ids:
+            user_id_var.set(str(user_id))
+            modality_var.set("gmail")
             event = {
                 "user_id": str(user_id),
                 "source": "gmail",
                 "payload": {"text": input_text},
+                "logging_context": {'user_id': str(user_id), 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
                 "metadata": {"gmail_message_id": message.get("id"), 'source':'gmail'}
             }
             await event_queue.publish(event)

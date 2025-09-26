@@ -113,7 +113,7 @@ async def _process_suspended_events_background(user_id: str):
                                 if not event:
                                     logger.error(f"there is no event in the suspended message {message_body}" )
                                     continue
-
+                                
                                 if message_type == NORMAL_EVENT_KEY:
                                     await event_queue.publish(event)
                                 elif message_type == SCHEDULE_EVENT_KEY:

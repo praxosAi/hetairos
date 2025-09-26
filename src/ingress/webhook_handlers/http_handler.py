@@ -7,7 +7,7 @@ from src.utils.database import conversation_db
 from src.services.integration_service import integration_service
 from src.ingest.ingestion_worker import InitialIngestionCoordinator
 from bson import ObjectId
-from src.utils.logging.base_logger import setup_logger
+from src.utils.logging.base_logger import setup_logger, user_id_var, modality_var, request_id_var
 logger = setup_logger(__name__)
 from src.utils.blob_utils import upload_bytes_to_blob_storage, upload_to_blob_storage
 from fastapi import UploadFile,Request, Form, File
@@ -87,7 +87,6 @@ async def handle_chat_request(
     - file_0, file_1, etc.: uploaded files
     - audio: uploaded audio file
     """
-    
     # Determine request type and extract data
     # content_type = raw_request.headers.get("content-type", "")
     
@@ -98,7 +97,8 @@ async def handle_chat_request(
             status_code=400, 
             detail="Missing required fields: user_id and token are required"
         )
-        
+    user_id_var.set(str(user_id))
+    modality_var.set("websocket")
     # Process uploaded files
     file_data = []
     for file in files:
@@ -196,6 +196,7 @@ async def handle_chat_request(
         "user_id": request_obj.user_id,
         "source": "websocket",
         "payload": payload,
+        'logging_context': {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
         "metadata": {
             "token": request_obj.token,
             "conversation_id": conversation_id,
@@ -315,6 +316,8 @@ async def handle_file_upload_request(
             "user_id": request_obj.user_id,
             "source": "file_ingestion", # A new source type for our worker to identify
             "payload": payload,
+            "logging_context": {'user_id':user_id_var.get(), 'request_id': str(request_id_var.get()), 'modality': 'ingestion_api'},
+
             "metadata": {'ingest_type':'file_upload','source':'file_upload_api'}
         }
         await event_queue.publish(ingestion_event)
@@ -333,9 +336,12 @@ async def trigger_ingestion(request: IngestionRequest):
     """
     Triggers the initial data ingestion by publishing an event to the queue.
     """
+    user_id_var.set(str(request.user_id))
+    modality_var.set("ingestion_sync")
     event = {
         "user_id": request.user_id,
         "source": "ingestion", # A new source type for our worker to identify
+        "logging_context": {'user_id':user_id_var.get(), 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
         "payload": {
             "integration_type": request.integration_type
         },

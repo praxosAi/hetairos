@@ -58,6 +58,21 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             return ToolExecutionResponse(status="error", system_error=str(e))
 
     @tool
+    async def get_all_workspace_entries() -> ToolExecutionResponse:
+        """
+        Retrieves all pages and databases in the Notion workspace.
+        This is a more exhaustive search and should be used when you need to find something but don't know where it is.
+        """
+        logger.info("Retrieving all Notion workspace entries...")
+        try:
+            results = await notion_client.get_all_workspace_entries()
+            response = ToolExecutionResponse(status="success", result=json.dumps(results))
+            logger.info(f"All Notion workspace entries response: {response.result}")
+            return response
+        except Exception as e:
+            logger.error(f"Error retrieving all Notion workspace entries: {e}", exc_info=True)
+            return ToolExecutionResponse(status="error", system_error=str(e))
+    @tool
     async def search_notion_pages_by_keyword(query: str) -> ToolExecutionResponse:
         """
         Performs a global keyword search across all pages. Use this to find a specific page by its title
@@ -152,4 +167,5 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
         append_to_notion_page,
         update_notion_page_properties,
         get_notion_page_content,
+        get_all_workspace_entries,
     ]

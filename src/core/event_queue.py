@@ -7,6 +7,8 @@ from typing import Dict, Any, List
 from src.config.settings import settings
 from src.utils.logging.base_logger import setup_logger
 from azure.servicebus.exceptions import OperationTimeoutError
+from src.services.user_service import user_service
+
 logger = setup_logger(__name__)
 
 class InMemoryEventQueue:
@@ -111,12 +113,35 @@ class AzureEventQueue:
                     f"files={has_files}, count={message_count}, final={delay}")
         
         return delay
+    
+    def _should_be_suspended(self, event: Dict[str, Any]):
+        user_id = event.get('user_id')
+
+        if not user_id:
+            return True
+        
+        return user_service.can_have_access(user_id=user_id)
 
     async def publish(self, event: Dict[str, Any], session_id: str = None):
         """
         Publish an event to the Service Bus queue with a session for message grouping.
         Session ID is auto-generated based on user_id and source if not provided.
         """
+
+        if self._should_be_suspended(event):
+            from src.core.suspended_event_queue import suspended_event_queue
+            from src.egress.service import egress_service
+            import copy 
+            await suspended_event_queue.publish(event)
+            response_event = copy.deepcopy(event)
+            response_event['response'] = (
+                "Your subscription has been deactivated due to either the end of your trial period or a billing issue.\n"
+                "Please log in to app.mypraxos.com and complete your payment to restore access."
+            )
+            response_event['output_type'] = response_event.get('source')
+            egress_service.send_response(response_event)
+            return
+
         from azure.servicebus.aio import ServiceBusClient
         from azure.servicebus import ServiceBusMessage
         try:
@@ -139,6 +164,20 @@ class AzureEventQueue:
         """
         Publish an event to the Service Bus queue, at a specific timestamp.
         """
+        if self._should_be_suspended(event):
+            from src.core.suspended_event_queue import suspended_event_queue
+            from src.egress.service import egress_service
+            import copy 
+            await suspended_event_queue.publish_scheduled_event(event, timestamp)
+            response_event = copy.deepcopy(event)
+            response_event['responce'] = (
+                "Your subscription has been deactivated due to either the end of your trial period or a billing issue.\n"
+                "Please log in to app.mypraxos.com and complete your payment to restore access."
+            )
+            response_event['output_type'] = response_event.get('source')
+            egress_service.send_response(response_event)
+            return
+        
         from azure.servicebus.aio import ServiceBusClient
         from azure.servicebus import ServiceBusMessage
         try:

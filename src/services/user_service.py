@@ -120,7 +120,21 @@ class UserService:
         db = self._get_database()
         preferences_collection = db.user_preferences
         preference = preferences_collection.find_one({"user_id": ObjectId(user_id)})
-        return preference 
+        return preference
+
+    def can_have_access(self, user:dict=None, user_id=None):
+        if not user:
+            if not user_id:
+                raise Exception("either user or user_id should be passed in")
+            user = self.get_user_by_id(user_id)
+            if not user:
+                raise Exception(f"can't find user from {user_id} id")
+
+        if user.get('trial_end_date') and user.get('trial_end_date') > datetime.now():
+            return True
+        
+        if not user.get("billing_setup_completed") or (user.get('payment_status') in ['pending', 'incomplete', 'incomplete_expired']):
+            return False
 
     def add_new_preference_annotations(self, user_id: str | ObjectId, preferences: dict, append: bool = False):
         """

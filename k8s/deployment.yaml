@@ -28,7 +28,7 @@ kind: Deployment
 metadata:
   name: hetairoi-worker-deployment
 spec:
-  replicas: 1 # Usually start with one worker, can be scaled based on load
+  replicas: 3 # Usually start with one worker, can be scaled based on load
   selector:
     matchLabels:
       app: hetairoi-worker

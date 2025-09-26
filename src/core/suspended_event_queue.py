@@ -34,7 +34,7 @@ class SuspendedEventQueue:
         from azure.servicebus import ServiceBusMessage
         try:
             # Always ensure we have a session ID
-            final_session_id = self._generate_session_id(event, session_id)
+            session_id = self._generate_session_id(event)
             
             async with ServiceBusClient.from_connection_string(settings.AZURE_SERVICEBUS_CONNECTION_STRING) as client:
                 sender = client.get_queue_sender(settings.AZURE_SERVICEBUS_SUSPENDED_QUEUE_NAME)
@@ -45,9 +45,9 @@ class SuspendedEventQueue:
                     }
                     message_body = json.dumps(suspended_message)
                     message = ServiceBusMessage(message_body)
-                    message.session_id = final_session_id
+                    message.session_id = session_id
                     await sender.send_messages(message)
-                    logger.info(f"An event is suspended with session: {final_session_id}")
+                    logger.info(f"An event is suspended with session: {session_id}")
         except Exception as e:
             logger.error(f"Failed to publish suspended event to Azure Service Bus: {e}", exc_info=True)
 

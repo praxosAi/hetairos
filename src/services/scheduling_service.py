@@ -7,7 +7,7 @@ from src.utils.logging.base_logger import setup_logger
 from typing import List, Dict, Optional
 logger = setup_logger(__name__)
 from zoneinfo import ZoneInfo # Use this for Python 3.9+
-from src.services import user_service
+from src.services.user_service import user_service
 from datetime import datetime, timezone, timedelta
 
 

@@ -74,21 +74,6 @@ class PraxosClient:
         start_time = time.time()
         praxos_logger.info(f"Adding conversation for user {user_id} with source {source}")        
         try:
-            # Create message with user anchor
-            
-            
-            # Add message to environment using add_business_data for structured data
-            # This matches the actual Praxos SDK as shown in environment.py
-            # business_data = {
-            #     "message": {
-            #         "content": content,
-            #         "user_id": user_id,
-            #         "source": source,
-            #         "timestamp": datetime.utcnow().isoformat(),
-            #         **(metadata or {})
-            #     }
-            # }
-
             reformatted_messages = []
             for message in messages:
                 time_stamp_str = message['timestamp']
@@ -101,7 +86,7 @@ class PraxosClient:
                 reformatted_messages.append(Message(content=content_enriched, role=message['role'], timestamp=message['timestamp']))
             # Create unique name to avoid conflicts
             import uuid
-            unique_name = f"Message_{user_id}_{source}_{uuid.uuid4().hex[:8]}"
+            unique_name = f"Message_{user_id}_{source}_{uuid.uuid4().hex}"
                      
             result = self.env.add_conversation(
                 messages=reformatted_messages,

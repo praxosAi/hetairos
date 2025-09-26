@@ -6,7 +6,7 @@ load_dotenv()
 class Settings:
     # Praxos
     PRAXOS_API_KEY = os.getenv("PRAXOS_API_KEY")
-    PRAXOS_BASE_URL = "https://api.praxos.ai"
+    PRAXOS_BASE_URL = "https://api.mypraxos.com"
     PRAXOS_ENVIRONMENT_NAME = os.getenv("PRAXOS_ENVIRONMENT_NAME")
     PORTKEY_API_KEY = os.getenv("PORTKEY_API_KEY")
 

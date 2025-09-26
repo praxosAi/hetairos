@@ -22,7 +22,7 @@ async def handle_telegram_webhook(request: Request):
     logger.info(f"Received data from telegram webhook: {data}")
     if "message" in data:
         message = data["message"]
-
+        chat_id = message["chat"]["id"]
         username = message["from"].get("username", "").lower()
         if not username:
             logger.warning(f"User {message['from']['id']} has no username, cannot authorize")
@@ -30,11 +30,28 @@ async def handle_telegram_webhook(request: Request):
             return {"status": "ok"}
         integration_record = await integration_service.is_authorized_user("telegram", username)
         if not integration_record:
-            logger.warning(f"User {message['from']['id']} is not authorized to use the bot")
-            await telegram_client.send_message(message["chat"]["id"], "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com, and add your telegram username to your account.")
-            return {"status": "ok"}
+            logger.info(f"User {username} not authorized, attempting to authorize.")
+            try:
+                message_text = message.get("text","")
+                integration_record_new,user_record = await integration_service.is_authorizable_user('telegram',username, message_text, chat_id)
+                if integration_record_new:
+                    try:
+                        welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n\nTelegram communication initialized. \n\nWelcome to Praxos, {user_record.get('first_name')}.\nUser name @{username} has been saved. You can now issue orders and communicate with Praxos over Telegram."
+                        await telegram_client.send_message(message["chat"]["id"], welcome_message)
+                        return {"status": "ok"}
+                    except Exception as e:
+                        logger.error(f"Failed to send welcome message to {username}: {e}")
+                    integration_record = integration_record_new
+                    return
+                else:
+                    logger.warning(f"User {message['from']['id']} is not authorized to use the bot")
+                    await telegram_client.send_message(message["chat"]["id"], "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com, and add your telegram username to your account.")
+                    return {"status": "ok"}
+            except Exception as e:
+                logger.error(f"Error during authorization attempt for {username}: {e}")
+                await telegram_client.send_message(message["chat"]["id"], "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com, and add your telegram username to your account. if this message seems to be an error, please contact support on discord.")
+                return {"status": "ok"}
         user_id = str(integration_record["user_id"])
-        chat_id = message["chat"]["id"]
         ### for telegram, on the first message, we must store the chat id in the user record.
         if not integration_record.get("telegram_chat_id"):
             integration_record["telegram_chat_id"] = chat_id

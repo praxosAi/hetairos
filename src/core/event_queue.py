@@ -138,12 +138,14 @@ class AzureEventQueue:
             import copy 
             await suspended_event_queue.publish(event)
             response_event = copy.deepcopy(event)
-            response_event['response'] = (
-                "Your subscription has been deactivated due to either the end of your trial period or a billing issue.\n"
-                "Please log in to app.mypraxos.com and complete your payment to restore access."
-            )
             response_event['output_type'] = response_event.get('source')
-            egress_service.send_response(response_event)
+            result = {
+                'response': (
+                    "Your subscription has been deactivated due to either the end of your trial period or a billing issue.\n"
+                    "Please log in to app.mypraxos.com and complete your payment to restore access."
+                )
+            }
+            egress_service.send_response(response_event, result)
             return
 
         from azure.servicebus.aio import ServiceBusClient
@@ -174,12 +176,14 @@ class AzureEventQueue:
             import copy 
             await suspended_event_queue.publish_scheduled_event(event, timestamp)
             response_event = copy.deepcopy(event)
-            response_event['responce'] = (
-                "Your subscription has been deactivated due to either the end of your trial period or a billing issue.\n"
-                "Please log in to app.mypraxos.com and complete your payment to restore access."
-            )
             response_event['output_type'] = response_event.get('source')
-            egress_service.send_response(response_event)
+            result = {
+                'response': (
+                    "Your subscription has been deactivated due to either the end of your trial period or a billing issue.\n"
+                    "Please log in to app.mypraxos.com and complete your payment to restore access."
+                )
+            }
+            egress_service.send_response(response_event, result)
             return
         
         from azure.servicebus.aio import ServiceBusClient

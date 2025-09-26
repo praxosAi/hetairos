@@ -138,6 +138,8 @@ class UserService:
         if not user.get("billing_setup_completed") or (user.get('payment_status') in ['pending', 'incomplete', 'incomplete_expired']):
             return False
 
+        return True
+
     def add_new_preference_annotations(self, user_id: str | ObjectId, preferences: dict, append: bool = False):
         """
         Update or upsert user preferences.

@@ -3,6 +3,22 @@ import sys
 from datetime import datetime
 from typing import Dict, Any, Optional
 import json
+from contextvars import ContextVar
+
+# Context variables for request-specific data
+request_id_var: ContextVar[Optional[str]] = ContextVar("request_id", default='SYSTEM_LEVEL')
+user_id_var: ContextVar[Optional[str]] = ContextVar("user_id", default='SYSTEM_LEVEL')
+modality_var: ContextVar[Optional[str]] = ContextVar("modality", default='SYSTEM_LEVEL')
+
+class ContextFilter(logging.Filter):
+    """
+    A logging filter that injects context variables (request_id, user_id, modality) into log records.
+    """
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = request_id_var.get()
+        record.user_id = user_id_var.get()
+        record.modality = modality_var.get()
+        return True
 
 class ColoredFormatter(logging.Formatter):
     """Custom formatter with colors for different log levels"""
@@ -21,8 +37,36 @@ class ColoredFormatter(logging.Formatter):
         record.levelname = f"{log_color}{record.levelname}{self.RESET}"
         return super().format(record)
 
-def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
-    """Setup a logger with colored output and proper formatting"""
+class JsonFormatter(logging.Formatter):
+    """Custom formatter to output log records as JSON."""
+    def format(self, record: logging.LogRecord) -> str:
+        log_entry = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger_name": record.name,
+            "message": record.getMessage(),
+            "context": {
+                "request_id": getattr(record, "request_id", None),
+                "user_id": getattr(record, "user_id", None),
+                "modality": getattr(record, "modality", None),
+            }
+        }
+
+        # Add any other extra attributes passed to the logger
+        extra_attrs = {
+            key: value for key, value in record.__dict__.items()
+            if key not in logging.LogRecord.__dict__ and key not in log_entry and key not in ['request_id', 'user_id', 'modality']
+        }
+        if extra_attrs:
+            log_entry['extra'] = extra_attrs
+
+        if record.exc_info:
+            log_entry["exception"] = self.formatException(record.exc_info)
+        
+        return json.dumps(log_entry, default=str,indent=2)
+
+def setup_logger(name: str, level: int = logging.INFO, json_format: bool = True) -> logging.Logger:
+    """Setup a logger with colored output or JSON formatting with context."""
     logger = logging.getLogger(name)
     logger.setLevel(level)
     
@@ -31,10 +75,14 @@ def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
         handler = logging.StreamHandler(sys.stdout)
         handler.setLevel(level)
         
-        formatter = ColoredFormatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
+        if json_format:
+            formatter = JsonFormatter(datefmt='%Y-%m-%d %H:%M:%S')
+            handler.addFilter(ContextFilter()) # Add the context filter
+        else:
+            formatter = ColoredFormatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
     

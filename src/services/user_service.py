@@ -6,7 +6,6 @@ from src.config.settings import settings
 from bson import ObjectId
 from src.utils.logging.base_logger import setup_logger
 logger = setup_logger(__name__)
- 
 from datetime import timezone, timedelta,datetime
 import pytz
 class UserService:

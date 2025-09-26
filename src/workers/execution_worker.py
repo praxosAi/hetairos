@@ -6,11 +6,11 @@ from src.core.event_queue import event_queue
 from src.core.agent_runner_langgraph import LangGraphAgentRunner
 from src.core.context import create_user_context
 from src.config.settings import settings
-from src.utils.logging.base_logger import setup_logger
+from src.utils.logging.base_logger import setup_logger, user_id_var, modality_var, request_id_var
 from src.services.scheduling_service import scheduling_service
 from src.ingest.ingestion_worker import InitialIngestionCoordinator
 from src.egress.service import egress_service
-
+import uuid
 logger = setup_logger(__name__)
 
 class ExecutionWorker:
@@ -35,14 +35,36 @@ class ExecutionWorker:
             if not events:
                 continue
                 
-            logger.info(f"Processing session {session_id} with {len(events)} event(s), grouped: {is_grouped}")
             
             # Handle grouped messages (WhatsApp/Telegram rapid messages or forwards)
             if is_grouped and len(events) > 1:
+                ### now, we put the metadata for logging.
+                
+                logger.info(f"Processing session {session_id} with {len(events)} event(s), grouped: {is_grouped}")
+                logging_context = events[0].get('logging_context', {})
+                if logging_context:
+                    #{'user_id': str(user_record["_id"]), 'request_id': str(request_id_var.get()), 'modality': modality_var.get() }
+                    user_id_var.set(logging_context.get('user_id','annonymous'))
+                    request_id_var.set(logging_context.get('request_id',uuid.uuid4().hex))
+                    modality_var.set(logging_context.get('modality','no_modality'))
+                else:
+                    user_id_var.set(events[0].get('user_id','annonymous'))
+                    request_id_var.set(uuid.uuid4().hex)
+                    modality_var.set(events[0].get('source','no_modality'))
                 await self.handle_grouped_events(events, session_id)
             else:
                 # Single event processing (existing logic)
                 for event in events:
+                    logging_context = event.get('logging_context', {})
+                    if logging_context:
+                        #{'user_id': str(user_record["_id"]), 'request_id': str(request_id_var.get()), 'modality': modality_var.get() }
+                        user_id_var.set(logging_context.get('user_id','annonymous'))
+                        request_id_var.set(logging_context.get('request_id',uuid.uuid4().hex))
+                        modality_var.set(logging_context.get('modality','no_modality'))
+                    else:
+                        user_id_var.set(event.get('user_id','annonymous'))
+                        request_id_var.set(uuid.uuid4().hex)
+                        modality_var.set(event.get('source','no_modality'))
                     await self.handle_single_event(event)
 
     async def handle_grouped_events(self, events, session_id):
@@ -74,7 +96,11 @@ class ExecutionWorker:
                     
         except Exception as e:
             logger.error(f"Error processing grouped events from session {session_id}: {e}", exc_info=True)
-
+        finally:
+            # Reset context variables after processing the group
+            user_id_var.set('SYSTEM_LEVEL')
+            request_id_var.set('SYSTEM_LEVEL')
+            modality_var.set('SYSTEM_LEVEL')
     def combine_chat_messages(self, events):
         """Combine multiple chat messages into a structured payload list"""
         combined_payload = []
@@ -157,7 +183,11 @@ class ExecutionWorker:
 
         except Exception as e:
             logger.error(f"Error processing single event {event}: {e}", exc_info=True)
-
+        finally:
+            # Reset context variables after processing the event
+            user_id_var.set('SYSTEM_LEVEL')
+            request_id_var.set('SYSTEM_LEVEL')
+            modality_var.set('SYSTEM_LEVEL')
     async def post_process_langgraph_response(self, result: dict, event: dict):
         event["output_type"] = result.delivery_platform
         await egress_service.send_response(event, {"response": result.response, "file_links": result.file_links})

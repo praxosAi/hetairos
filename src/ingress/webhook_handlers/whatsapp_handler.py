@@ -14,6 +14,7 @@ from src.services.integration_service import integration_service
 from src.utils.database import db_manager
 import mimetypes
 from bson import ObjectId
+from src.utils.logging.base_logger import user_id_var, modality_var, request_id_var
 
 router = APIRouter()
 
@@ -50,7 +51,7 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
     webhook_logger.info("Received WhatsApp webhook")
     body_bytes = await request.body()
     signature = request.headers.get("X-Hub-Signature-256")
-
+    modality_var.set('whatsapp')
     if not verify_webhook_signature(body_bytes, signature):
         # webhook_logger.error(f"Invalid signature for WhatsApp webhook")
         raise HTTPException(status_code=403, detail="Invalid signature")
@@ -76,7 +77,8 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                             ## try to authorize with code:
                             try:
                                 integration_record_new,user_record = await integration_service.is_authorizable_user('whatsapp',phone_number,message_text)
-                                if integration_record_new:
+                                if integration_record_new and user_record:
+                                    user_id_var.set(str(user_record["_id"]))
                                     webhook_logger.info(f"Authorized new user for whatsapp with phone number {phone_number}")
                                     welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n\nWhatsapp Connection Initialized. \n\nWelcome to Praxos, {user_record.get('first_name')}.\n\nPhone number {phone_number} has been saved. You can now issue orders and communicate with Praxos over WhatsApp. \n\nRecommended action: Save the following contact card:"
                                     await whatsapp_client.send_message(phone_number, welcome_message)
@@ -103,7 +105,7 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
 
                         user_record = user_service.get_user_by_id(integration_record["user_id"])
                         message_type = message.get("type")
-
+                        user_id_var.set(str(user_record["_id"]))
                         if message_type == "text":
                             message_text = message.get("text", {}).get("body", "")
                             event = {
@@ -112,6 +114,7 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                 'output_phone_number': phone_number,
                                 "source": "whatsapp",
                                 "payload": {"text": message_text},
+                                "logging_context": {'user_id': str(user_record["_id"]), 'request_id': str(request_id_var.get()), 'modality': modality_var.get() },
                                 "metadata": {"message_id": message["id"],'source':'whatsapp','forwarded':forwarded, 'timestamp': message.get('timestamp')}
                             }
                             await event_queue.publish(event)
@@ -148,6 +151,8 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                             'output_type': 'whatsapp',
                                             'output_phone_number': phone_number,
                                             "source": "whatsapp",
+                                            "logging_context": {'user_id': str(user_record["_id"]), 'request_id': str(request_id_var.get()), 'modality': modality_var.get() },
+
                                             "payload": {"files": [{'type': message_type, 'blob_path': file_path_blob, 'mime_type': mime_type[0],'caption': caption,'inserted_id': str(inserted_id)}]},
                                             "metadata": {"message_id": message["id"],'source':'whatsapp','forwarded':forwarded,'timestamp': message.get('timestamp')}
                                         }

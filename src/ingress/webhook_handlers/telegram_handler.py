@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Request, HTTPException
 from src.core.event_queue import event_queue
 from src.services.integration_service import integration_service
-from src.utils.logging import setup_logger
+from src.utils.logging.base_logger import setup_logger, user_id_var, modality_var, request_id_var
 from src.integrations.telegram.client import TelegramClient
 from src.utils.blob_utils import upload_to_blob_storage, send_to_service_bus
+
 logger = setup_logger(__name__)
 router = APIRouter()
 import mimetypes
@@ -24,6 +25,7 @@ async def handle_telegram_webhook(request: Request):
         message = data["message"]
         chat_id = message["chat"]["id"]
         username = message["from"].get("username", "").lower()
+        modality_var.set("telegram")
         if not username:
             logger.warning(f"User {message['from']['id']} has no username, cannot authorize")
             await telegram_client.send_message(message["chat"]["id"], "You seem to have not setup a username on telegram yet. this makes it impossible for us to authorize you. Please set a username in your telegram settings, and integrate with praxos.")
@@ -34,7 +36,8 @@ async def handle_telegram_webhook(request: Request):
             try:
                 message_text = message.get("text","")
                 integration_record_new,user_record = await integration_service.is_authorizable_user('telegram',username, message_text, chat_id)
-                if integration_record_new:
+                if integration_record_new and user_record:
+                    user_id_var.set(str(user_record["_id"]))
                     try:
                         welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n\nTelegram communication initialized. \n\nWelcome to Praxos, {user_record.get('first_name')}.\nUser name @{username} has been saved. You can now issue orders and communicate with Praxos over Telegram."
                         await telegram_client.send_message(message["chat"]["id"], welcome_message)
@@ -83,6 +86,7 @@ async def handle_telegram_webhook(request: Request):
                 'output_type': 'telegram',
                 'output_chat_id': chat_id,
                 "source": "telegram",
+                'logging_context': {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get() },
                 "payload": {"text": text},
                 "metadata": {'message_id': message["message_id"],'chat_id': chat_id, 'source':'Telegram','forwarded':forwarded,'forward_origin':forward_origin,'timestamp': message.get("date")}
             }
@@ -130,6 +134,8 @@ async def handle_telegram_webhook(request: Request):
                 "user_id": user_id,
                 'output_type': 'telegram',
                 'output_chat_id': chat_id,
+                'logging_context': {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get() },
+
                 "source": "telegram",
                 "payload": {"files": [{'type': type_to_use, 'blob_path': blob_name, 'mime_type': mime_type[0],'caption': caption,'inserted_id': str(inserted_id)}]},
                 "metadata": {'message_id': message["message_id"],'chat_id': chat_id,'source':'Telegram', 'forwarded':forwarded,'forward_origin':forward_origin, 'timestamp': message.get("date")}

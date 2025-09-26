@@ -7,7 +7,7 @@ import re
 from src.services.integration_service import integration_service
 
 from src.core.event_queue import event_queue
-from src.utils.logging.webhook_logger import webhook_logger
+from src.utils.logging.base_logger import setup_logger,user_id_var, modality_var, request_id_var
 from src.config.settings import settings
 from src.services.user_service import user_service
 from src.egress.service import egress_service
@@ -25,12 +25,13 @@ def _extract_ms_user_id(resource: str) -> str | None:
 
 ### @TODO move to egress.
 
-
+webhook_logger = setup_logger("outlook_webhook")
 # --- Webhook Endpoints ---
 @router.post("/outlook")
 async def handle_outlook_webhook(request: Request):
     """Handle incoming Outlook webhooks for user subscriptions."""
     validation_token = request.query_params.get("validationToken")
+    modality_var.set("outlook_webhook")
     if validation_token:
         webhook_logger.info("Responding to Outlook validation request.")
         return Response(content=validation_token, media_type="text/plain", status_code=200)
@@ -73,6 +74,7 @@ async def handle_outlook_bot_webhook(message: OutlookBotMessage):
     """Handle direct emails sent to the bot's address (e.g., my@praxos.ai)."""
     webhook_logger.info(f"Received bot email from: {message.from_sender.address}")
     webhook_logger.info(f"Message: {json.dumps(message.dict(by_alias=True))}")
+    modality_var.set("outlook_bot_webhook")
     sender_email = message.from_sender.address
     user_record = None
     user_record = user_service.get_user_by_email(sender_email)
@@ -83,6 +85,7 @@ async def handle_outlook_bot_webhook(message: OutlookBotMessage):
 
     
     if user_record:
+        user_id_var.set(str(user_record["_id"]))
         webhook_logger.info(f"Sender {sender_email} is a registered user.")
         ### @TODO, this should use html parsing to get the text.
         event_text = message.bodyPreview
@@ -91,6 +94,7 @@ async def handle_outlook_bot_webhook(message: OutlookBotMessage):
             "source": "email",
             "output_type": "email",
             "email_type": "reply",
+            "logging_context": {'user_id': str(user_record["_id"]), 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
             "payload": {"text": event_text, "raw_email": message.dict(by_alias=True)},
             "metadata": {"message_id": message.messageId, "source": "bot-direct-email","original_message": message.dict(by_alias=True)}
         }

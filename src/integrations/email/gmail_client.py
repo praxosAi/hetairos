@@ -229,6 +229,32 @@ class GmailIntegration(BaseIntegration):
             })
         return email_list
 
+    async def search_emails(self, query: str, max_results: int = 10) -> List[Dict]:
+        """Searches for emails using a generic query string."""
+        if not self.service:
+            raise Exception("Gmail service not initialized. Call authenticate() first.")
+
+        results = self.service.users().messages().list(userId='me', q=query, maxResults=max_results).execute()
+        messages = results.get('messages', [])
+        
+        if not messages:
+            return []
+
+        email_list = []
+        for msg in messages:
+            try:
+                msg_data = self.service.users().messages().get(userId='me', id=msg['id'], format='metadata').execute()
+                headers = {h['name']: h['value'] for h in msg_data['payload']['headers']}
+                email_list.append({
+                    "id": msg_data['id'],
+                    "subject": headers.get('Subject', 'No Subject'),
+                    "snippet": msg_data.get('snippet', '')
+                })
+            except HttpError as e:
+                logger.error(f"Error fetching metadata for message {msg['id']}: {e}")
+                continue
+        return email_list
+
     def get_user_email_address(self) -> str:
         """Gets the authenticated user's Gmail email address."""
         if self.gmail_address:

@@ -40,10 +40,29 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
         except Exception as e:
             logger.error(f"Error searching for contact '{name}': {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e), user_message=f"An error occurred while searching for the contact '{name}'.")
+
+    @tool
+    async def search_gmail(query: str, max_results: int = 10) -> ToolExecutionResponse:
+        """
+        Searches for emails in the user's Gmail account ({user_email}) using a specific query.
+        Can be used to find emails by sender, subject, keywords in the body, or a combination.
+        Example queries: 'from:elon@musk.com subject:starship', 'dinner plans', 'is:unread'.
+        """
+        logger.info(f"Searching Gmail with query: '{query}'")
+        try:
+            emails = await gmail_integration.search_emails(query, max_results)
+            response = ToolExecutionResponse(status="success", result=emails)
+            logger.info(f"Gmail search response: {response.result}")
+            return response
+        except Exception as e:
+            logger.error(f"Error searching Gmail: {e}", exc_info=True)
+            return ToolExecutionResponse(status="error", system_error=str(e), user_message="An error occurred during the email search.")
         
+    
     user_email = gmail_integration.get_user_email_address()
     send_email.description = send_email.description.format(user_email=user_email)
     get_emails_from_sender.description = get_emails_from_sender.description.format(user_email=user_email)
     find_contact_email.description = find_contact_email.description.format(user_email=user_email)
+    search_gmail.description = search_gmail.description.format(user_email=user_email)
     
-    return [send_email, get_emails_from_sender, find_contact_email]
+    return [send_email, get_emails_from_sender, find_contact_email, search_gmail]

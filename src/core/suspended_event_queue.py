@@ -68,6 +68,7 @@ class SuspendedEventQueue:
                     }
                     message_body = json.dumps(suspended_message)
                     message = ServiceBusMessage(message_body)
+                    message.session_id = self._generate_session_id(event)
                     message.scheduled_enqueue_time_utc = timestamp
                     await sender.send_messages(message)
                     logger.info(f"Scheduled event to be enqueued at {timestamp.isoformat()}")

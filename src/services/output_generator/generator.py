@@ -24,6 +24,7 @@ class OutputGenerator:
         )
         logger.info(f"image generated")
         for part in response.candidates[0].content.parts:
+            
             if part.inline_data is not None:
                 ### we will want to upload the bytes to blob storage and return the link
                 image_data = part.inline_data.data

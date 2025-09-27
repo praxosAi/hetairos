@@ -180,12 +180,14 @@ class AzureEventQueue:
         from azure.servicebus.aio import ServiceBusClient
         from azure.servicebus import ServiceBusMessage
         try:
+            final_session_id = self._generate_session_id(event, None)
             async with ServiceBusClient.from_connection_string(settings.AZURE_SERVICEBUS_CONNECTION_STRING) as client:
                 sender = client.get_queue_sender(settings.AZURE_SERVICEBUS_QUEUE_NAME)
                 async with sender:
                     message_body = json.dumps(event)
                     message = ServiceBusMessage(message_body)
                     message.scheduled_enqueue_time_utc = timestamp
+                    message.session_id = final_session_id
                     await sender.send_messages(message)
                     logger.info(f"Scheduled event to be enqueued at {timestamp.isoformat()}")
         except Exception as e:
@@ -224,7 +226,7 @@ class AzureEventQueue:
         from azure.servicebus import NEXT_AVAILABLE_SESSION
         while True:
             try:
-                async with ServiceBusClient.from_connection_string(settings.AZURE_SERVICEBUS_CONNECTION_STRING) as client:
+                async with ServiceBusClient.from_connection_string(settings.AZURE_SERVICEBUS_CONNECTION_STRING, keep_alive_interval=30) as client:
                     # Try session-based approach first
                     try:
                         session_receiver = client.get_queue_receiver(
@@ -336,14 +338,17 @@ class AzureEventQueue:
                                     except Exception as e:
                                         logger.error(f"Error processing individual message: {e}", exc_info=True)
                                         await receiver.abandon_message(msg)
-                            return  # Exit the session retry loop
+                            # return  # Exit the session retry loop
+                            await asyncio.sleep(1)  # brief pause before retrying sessions
+                            continue
                         elif "no messages available" not in str(session_error).lower():
                             if isinstance(session_error, OperationTimeoutError):
                                 logger.info("Session receive operation timed out, retrying...")
                                 await asyncio.sleep(1)
                             else:
                                 logger.error(f"Session processing error: {session_error}", exc_info=True)
-                          # Brief pause before trying again
+                                await asyncio.sleep(1)
+                                continue
             
             except Exception as e:
                 logger.error(f"Service Bus connection error in session consumer: {e}. Reconnecting in 10 seconds...", exc_info=True)

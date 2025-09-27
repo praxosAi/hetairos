@@ -135,6 +135,7 @@ class UserService:
             return True
         
         if not user.get("billing_setup_completed") or (user.get('payment_status') in ['pending', 'incomplete', 'incomplete_expired']):
+            logger.error(f"User {str(user.get('_id'))} doesn't have access, billing not setup or payment status is {user.get('payment_status')}")
             return False
 
         return True

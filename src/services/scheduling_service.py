@@ -35,13 +35,14 @@ class SchedulingService:
     """
     Provides tools for the agent to schedule one time future tasks and recurring future tasks.
     """
-    async def create_future_task(self, user_id: str, time_to_do: str, command_to_perform: str, delivery_platform: str = "whatsapp", original_source: str = 'whatsapp') -> str:
+    async def create_future_task(self, user_id: str, time_to_do: str, command_to_perform: str, delivery_platform: str = None, original_source: str = 'whatsapp') -> str:
         """
         Creates a new scheduled task for the agent. this is to be used for one time future tasks.
         """
         try:
             ## convert the EST time to UTC time.
-
+            if delivery_platform is None:
+                delivery_platform = original_source
             task_id = f"task_{user_id}_{datetime.utcnow().timestamp()}"
             user_preferences = user_service.get_user_preferences(user_id)    
             timezone_name = user_preferences.get('timezone', 'America/New_York') if user_preferences else 'America/New_York'
@@ -85,7 +86,7 @@ class SchedulingService:
             return "Failed to create schedule."
 
         
-    async def create_recurring_task(self, user_id: str, cron_expression: str, cron_description: str, command_to_perform: str, start_time: datetime, end_time: datetime = None, delivery_platform: str = "whatsapp",original_source: str = 'whatsapp') -> str:
+    async def create_recurring_task(self, user_id: str, cron_expression: str, cron_description: str, command_to_perform: str, start_time: datetime, end_time: datetime = None, delivery_platform: str = None,original_source: str = None) -> str:
         """
         Creates a new scheduled task for the agent. this is to be used for recurring future tasks.
 
@@ -105,7 +106,8 @@ class SchedulingService:
             #     return "Invalid cron expression."
             # cron = croniter(cron_expression, base_time)
             # next_run_time = cron.get_next(datetime)
-            
+            if delivery_platform is None:
+                delivery_platform = original_source
             task_id = f"task_{user_id}_{datetime.utcnow().timestamp()}"
             user_preferences = user_service.get_user_preferences(user_id)    
             timezone_name = user_preferences.get('timezone', 'America/New_York') if user_preferences else 'America/New_York'

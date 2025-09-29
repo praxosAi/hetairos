@@ -8,6 +8,7 @@ class DeliveryPlatform(str, Enum):
     WHATSAPP = 'whatsapp'
     TELEGRAM = 'telegram'
     EMAIL = 'email'
+    imessage = 'imessage'
 def create_scheduling_tools(user_id: str,source:str) -> List:
     """Creates all scheduling-related tools for a given user."""
 

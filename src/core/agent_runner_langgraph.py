@@ -55,7 +55,7 @@ class FileLink(BaseModel):
 class AgentFinalResponse(BaseModel):
     """The final structured response from the agent."""
     response: str = Field(description="The final, user-facing response to be delivered.")
-    delivery_platform: str = Field(description="The channel for the response. Should be the same as the input source.", enum=["email", "whatsapp", "websocket", "telegram",'imessage'])
+    delivery_platform: str = Field(description="The channel for the response. Should be the same as the input source, unless otherwise specified.", enum=["email", "whatsapp", "websocket", "telegram",'imessage'])
     execution_notes: Optional[str] = Field(description="Internal notes about the execution, summarizing tool calls or errors.")
     output_modality: Optional[str] = Field(description="The modality of the output, e.g., text, image, file, etc. unless otherwise specified by user needs, this should be text", enum=["text", "voice", 'audio', "image", "video",'file'])
     generation_instructions: Optional[str] = Field(description="Instructions for generating audio, video, or image if applicable.")
@@ -690,7 +690,7 @@ class LangGraphAgentRunner:
                 prompt = (
                     f"Given the final response from an agent: '{final_message}', "
                     f"and knowing the initial request came from the '{source}' channel, "
-                    "format this into the required JSON structure. The delivery_platform must match the source channel, unless the user indicates or implies otherwise, or the command requires a different channel. "
+                    "format this into the required JSON structure. The delivery_platform must match the source channel, unless the user indicates or implies otherwise, or the command requires a different channel. Note that a scheduled command cannot have websocket as the delivery platform. "
                     "If the response requires generating audio, video, or image, set the output_modality and generation_instructions fields accordingly.  the response should simply acknowledge the request to generate the media, and not attempt to generate it yourself. this is not a task for you. simply trust in the systems that will handle it after you. "
                 )
                 response = await self.structured_llm.ainvoke(prompt)

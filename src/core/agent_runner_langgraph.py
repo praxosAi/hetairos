@@ -80,7 +80,7 @@ class LangGraphAgentRunner:
         from src.utils.portkey_headers_isolation import create_port_key_headers
         portkey_headers , portkey_gateway_url = create_port_key_headers(trace_id=trace_id)
         ### note that this is not OpenAI, this is azure. we will use portkey to access OAI Azure.
-        # self.llm = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
+        self.llm = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
         ### temporary, investigating refusals.
         self.media_llm =ChatGoogleGenerativeAI(
             model="gemini-2.5-pro",
@@ -709,9 +709,12 @@ class LangGraphAgentRunner:
 
             async def generate_final_response(state: AgentState):
                 final_message = state['messages'][-1].content
+                source_to_use = source
+                if source in ['scheduled','recurring'] and state.metadata and state.metadata.get('output_type'):
+                    source_to_use = state.metadata['output_type']
                 prompt = (
                     f"Given the final response from an agent: '{final_message}', "
-                    f"and knowing the initial request came from the '{source}' channel, "
+                    f"and knowing the initial request came from the '{source_to_use}' channel, "
                     "format this into the required JSON structure. The delivery_platform must match the source channel, unless the user indicates or implies otherwise, or the command requires a different channel. Note that a scheduled command cannot have websocket as the delivery platform. "
                     "If the response requires generating audio, video, or image, set the output_modality and generation_instructions fields accordingly.  the response should simply acknowledge the request to generate the media, and not attempt to generate it yourself. this is not a task for you. simply trust in the systems that will handle it after you. "
                 )

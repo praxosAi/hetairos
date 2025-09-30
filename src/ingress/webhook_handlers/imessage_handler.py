@@ -77,6 +77,8 @@ async def handle_imessage_webhook(request: Request):
                     welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n\niMessage communication initialized. \n\nWelcome to Praxos, {user.get('first_name')}.\nPhone number {phone_number} has been saved. You can now issue orders and communicate with Praxos over iMessage. \n\nRecommended action: Save the following contact card:"
                     await imessage_client.send_message(phone_number, welcome_message)
                     await imessage_client.send_contact_card(phone_number)
+                    welcome_message_2 = "Recommended Action: Ask me what I can do for you."
+                    await imessage_client.send_message(phone_number, welcome_message_2)
                 except Exception as e:
                     logger.error(f"Failed to send contact card to {phone_number}: {e}")
                 integration_record = integration_record

@@ -55,7 +55,7 @@ class FileLink(BaseModel):
 class AgentFinalResponse(BaseModel):
     """The final structured response from the agent."""
     response: str = Field(description="The final, user-facing response to be delivered.")
-    delivery_platform: str = Field(description="The channel for the response. Should be the same as the input source.", enum=["email", "whatsapp", "websocket", "telegram",'imessage'])
+    delivery_platform: str = Field(description="The channel for the response. Should be the same as the input source, unless otherwise specified.", enum=["email", "whatsapp", "websocket", "telegram",'imessage'])
     execution_notes: Optional[str] = Field(description="Internal notes about the execution, summarizing tool calls or errors.")
     output_modality: Optional[str] = Field(description="The modality of the output, e.g., text, image, file, etc. unless otherwise specified by user needs, this should be text", enum=["text", "voice", 'audio', "image", "video",'file'])
     generation_instructions: Optional[str] = Field(description="Instructions for generating audio, video, or image if applicable.")
@@ -71,7 +71,7 @@ class AgentState(MessagesState):
 
 # --- 2. Define the Agent Runner Class ---
 class LangGraphAgentRunner:
-    def __init__(self,trace_id: str, has_media: bool = False):
+    def __init__(self,trace_id: str, has_media: bool = False,override_user_id: Optional[str] = None):
         
         self.tools_factory = AgentToolsFactory(config=settings, db_manager=db_manager)
         self.conversation_manager = ConversationManager(db_manager.db, integration_service)
@@ -80,14 +80,18 @@ class LangGraphAgentRunner:
         from src.utils.portkey_headers_isolation import create_port_key_headers
         portkey_headers , portkey_gateway_url = create_port_key_headers(trace_id=trace_id)
         ### note that this is not OpenAI, this is azure. we will use portkey to access OAI Azure.
-        # self.llm = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
+        self.llm = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
         ### temporary, investigating refusals.
         self.media_llm =ChatGoogleGenerativeAI(
             model="gemini-2.5-pro",
             api_key=settings.GEMINI_API_KEY,
             temperature=0.2,
             )
+        
         self.llm = self.media_llm
+        
+        # else:
+        #     logger.info("Using GPT-5 Mini for admin user logging")
         if has_media:
             self.llm = self.media_llm   
         self.structured_llm = self.llm.with_structured_output(AgentFinalResponse)
@@ -127,6 +131,9 @@ class LangGraphAgentRunner:
             "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
             "if the user requests generation of audio, video or image, you should simply set the appropriate flag on output_modality, and generation_instructions, and not use any tool to generate them. this will be handled after your response is processed, with systems that are capable of generating them. your response in the final_response field should always simply be to acknowledge the request and say you would be happy to help. you will then describe the media in detail in the appropriate field, using the generation_instructions field, as well as setting the output modality field to the appropriate value for what the user actually wants. do not actually tell the user you won't generate it yourself, that's overly complex and will confuse them. do not ask them for more info in your response either, as the generation will happen regardless."
         )
+
+
+
         praxos_prompt = """
         this assistant service has been developed by Praxos AI. the user can register and manage their account at https://www.mypraxos.com.
         the user can see the web application at https://app.mypraxos.com and can see their integrations at https://app.mypraxos.com/integrations. if the user is missing an integration they want, direct them there.
@@ -153,14 +160,16 @@ class LangGraphAgentRunner:
 
         side_effect_explanation_prompt = """ note that there is a difference between the final output delivery modality, and using tools to send a response. the tool usage for communication is to be used when the act of sending a communication is a side effect, and not the final output or goal. """
         
-        task_prompt = ""
+        
         if source in ["scheduled", "recurring"]:
-            task_prompt = "\nNote: this is the command part of a previously scheduled task. You should now complete the task. If a time was previously specified, assume that now is the time to perform it."
+            task_prompt = "\nNote: this is the command part of a previously scheduled task. You should now complete the task. Do not ask the user when to perform it, this task was scheduled to be performed for this exact time.  Note that at this time, you should not use the scheduling tool again, as this is the scheduled execution. Instead, perform the task now. If the task is phrased as a reminder or a request for scheduling, assume that you are now supposed to perform the reminding act itself, NOT scheduling it for the future. "
             if metadata and metadata.get("output_type"):
-                task_prompt += f" The output modality for the final response of this scheduled task was previously specified as '{metadata.get('output_type')}'."
+                task_prompt += f" The output modality for the final response of this scheduled task was previously specified as '{metadata.get('output_type')}'. the original source was '{metadata.get('original_source')}'."
             else:
                 task_prompt += " The output modality for the final response of this scheduled task was not specified, so you should choose the most appropriate one based on the user's preferences and context. this cannot be websocket in this case."
-
+        else:
+            task_prompt = f"\n\nThis message was received on the '{source}' channel. \n\n"
+        logger.info(f"Task prompt: {task_prompt}")
 
         
         assistance_name = preferences.get('assistant_name', 'Praxos')
@@ -169,7 +178,26 @@ class LangGraphAgentRunner:
          f"The prefered language to use is '{preferred_language}'. You must always respond in the prefered language, unless the user specifically asks you to respond in a different language. If the user uses a different language than the prefered one, you can respond in the language the user used. if the user asks you to use a different language, you must comply."
          "Pay attention to pronouns and formality levels in the prefered language, pronoun rules, and other similar nuances. mirror the user's language style and formality level in your responses."
         )
-        total_system_capabilities_prompt = "The system is capable of integrating with various third party services. these are, Notion, Dropbox, Gmail, Google Drive, Google Calendar, Outlook and Outlook Calendar, One Drive, WhatsApp, Telegram, iMessage. The given user, however, may have not integrated any, or only integrated a subset. the user may ask for tasks that require an integration you do not have. in such cases, use the integration tool to help them integrate the tool."
+        total_system_capabilities_prompt = """The system is capable of integrating with various third party services. these are, Notion, Dropbox, Gmail, Google Drive, Google Calendar, Outlook and Outlook Calendar, One Drive, WhatsApp, Telegram, iMessage. The given user, however, may have not integrated any, or only integrated a subset. the user may ask for tasks that require an integration you do not have. in such cases, use the integration tool to help them integrate the tool.
+            
+            If the user explicitly asks for what you can do, tell them the following capabilities you have. 
+            Email management: I can find, summarize, respond to, or draft emails. Just ask me to "find emails about X" or "draft a reply to Y"
+
+            Answer questions from your data: Ask me things like "when's my flight?" or "what's the tracking number for my package?"
+
+            General knowledge: Ask me anything from "how tall is the Eiffel Tower?" to "what's the weather in Marion, Illinois?"
+
+            Set up automations: I can automatically forward emails, notify you about important messages, or handle repetitive tasks
+
+            Calendar management: Create, update, or delete events and get reminders
+
+            Research: I can look things up for you online, from restaurant recommendations to market research
+
+            Draft emails in your voice: Need to write something? I'll draft it for you to review before sending
+
+            I can also chain any of the above together to accomplish more complex tasks.
+
+        """
         return base_prompt + praxos_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt + total_system_capabilities_prompt
 
     async def _build_payload_entry(self, file: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -687,10 +715,15 @@ class LangGraphAgentRunner:
 
             async def generate_final_response(state: AgentState):
                 final_message = state['messages'][-1].content
+                source_to_use = source
+                logger.info(f"Final agent message before formatting: {final_message}")
+                logger.info(f"Source channel: {source}, metadata: {state['metadata']}")
+                if source in ['scheduled','recurring'] and state.get('metadata') and state['metadata'].get('output_type'):
+                    source_to_use = state['metadata']['output_type']
                 prompt = (
                     f"Given the final response from an agent: '{final_message}', "
-                    f"and knowing the initial request came from the '{source}' channel, "
-                    "format this into the required JSON structure. The delivery_platform must match the source channel, unless the user indicates or implies otherwise, or the command requires a different channel. "
+                    f"and knowing the initial request came from the '{source_to_use}' channel, "
+                    "format this into the required JSON structure. The delivery_platform must match the source channel, unless the user indicates or implies otherwise, or the command requires a different channel. Note that a scheduled command cannot have websocket as the delivery platform. "
                     "If the response requires generating audio, video, or image, set the output_modality and generation_instructions fields accordingly.  the response should simply acknowledge the request to generate the media, and not attempt to generate it yourself. this is not a task for you. simply trust in the systems that will handle it after you. "
                 )
                 response = await self.structured_llm.ainvoke(prompt)

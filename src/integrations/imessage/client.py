@@ -39,6 +39,13 @@ class IMessageClient:
         }
         
         return await self._make_request("POST", f"{self.base_url}/send-message", payload)
+    
+    async def set_typing_indicator(self, to_number: str):
+        payload = {
+            "number": to_number,
+        }
+        return await self._make_request("POST", f"{self.base_url}/set-typing-indicator", payload)
+
     async def send_contact_card(self, to_number: str):
         payload ={
             'number': to_number,

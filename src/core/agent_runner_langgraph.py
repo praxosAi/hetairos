@@ -162,7 +162,7 @@ class LangGraphAgentRunner:
         
         
         if source in ["scheduled", "recurring"]:
-            task_prompt = "\nNote: this is the command part of a previously scheduled task. You should now complete the task. If a time was previously specified, assume that now is the time to perform it. Note that at this time, you should not use the scheduling tool again, as this is the scheduled execution. Instead, perform the task now. "
+            task_prompt = "\nNote: this is the command part of a previously scheduled task. You should now complete the task. Do not ask the user when to perform it, this task was scheduled to be performed for this exact time.  Note that at this time, you should not use the scheduling tool again, as this is the scheduled execution. Instead, perform the task now. If the task is phrased as a reminder or a request for scheduling, assume that you are now supposed to perform the reminding act itself, NOT scheduling it for the future. "
             if metadata and metadata.get("output_type"):
                 task_prompt += f" The output modality for the final response of this scheduled task was previously specified as '{metadata.get('output_type')}'. the original source was '{metadata.get('original_source')}'."
             else:

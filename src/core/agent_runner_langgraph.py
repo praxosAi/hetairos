@@ -71,7 +71,7 @@ class AgentState(MessagesState):
 
 # --- 2. Define the Agent Runner Class ---
 class LangGraphAgentRunner:
-    def __init__(self,trace_id: str, has_media: bool = False):
+    def __init__(self,trace_id: str, has_media: bool = False,override_user_id: Optional[str] = None):
         
         self.tools_factory = AgentToolsFactory(config=settings, db_manager=db_manager)
         self.conversation_manager = ConversationManager(db_manager.db, integration_service)
@@ -87,7 +87,11 @@ class LangGraphAgentRunner:
             api_key=settings.GEMINI_API_KEY,
             temperature=0.2,
             )
+        
         self.llm = self.media_llm
+        
+        # else:
+        #     logger.info("Using GPT-5 Mini for admin user logging")
         if has_media:
             self.llm = self.media_llm   
         self.structured_llm = self.llm.with_structured_output(AgentFinalResponse)
@@ -156,14 +160,16 @@ class LangGraphAgentRunner:
 
         side_effect_explanation_prompt = """ note that there is a difference between the final output delivery modality, and using tools to send a response. the tool usage for communication is to be used when the act of sending a communication is a side effect, and not the final output or goal. """
         
-        task_prompt = ""
+        
         if source in ["scheduled", "recurring"]:
             task_prompt = "\nNote: this is the command part of a previously scheduled task. You should now complete the task. If a time was previously specified, assume that now is the time to perform it."
             if metadata and metadata.get("output_type"):
                 task_prompt += f" The output modality for the final response of this scheduled task was previously specified as '{metadata.get('output_type')}'."
             else:
                 task_prompt += " The output modality for the final response of this scheduled task was not specified, so you should choose the most appropriate one based on the user's preferences and context. this cannot be websocket in this case."
-
+        else:
+            task_prompt = f"\n\nThis message was received on the '{source}' channel. \n\n"
+        logger.info(f"Task prompt: {task_prompt}")
 
         
         assistance_name = preferences.get('assistant_name', 'Praxos')
@@ -710,8 +716,10 @@ class LangGraphAgentRunner:
             async def generate_final_response(state: AgentState):
                 final_message = state['messages'][-1].content
                 source_to_use = source
-                if source in ['scheduled','recurring'] and state.metadata and state.metadata.get('output_type'):
-                    source_to_use = state.metadata['output_type']
+                logger.info(f"Final agent message before formatting: {final_message}")
+                logger.info(f"Source channel: {source}, metadata: {state['metadata']}")
+                if source in ['scheduled','recurring'] and state.get('metadata') and state['metadata'].get('output_type'):
+                    source_to_use = state['metadata']['output_type']
                 prompt = (
                     f"Given the final response from an agent: '{final_message}', "
                     f"and knowing the initial request came from the '{source_to_use}' channel, "

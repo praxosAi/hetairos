@@ -3,12 +3,14 @@ from typing import List, Optional
 from langchain_core.tools import tool
 from src.tools.tool_types import ToolExecutionResponse
 from src.services.scheduling_service import scheduling_service
+from src.utils.logging import setup_logger
 from enum import Enum
 class DeliveryPlatform(str, Enum):
     WHATSAPP = 'whatsapp'
     TELEGRAM = 'telegram'
     EMAIL = 'email'
     imessage = 'imessage'
+logger = setup_logger(__name__)
 def create_scheduling_tools(user_id: str,source:str) -> List:
     """Creates all scheduling-related tools for a given user."""
 
@@ -18,10 +20,12 @@ def create_scheduling_tools(user_id: str,source:str) -> List:
         Schedules a new task for the agent to run in the future. this is for one time future tasks.
         time_to_do: The time to run the task. this should be a timestamp in the future. If the user provides a general time, such as tomorrow morning, use your best judgement for the timestamp.
         command_to_perform: The command to perform. this should be a string that describes what the agent should do. It should be a string that describes as much as possible what the agent should do, as well as providing the parameteres provided by the user.
-        delivery_platform: The platform on which the output should be sent if applicable, after the running is done. unless otherwise specified, use the same platform as the user is using to interact with the agent.
+        delivery_platform: The platform on which the output should be sent if applicable, after the running is done. unless otherwise specified, use the same platform as the user is using to interact with the agent. Must be one of: whatsapp, telegram, email, imessage, matching the source channel unless otherwise specified.
         Note: Always assume time in EST timezone. the current EST time is provided to you in the prompt. since the times are datetime objects, add -05:00 to the end of the datetime string, so that it parses correctly.
+        Note: If the user asked to be reminded of performing a task themselves, you should add the prefix "Remind user to " to the command_to_perform parameter. for example, if the user says "remind me to call John at 3pm tomorrow", you should set the command_to_perform parameter to "Remind user to call John".
         """
         from src.services.scheduling_service import scheduling_service
+        logger.info(f"Scheduling task for user {user_id} at {time_to_do} with command: {command_to_perform} via {delivery_platform}")
         result = await scheduling_service.create_future_task(
             user_id=user_id,
             time_to_do=time_to_do,
@@ -39,9 +43,11 @@ def create_scheduling_tools(user_id: str,source:str) -> List:
         cron_description: A natural language description of how often the task should run, for example "every day at 9am" or "every week on monday at 10am".
         command_to_perform: The command to perform. this should be a string that describes what the agent should do. It should be a string that describes as much as possible what the agent should do, as well as providing the parameteres provided by the user.
         start_time: The start time of the task. this should be a timestamp in the future. If the user does not provide a fully detailed start time, use your best judgement for the timestamp.
-        delivery_platform: The platform on which the output should be sent if applicable, after the running is done. unless otherwise specified, use the same platform as the user is using to interact with the agent.
+        delivery_platform: The platform on which the output should be sent if applicable, after the running is done. unless otherwise specified, use the same platform as the user is using to interact with the agent. Must be one of: whatsapp, telegram, email, imessage, matching the source channel unless otherwise specified.
         end_time: The end time of the task. this should be a timestamp in the future. If the user does not provide a fully detailed end time, make it go on indefinitely.
         Note: Always assume time in EST timezone. since the times are datetime objects, add -05:00 to the end of the datetime string, so that it parses correctly.
+        Note: If the user asked to be reminded of performing a task themselves, you should add the prefix "Remind user to " to the command_to_perform parameter. for example, if the user says "remind me to call my mom every day", you should set the command_to_perform parameter to "Remind user to call their mom".
+
         """
         from src.services.scheduling_service import scheduling_service
         result = await scheduling_service.create_recurring_task(

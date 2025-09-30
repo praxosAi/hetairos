@@ -28,26 +28,26 @@ def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str
         except Exception as e:
             return ToolExecutionResponse(status="error", system_error=str(e))
 
-    @tool
-    async def send_whatsapp_message_as_praxos_bot(message: str) -> ToolExecutionResponse:
-        """
-        Sends a whatsapp message using the Praxos bot. this is specifically for sending the user a whatsapp message. we will handle the phone number for the user.
-        """
-        try:
-            await egress_service.send_response({"source": "whatsapp", "output_type": "whatsapp",'user_id': str(user_id)}, {"response": message})
-            return ToolExecutionResponse(status="success", result="Whatsapp message sent successfully.")
-        except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+    # @tool
+    # async def send_whatsapp_message_as_praxos_bot(message: str) -> ToolExecutionResponse:
+    #     """
+    #     Sends a whatsapp message using the Praxos bot. this is specifically for sending the user a whatsapp message. we will handle the phone number for the user.
+    #     """
+    #     try:
+    #         await egress_service.send_response({"source": "whatsapp", "output_type": "whatsapp",'user_id': str(user_id)}, {"response": message})
+    #         return ToolExecutionResponse(status="success", result="Whatsapp message sent successfully.")
+    #     except Exception as e:
+    #         return ToolExecutionResponse(status="error", system_error=str(e))
             
-    @tool
-    async def send_telegram_message_as_praxos_bot(message: str) -> ToolExecutionResponse:
-        """
-        Sends a telegram message using the Praxos bot. this is specifically for sending the user a telegram message. we will handle the chat id for the user.
-        """
-        try:
-            await egress_service.send_response({"source": "telegram", "output_type": "telegram",'user_id': str(user_id)}, {"response": message})
-            return ToolExecutionResponse(status="success", result="Telegram message sent successfully.")
-        except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+    # @tool
+    # async def send_telegram_message_as_praxos_bot(message: str) -> ToolExecutionResponse:
+    #     """
+    #     Sends a telegram message using the Praxos bot. this is specifically for sending the user a telegram message. we will handle the chat id for the user.
+    #     """
+    #     try:
+    #         await egress_service.send_response({"source": "telegram", "output_type": "telegram",'user_id': str(user_id)}, {"response": message})
+    #         return ToolExecutionResponse(status="success", result="Telegram message sent successfully.")
+    #     except Exception as e:
+    #         return ToolExecutionResponse(status="error", system_error=str(e))
 
-    return [reply_to_user_via_email, send_new_email_as_praxos_bot, send_whatsapp_message_as_praxos_bot, send_telegram_message_as_praxos_bot]
+    return [reply_to_user_via_email, send_new_email_as_praxos_bot]

@@ -86,6 +86,9 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                         await whatsapp_client.send_praxos_contact_card(phone_number)
                                     except Exception as e:
                                         webhook_logger.error(f"Failed to send contact card to {phone_number}: {e}")
+                                    
+                                    welcome_message_2 = "Recommended Action: Ask me what I can do for you."
+                                    await whatsapp_client.send_message(phone_number, welcome_message_2)
                                     integration_record = integration_record_new
                                     return
                                 else:

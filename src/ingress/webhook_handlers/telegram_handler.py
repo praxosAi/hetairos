@@ -41,6 +41,8 @@ async def handle_telegram_webhook(request: Request):
                     try:
                         welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n\nTelegram communication initialized. \n\nWelcome to Praxos, {user_record.get('first_name')}.\nUser name @{username} has been saved. You can now issue orders and communicate with Praxos over Telegram."
                         await telegram_client.send_message(message["chat"]["id"], welcome_message)
+                        welcome_message_2 = "Recommended Action: Ask me what I can do for you."
+                        await telegram_client.send_message(message["chat"]["id"], welcome_message_2)
                         return {"status": "ok"}
                     except Exception as e:
                         logger.error(f"Failed to send welcome message to {username}: {e}")

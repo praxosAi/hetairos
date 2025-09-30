@@ -127,6 +127,9 @@ class LangGraphAgentRunner:
             "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
             "if the user requests generation of audio, video or image, you should simply set the appropriate flag on output_modality, and generation_instructions, and not use any tool to generate them. this will be handled after your response is processed, with systems that are capable of generating them. your response in the final_response field should always simply be to acknowledge the request and say you would be happy to help. you will then describe the media in detail in the appropriate field, using the generation_instructions field, as well as setting the output modality field to the appropriate value for what the user actually wants. do not actually tell the user you won't generate it yourself, that's overly complex and will confuse them. do not ask them for more info in your response either, as the generation will happen regardless."
         )
+
+
+
         praxos_prompt = """
         this assistant service has been developed by Praxos AI. the user can register and manage their account at https://www.mypraxos.com.
         the user can see the web application at https://app.mypraxos.com and can see their integrations at https://app.mypraxos.com/integrations. if the user is missing an integration they want, direct them there.
@@ -169,7 +172,26 @@ class LangGraphAgentRunner:
          f"The prefered language to use is '{preferred_language}'. You must always respond in the prefered language, unless the user specifically asks you to respond in a different language. If the user uses a different language than the prefered one, you can respond in the language the user used. if the user asks you to use a different language, you must comply."
          "Pay attention to pronouns and formality levels in the prefered language, pronoun rules, and other similar nuances. mirror the user's language style and formality level in your responses."
         )
-        total_system_capabilities_prompt = "The system is capable of integrating with various third party services. these are, Notion, Dropbox, Gmail, Google Drive, Google Calendar, Outlook and Outlook Calendar, One Drive, WhatsApp, Telegram, iMessage. The given user, however, may have not integrated any, or only integrated a subset. the user may ask for tasks that require an integration you do not have. in such cases, use the integration tool to help them integrate the tool."
+        total_system_capabilities_prompt = """The system is capable of integrating with various third party services. these are, Notion, Dropbox, Gmail, Google Drive, Google Calendar, Outlook and Outlook Calendar, One Drive, WhatsApp, Telegram, iMessage. The given user, however, may have not integrated any, or only integrated a subset. the user may ask for tasks that require an integration you do not have. in such cases, use the integration tool to help them integrate the tool.
+            
+            If the user explicitly asks for what you can do, tell them the following capabilities you have. 
+            Email management: I can find, summarize, respond to, or draft emails. Just ask me to "find emails about X" or "draft a reply to Y"
+
+            Answer questions from your data: Ask me things like "when's my flight?" or "what's the tracking number for my package?"
+
+            General knowledge: Ask me anything from "how tall is the Eiffel Tower?" to "what's the weather in Marion, Illinois?"
+
+            Set up automations: I can automatically forward emails, notify you about important messages, or handle repetitive tasks
+
+            Calendar management: Create, update, or delete events and get reminders
+
+            Research: I can look things up for you online, from restaurant recommendations to market research
+
+            Draft emails in your voice: Need to write something? I'll draft it for you to review before sending
+
+            I can also chain any of the above together to accomplish more complex tasks.
+
+        """
         return base_prompt + praxos_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt + total_system_capabilities_prompt
 
     async def _build_payload_entry(self, file: Dict[str, Any]) -> Optional[Dict[str, Any]]:

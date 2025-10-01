@@ -6,7 +6,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional
+from typing import Any, List, Dict, Optional,Tuple
 from email.message import EmailMessage
 from src.utils.logging.base_logger import setup_logger
 from src.utils.rate_limiter import rate_limiter
@@ -365,3 +365,57 @@ class GmailIntegration(BaseIntegration):
         except Exception as e:
             logger.error(f"Error fetching Gmail history for user {self.user_id}: {e}")
             return []
+
+    def get_changed_message_ids_since(
+        self,
+        start_history_id: str,
+        user_id: str = "me",
+        history_types: Optional[List[str]] = ["messageAdded"],
+    ) -> Tuple[List[str], Optional[str]]:
+        """
+        Returns (message_ids, new_checkpoint_history_id).
+        `new_checkpoint_history_id` should be saved and used as the next startHistoryId.
+        """
+        history_types = history_types or ["messageAdded"]  # common case
+        msg_ids: List[str] = []
+        page_token = None
+        max_history_id_seen: Optional[int] = None
+        try:
+            while True:
+                req = self.service.users().history().list(
+                    userId=user_id,
+                    startHistoryId=str(start_history_id),
+                    pageToken=page_token,
+                    historyTypes=history_types,
+                )
+                resp = req.execute()
+
+                for h in resp.get("history", []):
+                    # Track the largest history id we see
+                    hid = int(h.get("id"))
+                    if max_history_id_seen is None or hid > max_history_id_seen:
+                        max_history_id_seen = hid
+
+                    # Collect messages from messagesAdded; you can also look at messagesDeleted, labelsAdded, etc.
+                    for item in h.get("messagesAdded", []):
+                        mid = item["message"]["id"]
+                        msg_ids.append(mid)
+
+                page_token = resp.get("nextPageToken")
+                if not page_token:
+                    break
+        except Exception as e:
+            logger.error(f"Error fetching Gmail history for user {self.user_id}: {e}")
+            # If we get an error, we return the messages we've collected so far,
+            # but we don't update the checkpoint, so we'll retry from the same place next time.
+            return msg_ids, None
+        # Use the largest history id we processed as the new checkpoint
+        new_checkpoint = str(max_history_id_seen) if max_history_id_seen is not None else None
+        return msg_ids, new_checkpoint
+    
+    def get_messages_by_ids(self, message_ids: List[str], user_id: str = "me") -> List[Dict[str, Any]]:
+        out = []
+        for mid in message_ids:
+            msg = self.service.users().messages().get(userId=user_id, id=mid, format="full").execute()
+            out.append(msg)
+        return out

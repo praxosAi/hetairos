@@ -496,7 +496,43 @@ class PraxosClient:
             duration = time.time() - start_time
             praxos_logger.error(f"Error enriching nodes {node_ids}: {e}")
             return {}
+    async def setup_trigger(self,trigger_conditional_statement):
+        """Setup a trigger in Praxos memory. a trigger is a conditional statement, of form "If I receive an email from X, then do Y"
+        Args:
+            trigger_conditional_statement: The conditional statement to setup as a trigger. it should be complete and descriptive, in plain english. 
+        """
+        if not self.env:
+            return {"error": "Environment not initialized"}
         
+        start_time = time.time()
+        
+        try:
+            # Use direct search method as specified by user
+            result = self.env.ingest_trigger(trigger_conditional_statement=trigger_conditional_statement)
+            return result
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(f"Error setting up trigger with condition {trigger_conditional_statement}: {e}")
+            return {"error": str(e)}
+    async def eval_event(self,event_json, event_type: str = "email_received"):
+        """Evaluate an event against the triggers in Praxos memory. 
+        Args:
+            event_json: The event to evaluate, in JSON format. it should contain all relevant information about the event.
+            event_type: The type of the event, e.g. "email_received", "calendar_event", etc.
+        """
+        if not self.env:
+            return {"error": "Environment not initialized"}
+        
+        start_time = time.time()
+        
+        try:
+            # Use direct search method as specified by user
+            result = self.env.evaluate_event(event_json,'gmail')
+            return result
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(f"Error evaluating event {event_json} of type {event_type}: {e}")
+            return {"error": str(e)}
     async def add_business_data(self, data: Dict[str, Any], name: str = None, description: str = None, root_entity_type: str = "schema:Thing", metadata: Dict[str, Any] = None):
       
       """Add business data to Praxos memory using add_business_data method"""
@@ -534,3 +570,5 @@ class PraxosClient:
           if hasattr(e, 'status_code'):
               praxos_logger.error(f"   Status code: {e.status_code}")
           return {"error": str(e)}
+      
+          

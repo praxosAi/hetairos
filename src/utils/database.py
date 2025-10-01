@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from bson import ObjectId
 from pymongo.errors import OperationFailure
-from pymongo import UpdateOne
+from pymongo import InsertOne, UpdateOne
 from src.config.settings import settings
 from src.utils.logging.base_logger import setup_logger
 from src.services.ai_service.ai_service import ai_service
@@ -268,6 +268,84 @@ class ConversationDatabase:
             # Delete the conversations themselves
             await self.conversations.delete_many({"_id": {"$in": [ObjectId(cid) for cid in old_convo_ids]}})
 
+    async def insert_or_reject_emails(
+        self,
+        emails: List[Dict[str, Any]],
+        user_id: str,
+    ) -> List[bool]:
+        """
+        For each input email:
+        - Check if its platform_message_id exists in `documents`.
+        - If not, insert a new document for it.
+        Returns a List[bool] aligned to `emails`: True if newly inserted, False if already present or invalid.
+
+        Assumptions:
+        - user_ids[i] corresponds to emails[i].
+        - We store to `self.documents` with a unique index on `platform_message_id`.
+        """
+        if not emails:
+            return []
+
+
+        # Extract ids; mark invalid upfront
+        extracted_ids: List[Optional[str]] = []
+        for em in emails:
+            pid = em.get("id")
+            extracted_ids.append(pid)
+
+        # Build list of candidate ids (filter None)
+        candidate_ids = [pid for pid in extracted_ids if pid]
+
+        if not candidate_ids:
+            # Nothing usable
+            return [False] * len(emails)
+
+        # Fetch existing ids in one query
+        existing_ids = set(
+            await self.documents.distinct(
+                "platform_message_id",
+                {"platform_message_id": {"$in": candidate_ids}}
+            )
+        )
+
+        # Prepare inserts for the ones not present
+        ops = []
+        is_new_flags: List[bool] = []
+        now = datetime.utcnow()
+
+        for i, (email, pid) in enumerate(zip(emails, extracted_ids)):
+            if not pid:
+                # Can't dedupe without a usable id
+                is_new_flags.append(False)
+                continue
+
+            if pid in existing_ids:
+                is_new_flags.append(False)
+                continue
+
+            # Stage insert
+            doc = {
+                "user_id": ObjectId(user_id),
+                "platform": "gmail",
+                "platform_message_id": pid,
+                "received_at": now,                   # or parse from headers if you prefer
+                "payload": email,                     # raw email dict
+            }
+            ops.append(InsertOne(doc))
+            is_new_flags.append(True)
+
+        # Bulk insert only if we have new ones
+        if ops:
+            # ordered=False to proceed even if one insert hits a race (unique index)
+            try:
+                await self.documents.bulk_write(ops, ordered=False)
+            except Exception as e:
+                # In case of a race on unique index, some of the True flags might already exist now.
+                # We could re-check to be exact; for most flows, logging is enough.
+                self.logger.warning(f"bulk_write partial failure (likely race on unique key): {e}")
+
+        return is_new_flags
+
 # Global conversation database instance
 conversation_db = ConversationDatabase()
 
@@ -480,5 +558,6 @@ class DatabaseManager:
             {"_id": ObjectId(document_id)},
             {"$set": {"source_id": source_id}}
         )
+        
 # Global database instance
 db_manager = DatabaseManager()

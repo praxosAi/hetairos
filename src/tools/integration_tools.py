@@ -11,15 +11,12 @@ logger = logging.getLogger(__name__)
 # This mapping helps construct the correct URL for the provider.
 # It translates a specific integration name (like 'gmail') to the provider name ('google').
 INTEGRATION_NAME_TO_PROVIDER_MAP = {
-    # Google
     "gmail": "google",
     "google_calendar": "google",
     "google_drive": "google",
-    # Microsoft
     "outlook": "microsoft",
     "onedrive": "microsoft",
     "microsoft_calendar": "microsoft",
-    # Other
     "notion": "notion",
     "dropbox": "dropbox",
     "telegram": "telegram",
@@ -60,7 +57,7 @@ def create_integration_tools(user_id: str) -> list:
             # Construct the full URL pointing to the backend's messaging OAuth endpoint.
             oauth_url = (
                 f"{settings.PRAXOS_BASE_URL}/api/auth/initiate-messaging-oauth/{provider}?"
-                f"integration_name={integration_name}&login_token={login_token}&redirect_url=https://app.mypraxos.com/integrations"
+                f"integration_name={integration_name}&login_token={login_token}&redirect_url=https://api.mypraxos.com/api/auth/messaging-oauth-callback"
             )
             
             logger.info(f"Generated OAuth URL for user {user_id} and integration {integration_name}")

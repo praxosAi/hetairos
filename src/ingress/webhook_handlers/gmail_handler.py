@@ -16,9 +16,11 @@ async def handle_gmail_webhook(request: Request):
     """
     Handles incoming Gmail push notifications via Google Cloud Pub/Sub.
     """
+
     body = await request.json()
 
     parsed_message = gmail_pubsub_manager.parse_pubsub_message(body)
+    logging.info(f"Parsed Pub/Sub message: {parsed_message}")
     if not parsed_message or not gmail_pubsub_manager.validate_pubsub_message(parsed_message):
         raise HTTPException(status_code=400, detail="Invalid Pub/Sub message")
 

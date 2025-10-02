@@ -67,7 +67,6 @@ async def handle_imessage_webhook(request: Request):
     imessage_client = IMessageClient()
     text = data.get("content")
     integration_record = await integration_service.is_authorized_user("imessage", phone_number)
-    await imessage_client.set_typing_indicator(phone_number)
     if not integration_record:
         logger.info(f"Authorizing user for phone number {phone_number}")
         try:

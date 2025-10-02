@@ -11,7 +11,7 @@ class DeliveryPlatform(str, Enum):
     EMAIL = 'email'
     imessage = 'imessage'
 logger = setup_logger(__name__)
-def create_scheduling_tools(user_id: str,source:str) -> List:
+def create_scheduling_tools(user_id: str,source:str,conversation_id:str) -> List:
     """Creates all scheduling-related tools for a given user."""
 
     @tool
@@ -28,10 +28,12 @@ def create_scheduling_tools(user_id: str,source:str) -> List:
         logger.info(f"Scheduling task for user {user_id} at {time_to_do} with command: {command_to_perform} via {delivery_platform}")
         result = await scheduling_service.create_future_task(
             user_id=user_id,
+            conversation_id=conversation_id,
             time_to_do=time_to_do,
             command_to_perform=command_to_perform,
             delivery_platform=delivery_platform.value,
             original_source= source
+
         )
         return ToolExecutionResponse(status="success", result=result)
 
@@ -52,13 +54,14 @@ def create_scheduling_tools(user_id: str,source:str) -> List:
         from src.services.scheduling_service import scheduling_service
         result = await scheduling_service.create_recurring_task(
             user_id=user_id,
+            conversation_id=conversation_id,
             cron_expression=cron_expression,
             cron_description=cron_description,
             command_to_perform=command_to_perform,
             start_time=start_time,
             end_time=end_time,
             delivery_platform=delivery_platform.value,
-            original_source = source
+            original_source = source,
         )
         return ToolExecutionResponse(status="success", result=result)
 

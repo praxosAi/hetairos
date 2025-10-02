@@ -44,7 +44,7 @@ class PraxosClient:
         try:
             self.client = praxos_python.SyncClient(
                 api_key=self.api_key,
-                timeout=15,
+                timeout=60,
             )
         
             # Get or create environment
@@ -508,7 +508,7 @@ class PraxosClient:
         
         try:
             # Use direct search method as specified by user
-            result = self.env.ingest_trigger(trigger_conditional_statement=trigger_conditional_statement)
+            result = self.env.ingest_trigger(trigger_conditional_statement)
             return result
         except Exception as e:
             duration = time.time() - start_time

@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from bson import ObjectId
-from pymongo.errors import OperationFailure
+from pymongo.errors import OperationFailure,BulkWriteError
 from pymongo import InsertOne, UpdateOne
 from src.config.settings import settings
 from src.utils.logging.base_logger import setup_logger
@@ -268,83 +268,7 @@ class ConversationDatabase:
             # Delete the conversations themselves
             await self.conversations.delete_many({"_id": {"$in": [ObjectId(cid) for cid in old_convo_ids]}})
 
-    async def insert_or_reject_emails(
-        self,
-        emails: List[Dict[str, Any]],
-        user_id: str,
-    ) -> List[bool]:
-        """
-        For each input email:
-        - Check if its platform_message_id exists in `documents`.
-        - If not, insert a new document for it.
-        Returns a List[bool] aligned to `emails`: True if newly inserted, False if already present or invalid.
-
-        Assumptions:
-        - user_ids[i] corresponds to emails[i].
-        - We store to `self.documents` with a unique index on `platform_message_id`.
-        """
-        if not emails:
-            return []
-
-
-        # Extract ids; mark invalid upfront
-        extracted_ids: List[Optional[str]] = []
-        for em in emails:
-            pid = em.get("id")
-            extracted_ids.append(pid)
-
-        # Build list of candidate ids (filter None)
-        candidate_ids = [pid for pid in extracted_ids if pid]
-
-        if not candidate_ids:
-            # Nothing usable
-            return [False] * len(emails)
-
-        # Fetch existing ids in one query
-        existing_ids = set(
-            await self.documents.distinct(
-                "platform_message_id",
-                {"platform_message_id": {"$in": candidate_ids}}
-            )
-        )
-
-        # Prepare inserts for the ones not present
-        ops = []
-        is_new_flags: List[bool] = []
-        now = datetime.utcnow()
-
-        for i, (email, pid) in enumerate(zip(emails, extracted_ids)):
-            if not pid:
-                # Can't dedupe without a usable id
-                is_new_flags.append(False)
-                continue
-
-            if pid in existing_ids:
-                is_new_flags.append(False)
-                continue
-
-            # Stage insert
-            doc = {
-                "user_id": ObjectId(user_id),
-                "platform": "gmail",
-                "platform_message_id": pid,
-                "received_at": now,                   # or parse from headers if you prefer
-                "payload": email,                     # raw email dict
-            }
-            ops.append(InsertOne(doc))
-            is_new_flags.append(True)
-
-        # Bulk insert only if we have new ones
-        if ops:
-            # ordered=False to proceed even if one insert hits a race (unique index)
-            try:
-                await self.documents.bulk_write(ops, ordered=False)
-            except Exception as e:
-                # In case of a race on unique index, some of the True flags might already exist now.
-                # We could re-check to be exact; for most flows, logging is enough.
-                self.logger.warning(f"bulk_write partial failure (likely race on unique key): {e}")
-
-        return is_new_flags
+    
 
 # Global conversation database instance
 conversation_db = ConversationDatabase()
@@ -360,7 +284,7 @@ class DatabaseManager:
         self.rate_limits = self.db["rate_limits"]
         self.agent_schedules = self.db["agent_schedules"]
         self.documents = self.db["documents"]
-
+        self.agent_triggers = self.db["agent_triggers"]
     async def _create_index_if_not_exists(self, collection, keys, **kwargs):
         """Helper to create an index and ignore NamespaceExists error."""
         try:
@@ -455,7 +379,7 @@ class DatabaseManager:
         )
 
     # Scheduled tasks
-    async def create_scheduled_task(self, task_id: str, user_id: str, task_type: str,
+    async def create_scheduled_task(self, task_id: str, user_id: str, conversation_id:str, task_type: str,
                                    cron_expression: str, task_data: Dict, command: str, cron_description: str,
                                    next_execution: datetime, start_time: datetime, end_time: datetime = None, run_count: int = 0, delivery_platform: str = "whatsapp", original_source:str = 'whatsapp'):
         """Create a new scheduled task in agent_schedules."""
@@ -465,6 +389,7 @@ class DatabaseManager:
                 "$set": {
                     "user_id": ObjectId(user_id),
                     "name": task_type, # Mapping task_type to name
+                    "conversation_id": ObjectId(conversation_id),
                     "cron_expression": cron_expression,
                     "cron_description": cron_description,
                     "next_run": next_execution,
@@ -558,6 +483,130 @@ class DatabaseManager:
             {"_id": ObjectId(document_id)},
             {"$set": {"source_id": source_id}}
         )
-        
+    async def insert_or_reject_emails(
+        self,
+        emails: List[Dict[str, Any]],
+        user_id: str,
+    ) -> List[Optional[str]]:
+        """
+        Insert Gmail emails into `self.documents` if their `id` (Gmail message id)
+        is not already present in `platform_message_id`.
+
+        Returns:
+            List[Optional[str]]: aligned to `emails`
+                - inserted: the Mongo _id (as a string)
+                - skipped/duplicate/invalid: None
+        """
+        if not emails:
+            return []
+
+        # Extract candidate ids (Gmail message 'id') in order
+        extracted_ids: List[Optional[str]] = [em.get("id") for em in emails]
+
+        # Filter valid candidates
+        candidate_ids = [pid for pid in extracted_ids if pid]
+        if not candidate_ids:
+            return [None] * len(emails)
+
+        # Pre-check which already exist in DB
+        existing_ids = set(
+            await self.documents.distinct(
+                "platform_message_id",
+                {"platform_message_id": {"$in": candidate_ids}}
+            )
+        )
+
+        # Prepare inserts (skip in-batch duplicates and pre-existing)
+        ops: List[InsertOne] = []
+        attempt_pids: List[str] = []  # pids we try to insert (keep order with ops)
+        now = datetime.utcnow()
+        seen_in_batch: set[str] = set()
+
+        # Pre-generate _id for each staged doc (lets us map reliably if needed)
+        staged_docs: List[Dict[str, Any]] = []
+
+        for email, pid in zip(emails, extracted_ids):
+            if not pid:
+                staged_docs.append(None)  # placeholder for alignment
+                continue
+
+            # Already in DB?
+            if pid in existing_ids:
+                staged_docs.append(None)
+                continue
+
+            # In-batch duplicate?
+            if pid in seen_in_batch:
+                staged_docs.append(None)
+                continue
+
+            seen_in_batch.add(pid)
+
+            doc_id = ObjectId()
+            doc = {
+                "_id": doc_id,
+                "user_id": ObjectId(user_id),
+                "platform": "gmail",
+                "platform_message_id": pid,
+                "received_at": now,
+                "payload": email,
+            }
+            ops.append(InsertOne(doc))
+            attempt_pids.append(pid)
+            staged_docs.append(doc)  # keep reference; same positional order as emails
+
+        # If nothing to insert, build result of Nones
+        if not ops:
+            return [None] * len(emails)
+
+        # Try the bulk insert; allow concurrent races (unique index) without aborting whole batch
+        try:
+            await self.documents.bulk_write(ops, ordered=False)
+        except BulkWriteError as bwe:
+            # Likely duplicates due to race; we'll resolve via a post-query
+            self.logger.warning(f"bulk_write had duplicate(s) or partial insert: {bwe.details}")
+        except Exception as e:
+            # Unexpected failure; we still try a post-query to return what exists
+            self.logger.error(f"bulk_write error: {e}", exc_info=True)
+
+        # Post-insert: fetch _ids for all pids we attempted to insert
+        # (works whether we inserted them or a concurrent worker did)
+        pid_to_id: Dict[str, ObjectId] = {}
+        async for d in self.documents.find(
+            {"platform_message_id": {"$in": attempt_pids}},
+            projection={"platform_message_id": 1, "_id": 1}
+        ):
+            pid_to_id[d["platform_message_id"]] = d["_id"]
+
+        # Build aligned result
+        result: List[Optional[str]] = []
+        for email, pid, staged in zip(emails, extracted_ids, staged_docs):
+            if not pid:
+                result.append(None)
+                continue
+            if pid in existing_ids:
+                result.append(None)
+                continue
+            # Was a candidate in this batch (first occurrence)?
+            if staged is None:
+                # Either a repeat in-batch, or invalid
+                result.append(None)
+                continue
+            # Return the actual _id present now (ours or concurrent insert)
+            _id = pid_to_id.get(pid)
+            result.append(str(_id) if _id else None)
+
+        return result
+    async def insert_new_trigger(self, rule_id: str, conversation_id: str, trigger_text: str, user_id: str, is_one_time: bool) -> str:
+        """Insert a new agent trigger and return its ID."""
+        trigger_data = {'rule_id': rule_id, 'conversation_id': conversation_id, 'trigger_text': trigger_text, 'created_at': datetime.utcnow(), 'user_id': ObjectId(user_id),'status': 'active','is_one_time': is_one_time}
+        result = await self.agent_triggers.insert_one(trigger_data)
+        return str(result.inserted_id)
+    async def get_trigger_by_rule_id(self, rule_id: str) -> Optional[Dict]:
+        """Get a trigger by its rule_id."""
+        trigger = await self.agent_triggers.find_one({"rule_id": rule_id, 'status': 'active'})
+        if trigger:
+            return trigger
+        return None
 # Global database instance
 db_manager = DatabaseManager()

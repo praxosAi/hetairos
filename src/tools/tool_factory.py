@@ -116,13 +116,13 @@ class AgentToolsFactory:
 
         if praxos_api_key:
             praxos_client = PraxosClient(f"env_for_{user_email}", api_key=praxos_api_key)
-            tools.extend(create_praxos_memory_tool(praxos_client))
+            tools.extend(create_praxos_memory_tool(praxos_client, user_id, str(metadata.get('conversation_id'))))
         else:
             logger.warning("Praxos API key not found, memory tools will be unavailable.")
 
         tools.extend(create_bot_communication_tools(metadata, user_id))
         try:
-            tools.extend(create_scheduling_tools(user_id, metadata.get('source')))
+            tools.extend(create_scheduling_tools(user_id, metadata.get('source'), str(metadata.get('conversation_id'))))
         except Exception as e:
             logger.error(f"Error creating scheduling tools: {e}", exc_info=True)
         try:

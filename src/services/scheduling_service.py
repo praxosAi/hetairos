@@ -35,7 +35,7 @@ class SchedulingService:
     """
     Provides tools for the agent to schedule one time future tasks and recurring future tasks.
     """
-    async def create_future_task(self, user_id: str, time_to_do: str, command_to_perform: str, delivery_platform: str = None, original_source: str = 'whatsapp') -> str:
+    async def create_future_task(self, user_id: str,conversation_id:str, time_to_do: str, command_to_perform: str, delivery_platform: str = None, original_source: str = 'whatsapp') -> str:
         """
         Creates a new scheduled task for the agent. this is to be used for one time future tasks.
         """
@@ -50,6 +50,7 @@ class SchedulingService:
             await db_manager.create_scheduled_task(
                 task_id=task_id,
                 user_id=user_id,
+                conversation_id=conversation_id,
                 task_type="scheduled",
                 cron_expression='ONE-TIME',
                 task_data={'description': command_to_perform},
@@ -68,7 +69,7 @@ class SchedulingService:
                 "user_id": str(user_id),
                 "source": "scheduled",
                 "payload": {"text": command_to_perform},
-                "metadata": {"task_id": task_id, 'output_type': delivery_platform, 'original_source': original_source, 'source': original_source + '_recurring'},
+                "metadata": {"task_id": task_id, 'output_type': delivery_platform, 'original_source': original_source, 'source': original_source + '_recurring', 'conversation_id': conversation_id},
                 "output_type": delivery_platform
             }
             logger.info(f"Publishing scheduled event for user {user_id} at {time_to_do.isoformat()}")
@@ -85,8 +86,8 @@ class SchedulingService:
             logger.error(f"Failed to create future task for user {user_id}: {e}")
             return "Failed to create schedule."
 
-        
-    async def create_recurring_task(self, user_id: str, cron_expression: str, cron_description: str, command_to_perform: str, start_time: datetime, end_time: datetime = None, delivery_platform: str = None,original_source: str = None) -> str:
+
+    async def create_recurring_task(self, user_id: str, conversation_id: str, cron_expression: str, cron_description: str, command_to_perform: str, start_time: datetime, end_time: datetime = None, delivery_platform: str = None,original_source: str = None) -> str:
         """
         Creates a new scheduled task for the agent. this is to be used for recurring future tasks.
 
@@ -121,6 +122,7 @@ class SchedulingService:
             await db_manager.create_scheduled_task(
                 task_id=task_id,
                 user_id=user_id,
+                conversation_id=conversation_id,
                 task_type="recurring",
                 cron_expression=cron_expression,
                 task_data={'description': command_to_perform},
@@ -137,7 +139,7 @@ class SchedulingService:
                 "user_id": str(user_id),
                 "source": "recurring",
                 "payload": {"text": command_to_perform},
-                "metadata": {"task_id": task_id,'output_type': delivery_platform, 'original_source':original_source, 'source': original_source + '_recurring'},
+                "metadata": {"task_id": task_id,'output_type': delivery_platform, 'original_source':original_source, 'source': original_source + '_recurring','conversation_id': conversation_id},
                 "output_type": delivery_platform
             }
             await event_queue.publish_scheduled_event(
@@ -220,5 +222,5 @@ class SchedulingService:
         if not task:
             return False
         return task.get('is_active')
-
+    
 scheduling_service = SchedulingService()

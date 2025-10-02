@@ -87,7 +87,7 @@ class EgressService:
         Telegram typing status lasts ~5 seconds, so we refresh at 4s intervals.
         """
         try:
-            while True:
+            for sending_counter in range(30):  # Limit to 30 sends (2 minutes) to avoid infinite loops
                 try:
                     # Send typing action
                     await self.telegram_client.send_typing_action(chat_id)
@@ -111,7 +111,7 @@ class EgressService:
         SendBlue iMessage typing indicator needs periodic refresh.
         """
         try:
-            while True:
+            for sending_counter in range(12):  # Limit to 12 sends (2 minutes) to avoid infinite loops
                 try:
                     # Send typing indicator
                     await self.imessage_client.set_typing_indicator(phone_number)

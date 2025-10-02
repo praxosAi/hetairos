@@ -84,3 +84,41 @@ class InitialIngestionCoordinator:
             "message": "Successfully ingested uploaded files",
             "details": ingestion_results
         }
+    async def ingest_event(self, user_id: str, event_details: dict) -> Dict:
+        """
+        Ingests an event directly by the user via the API.
+        """
+        ### convert files from event format to in-memory file format.
+
+        # new_files = []
+        # file_download_tasks = []
+        # for file in files:
+        #     file_download_tasks.append(download_from_blob_storage(file['blob_path']))
+        
+
+        # downloaded_contents = await asyncio.gather(*file_download_tasks, return_exceptions=True)
+        # for old_file, content in zip(files, downloaded_contents):
+        #     if isinstance(content, Exception):
+        #         continue
+        #     new_files.append({
+        #         "filename": old_file.get("file_name", "unknown"),
+        #         "content": content,
+        #         "mimetype": old_file.get("mime_type"),
+        #         "type": old_file.get("type"),
+        #         "metadata": {"source": "file_upload", **old_file.get("metadata", {}), 'skip_db_record': True}
+        #     })
+        pass
+        # ingestion_results = await self.ingest_worker.ingest_files(user_id, new_files)
+        # successful_ingestions = [res for res in ingestion_results if res['status'] == 'success']
+        # failed_ingestions = [res for res in ingestion_results if res['status'] == 'failed']
+
+        # return {
+        #     "success": True,
+        #     "ingested_counts": {
+        #         "total_files": len(files),
+        #         "successful": len(successful_ingestions),
+        #         "failed": len(failed_ingestions)
+        #     },
+        #     "message": "Successfully ingested uploaded files",
+        #     "details": ingestion_results
+        # }

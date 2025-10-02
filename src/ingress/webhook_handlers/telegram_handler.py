@@ -82,6 +82,7 @@ async def handle_telegram_webhook(request: Request):
                 if sender_user.get("username"):
                     sender_user_full_identifier += ' Username:' +  sender_user["username"]
                 forward_origin = {"type":"user",'original_sender_identifier': sender_user_full_identifier,'forward_date': forward_origin_raw.get("date")}
+        await telegram_client.send_typing_indicator(chat_id)
         if text:
             event = {
                 "user_id": user_id,

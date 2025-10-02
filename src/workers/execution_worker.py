@@ -10,6 +10,7 @@ from src.utils.logging.base_logger import setup_logger, user_id_var, modality_va
 from src.services.scheduling_service import scheduling_service
 from src.ingest.ingestion_worker import InitialIngestionCoordinator
 from src.egress.service import egress_service
+from src.utils.database import db_manager
 import uuid
 logger = setup_logger(__name__)
 
@@ -76,7 +77,7 @@ class ExecutionWorker:
             base_event = events[0]
             source = base_event.get("source")
             
-            if source in ["whatsapp", "telegram"]:
+            if source in ["whatsapp", "telegram",'imessage']:
                 # Combine messages for chat platforms
                 combined_payload = self.combine_chat_messages(events)
                 combined_event = {**base_event}
@@ -146,21 +147,28 @@ class ExecutionWorker:
                     user_id=event["user_id"],
                     files=event["payload"]["files"],
                 )
+            elif source == 'event_ingestion':
+                pass
+                # await self.ingestion_coordinator.ingest_event(
+                #     user_id=event["user_id"],
+                #     event_details=event["payload"]
+                # )
 
-            elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram",'imessage']:
+            elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram",'imessage','triggered']:
                 # --- Handle Agent Task ---
                 if source == "recurring":
                     try:
                         logger.info(f"Scheduling next run for recurring event: {event}")
-                        await scheduling_service.schedule_next_run(event["metadata"]["task_id"])
+                        await scheduling_service.schedule_next_run(event)
                     except Exception as e:
-                        logger.error(f"Error scheduling next run for recurring event: {event}", exc_info=True)
+                        logger.error(f"Error scheduling next run for recurring event: {event}, {e}", exc_info=True)
                 
                 if source in ['scheduled', 'recurring']:
                     task_active = await scheduling_service.verify_task_active(event["metadata"]["task_id"])
                     if not task_active:
                         logger.info(f"Task is cancelled for event: {event}")
                         return  # Changed from continue to return
+                    
 
                 user_context = await create_user_context(event["user_id"])
                 if not user_context:

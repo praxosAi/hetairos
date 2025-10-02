@@ -55,8 +55,9 @@ class FileLink(BaseModel):
 class AgentFinalResponse(BaseModel):
     """The final structured response from the agent."""
     response: str = Field(description="The final, user-facing response to be delivered.")
-    delivery_platform: str = Field(description="The channel for the response. Should be the same as the input source, unless otherwise specified.", enum=["email", "whatsapp", "websocket", "telegram",'imessage'])
     execution_notes: Optional[str] = Field(description="Internal notes about the execution, summarizing tool calls or errors.")
+
+    delivery_platform: str = Field(description="The channel for the response. Should be the same as the input source, unless otherwise specified.", enum=["email", "whatsapp", "websocket", "telegram",'imessage'])
     output_modality: Optional[str] = Field(description="The modality of the output, e.g., text, image, file, etc. unless otherwise specified by user needs, this should be text", enum=["text", "voice", 'audio', "image", "video",'file'])
     generation_instructions: Optional[str] = Field(description="Instructions for generating audio, video, or image if applicable.")
     file_links: Optional[List[FileLink]] = Field(description="Links to any files generated or used in the response.")
@@ -130,6 +131,7 @@ class LangGraphAgentRunner:
             "do not confirm the scheduling with the user, just do it, unless the user specifically asks you to confirm it with them."
             "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
             "if the user requests generation of audio, video or image, you should simply set the appropriate flag on output_modality, and generation_instructions, and not use any tool to generate them. this will be handled after your response is processed, with systems that are capable of generating them. your response in the final_response field should always simply be to acknowledge the request and say you would be happy to help. you will then describe the media in detail in the appropriate field, using the generation_instructions field, as well as setting the output modality field to the appropriate value for what the user actually wants. do not actually tell the user you won't generate it yourself, that's overly complex and will confuse them. do not ask them for more info in your response either, as the generation will happen regardless."
+            "If the user requests a trigger setup, attempt to use the other tools at your disposal to enrich the information about the trigger's rules. however, only add info that you are certain about to the conditions of the trigger."
         )
 
 
@@ -161,12 +163,15 @@ class LangGraphAgentRunner:
         side_effect_explanation_prompt = """ note that there is a difference between the final output delivery modality, and using tools to send a response. the tool usage for communication is to be used when the act of sending a communication is a side effect, and not the final output or goal. """
         
         
-        if source in ["scheduled", "recurring"]:
-            task_prompt = "\nNote: this is the command part of a previously scheduled task. You should now complete the task. Do not ask the user when to perform it, this task was scheduled to be performed for this exact time.  Note that at this time, you should not use the scheduling tool again, as this is the scheduled execution. Instead, perform the task now. If the task is phrased as a reminder or a request for scheduling, assume that you are now supposed to perform the reminding act itself, NOT scheduling it for the future. "
-            if metadata and metadata.get("output_type"):
+        if source in ["scheduled", "recurring",'triggered']:
+            task_prompt = "\nIMPORTANT NOTE: this is the command part of a previously scheduled task. You should now complete the task. Do not ask the user when to perform it, this task was scheduled to be performed for this exact time.  Note that at this time, you should not use the scheduling tool again, as this is the scheduled execution. Instead, perform the task now. If the task is phrased as a reminder or a request for scheduling, assume that you are now supposed to perform the reminding act itself, NOT scheduling it for the future. The task may even mention a need for a reminder, but that is because the user previously asked for it. You must now do the reminding act itself, and not schedule it again. "
+            if source == "triggered":
+                task_prompt += "This task was triggered by an external event, and must be performed now. Pay close attention to the user's original instructions when the task was created. Pay close attention to any delivery instructions. if the user asked for it on whatsapp/imessage/telegram/email, you must comply. "
+            elif metadata and metadata.get("output_type"):
                 task_prompt += f" The output modality for the final response of this scheduled task was previously specified as '{metadata.get('output_type')}'. the original source was '{metadata.get('original_source')}'."
             else:
                 task_prompt += " The output modality for the final response of this scheduled task was not specified, so you should choose the most appropriate one based on the user's preferences and context. this cannot be websocket in this case."
+        
         else:
             task_prompt = f"\n\nThis message was received on the '{source}' channel. \n\n"
         logger.info(f"Task prompt: {task_prompt}")
@@ -622,7 +627,7 @@ class LangGraphAgentRunner:
 
             # --- Data preparation ---
             conversation_id = metadata.get("conversation_id") or await self.conversation_manager.get_or_create_conversation(user_context.user_id, source, input)
-
+            metadata['conversation_id'] = conversation_id
             # Get conversation history first (before adding new messages)
             history, has_media = await self._get_conversation_history(conversation_id)
 
@@ -723,7 +728,8 @@ class LangGraphAgentRunner:
                 prompt = (
                     f"Given the final response from an agent: '{final_message}', "
                     f"and knowing the initial request came from the '{source_to_use}' channel, "
-                    "format this into the required JSON structure. The delivery_platform must match the source channel, unless the user indicates or implies otherwise, or the command requires a different channel. Note that a scheduled command cannot have websocket as the delivery platform. "
+                    "format this into the required JSON structure. The delivery_platform must match the source channel, unless the user indicates or implies otherwise, or the command requires a different channel. Note that a scheduled/recurring/triggered command cannot have websocket as the delivery platform. If the user has specifically asked for a different delivery platform, you must comply. for example, if the user has sent an email, but requests a response on imessage, comply. Explain the choice of delivery platform in the execution_notes field, acknowledging if the user requested a particular platform or not. "
+                    f"the user's original message in this case was {input_text}. pay attention to whether it contains a particular request for delivery platform. "
                     "If the response requires generating audio, video, or image, set the output_modality and generation_instructions fields accordingly.  the response should simply acknowledge the request to generate the media, and not attempt to generate it yourself. this is not a task for you. simply trust in the systems that will handle it after you. "
                 )
                 response = await self.structured_llm.ainvoke(prompt)

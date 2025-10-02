@@ -3,7 +3,7 @@ import logging
 from src.config.settings import settings
 import motor.motor_asyncio
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta,timezone
 from typing import Dict, List, Optional, Any
 from bson import ObjectId
 from pymongo.errors import OperationFailure,BulkWriteError
@@ -433,7 +433,14 @@ class DatabaseManager:
         """Update next execution time for a task."""
         await self.agent_schedules.update_one(
             {"id": task_id},
-            {"$set": {"next_run": next_execution, "last_run": datetime.utcnow(), "updated_at": datetime.utcnow(), "run_count": {"$inc": 1}}}
+            {
+                "$set": {
+                    "next_run": next_execution,
+                    "last_run": datetime.now(timezone.utc),  # or datetime.now(timezone.utc) if you’ve standardized on aware
+                    "updated_at": datetime.now(timezone.utc),
+                },
+                "$inc": {"run_count": 1},
+            },
         )
 
     async def deactivate_task(self, task_id: str):

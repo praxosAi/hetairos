@@ -159,7 +159,7 @@ class ExecutionWorker:
                 if source == "recurring":
                     try:
                         logger.info(f"Scheduling next run for recurring event: {event}")
-                        await scheduling_service.schedule_next_run(event["metadata"]["task_id"])
+                        await scheduling_service.schedule_next_run(event)
                     except Exception as e:
                         logger.error(f"Error scheduling next run for recurring event: {event}, {e}", exc_info=True)
                 

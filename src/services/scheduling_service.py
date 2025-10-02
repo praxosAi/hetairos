@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timezone
+from bson import ObjectId
 from croniter import croniter
 from src.utils.database import db_manager
 from src.core.event_queue import event_queue
@@ -112,13 +113,16 @@ class SchedulingService:
             task_id = f"task_{user_id}_{datetime.utcnow().timestamp()}"
             user_preferences = user_service.get_user_preferences(user_id)    
             timezone_name = user_preferences.get('timezone', 'America/New_York') if user_preferences else 'America/New_York'
+            logger.info(f"User {user_id} timezone: {timezone_name}")
             start_time = nyc_to_utc(start_time, timezone_name)
-            base_time = datetime.utcnow()
+            base_time = datetime.now(timezone.utc)
             if not croniter.is_valid(cron_expression):
                 logger.error(f"Invalid cron expression: {cron_expression}")
                 return "Invalid cron expression."
             cron = croniter(cron_expression, base_time)
             next_run_time = cron.get_next(datetime)
+            if start_time <  datetime.now(timezone.utc):
+                start_time = next_run_time
             await db_manager.create_scheduled_task(
                 task_id=task_id,
                 user_id=user_id,
@@ -151,29 +155,36 @@ class SchedulingService:
         except Exception as e:
             logger.error(f"Failed to create schedule for user {user_id}: {e}")
             return "Failed to create schedule."
-    async def schedule_next_run(self,  task_id: str) -> str:
+    async def schedule_next_run(self,event: Dict) -> str:
+        task_id = event['metadata']['task_id']
         ## get current date time.
-        current_time = datetime.utcnow() + timedelta(seconds=5)
+        current_time = datetime.now(timezone.utc) + timedelta(seconds=5)
         #get task from database.
         task = await db_manager.get_scheduled_task(task_id)
         if not task:
             return "Task not found."
+        if not task['cron_expression'] or task['cron_expression'] == 'ONE-TIME':
+            logger.error(f"Task {task_id} is not recurring.")
+            return "Task is not recurring."
         ## validate the cron expression.
-        if not croniter.is_valid(task.cron_expression):
-            logger.error(f"Invalid cron expression: {task.cron_expression}")
+        if not croniter.is_valid(task['cron_expression']):
+            logger.error(f"Invalid cron expression: {task['cron_expression']}")
             return "Invalid cron expression."
         #get the next run time for the task.
-        next_run_time = croniter(task.cron_expression, current_time).get_next(datetime)
+        next_run_time = croniter(task['cron_expression'], current_time).get_next(datetime)
         ## schedule the next run.
         await db_manager.update_task_execution(task_id, next_run_time)
-        event = {
-            "user_id": str(task.user_id),
+        new_event = {
+            "user_id": str(task['user_id']),
             "source": "recurring",
-            "payload": {"text": task.command},
-            "metadata": event['metadata']
+            "payload": {"text": task['command']},
+            "metadata": event['metadata'],
+            
         }
+        if event.get('output_type'):
+            new_event['output_type'] = event['output_type']
         await event_queue.publish_scheduled_event(
-            event=event,
+            event=new_event,
             timestamp=next_run_time
         )
         return f"Next run scheduled successfully at {next_run_time.isoformat()}."

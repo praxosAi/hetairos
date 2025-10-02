@@ -51,6 +51,7 @@ def create_scheduling_tools(user_id: str,source:str,conversation_id:str) -> List
         Note: If the user asked to be reminded of performing a task themselves, you should add the prefix "Remind user to " to the command_to_perform parameter. for example, if the user says "remind me to call my mom every day", you should set the command_to_perform parameter to "Remind user to call their mom".
 
         """
+        logger.info(f"Scheduling recurring task for user {user_id} starting at {start_time} with command: {command_to_perform} via {delivery_platform} using cron: {cron_expression}")
         from src.services.scheduling_service import scheduling_service
         result = await scheduling_service.create_recurring_task(
             user_id=user_id,

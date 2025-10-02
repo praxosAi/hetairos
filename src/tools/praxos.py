@@ -3,10 +3,11 @@ from langchain_core.tools import tool
 from src.core.praxos_client import PraxosClient
 from src.tools.tool_types import ToolExecutionResponse
 from src.utils.logging import setup_logger
+from src.utils.database import db_manager
 from typing import List
 logger = setup_logger(__name__)
 
-def create_praxos_memory_tool(praxos_client: PraxosClient) -> list:
+def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, conversation_id: str) -> list:
     """Create Praxos memory tool"""
     
     @tool
@@ -81,4 +82,21 @@ def create_praxos_memory_tool(praxos_client: PraxosClient) -> list:
         except Exception as e:
             logger.error(f"Error enriching Praxos memory entries: {e}")
             return ToolExecutionResponse(status="error", system_error=str(e))
-    return [query_praxos_memory,enrich_praxos_memory_entries,query_praxos_memory_intelligent_search]
+    async def setup_new_trigger(trigger_conditional_statement: str, one_time: bool = True) -> ToolExecutionResponse:
+        """Setup a trigger in Praxos memory. a trigger is a conditional statement, of form "If I receive an email from X, then do Y"
+        Args:
+            trigger_conditional_statement: The conditional statement to setup as a trigger. it should be complete and descriptive, in plain english. 
+            one_time: Whether the trigger should be one-time or persistent. Defaults to True (one-time). if the user wants a persistent trigger, set this to False. Try to guess from context and nature of the task, but if unsure, ask the user.
+        """
+        try:
+            logger.info(f"Setting up new trigger in Praxos memory: {trigger_conditional_statement}")
+            trigger_setup_response = await praxos_client.setup_trigger(trigger_conditional_statement)
+            if 'rule_id' in trigger_setup_response:
+                await db_manager.insert_new_trigger(trigger_setup_response['rule_id'], conversation_id,trigger_conditional_statement, user_id, one_time,)
+            return json.dumps(ToolExecutionResponse(status="success", result=trigger_setup_response).dict(),indent=4)
+        except Exception as e:
+            logger.error(f"Error setting up new trigger in Praxos memory: {e}")
+            return ToolExecutionResponse(status="error", system_error=str(e))
+    return [query_praxos_memory,enrich_praxos_memory_entries,query_praxos_memory_intelligent_search,setup_new_trigger]
+
+

@@ -263,7 +263,22 @@ class IntegrationService:
             
         return clients
     
+    async def get_gmail_checkpoint(self, user_id: str, connected_account: str) -> Optional[str]:
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"user_id": ObjectId(user_id), "name": "gmail", "connected_account": connected_account},
+            projection={"gmail_history_checkpoint": 1}
+        )
+        return (integ or {}).get("gmail_history_checkpoint")
 
+    async def set_gmail_checkpoint(self, user_id: str, connected_account: str, history_id: str) -> None:
+        await self.db_manager.db["integrations"].update_one(
+            {"user_id": ObjectId(user_id), "name": "gmail", "connected_account": connected_account},
+            {"$set": {
+                "gmail_history_checkpoint": str(history_id),
+                "updated_at": datetime.now(timezone.utc),
+            }},
+            upsert=False,
+        )
 
 
     async def get_user_by_integration(self, type: str, connected_account:str) -> Optional[List[str]]:

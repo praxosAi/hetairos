@@ -349,7 +349,7 @@ ply==3.11
     # via stone
 portkey-ai==1.14.4
     # via -r requirements.in
-praxos-python==0.3.3
+praxos-python==0.4.0
     # via -r requirements.in
 propcache==0.3.2
     # via

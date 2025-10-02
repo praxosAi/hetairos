@@ -16,8 +16,8 @@ from src.utils.logging import setup_logger
 
 # Check an environment variable to decide on log format
 # In your deployment (e.g., Dockerfile or Kubernetes YAML), set JSON_LOGGING="true"
-json_logging = True
-logger = setup_logger(__name__, json_format=json_logging)
+
+logger = setup_logger(__name__)
 
 app = FastAPI(title="Hetairoi Agent Ingress")
 

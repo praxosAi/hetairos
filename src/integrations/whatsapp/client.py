@@ -37,7 +37,6 @@ class WhatsAppClient:
                 self.logger.error(f"WhatsApp media upload error: {e}")
                 return None
 
-        
     async def send_message(self, to_phone: str, message: str, conversation_id: int = None):
         """Send text message via WhatsApp Business API, chunking smartly if it's too long."""
         responses = []
@@ -104,7 +103,10 @@ class WhatsAppClient:
         payload = {
             "messaging_product": "whatsapp",
             "status": "read",
-            "message_id": message_id
+            "message_id": message_id,
+            "typing_indicator": {
+                "type": "text"
+            }
         }
         
         # Set timeout for read receipt calls

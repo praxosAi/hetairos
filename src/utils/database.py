@@ -395,6 +395,7 @@ class DatabaseManager:
                     "next_run": next_execution,
                     "start_time": start_time,
                     "end_time": end_time,
+                    "command": command,
                     "agent_config": task_data, # Mapping task_data to agent_config
                     "is_active": True,
                     "updated_at": datetime.utcnow(),

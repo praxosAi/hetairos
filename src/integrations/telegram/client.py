@@ -14,11 +14,11 @@ class TelegramClient:
         self.base_url = f"https://api.telegram.org/bot{self.token}"
         self.logger = setup_logger("telegram_client")
 
-    async def send_typing_indicator(self, chat_id: int):
-        """Send a typing indicator to the chat."""
+    async def send_typing_action(self, chat_id: int):
+        """Send typing action to show the bot is typing."""
         payload = {
             "chat_id": chat_id,
-            "action": "typing",
+            "action": "typing"
         }
         return await self._make_request("sendChatAction", payload)
 

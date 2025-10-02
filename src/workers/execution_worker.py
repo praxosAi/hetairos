@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime
 import logging
+from typing import Optional
 from src.core.event_queue import event_queue
 
 from src.core.agent_runner_langgraph import LangGraphAgentRunner
@@ -167,7 +168,9 @@ class ExecutionWorker:
                     logger.error(f"Could not create user context for user {event['user_id']}. Skipping event.")
                     return  # Changed from continue to return
                 has_media = await self.determine_media_presence(event)
-                
+
+                # Start activity indicator (typing for Telegram)
+                typing_task_id = await egress_service.start_typing_indicator(event)
 
                 self.langgraph_agent_runner = LangGraphAgentRunner(trace_id=f"exec-{str(event['user_id'])}-{datetime.utcnow().isoformat()}", has_media=has_media)
                 result = await self.langgraph_agent_runner.run(
@@ -176,7 +179,7 @@ class ExecutionWorker:
                     source=source,
                     metadata=event.get("metadata", {})
                 )
-                await self.post_process_langgraph_response(result, event)
+                await self.post_process_langgraph_response(result, event, typing_task_id)
             
             else:
                 logger.warning(f"Unknown event source: {source}. Skipping event.")
@@ -188,9 +191,12 @@ class ExecutionWorker:
             user_id_var.set('SYSTEM_LEVEL')
             request_id_var.set('SYSTEM_LEVEL')
             modality_var.set('SYSTEM_LEVEL')
-    async def post_process_langgraph_response(self, result: dict, event: dict):
+    async def post_process_langgraph_response(self, result: dict, event: dict, typing_task_id: Optional[str] = None):
+        # Stop typing indicator before sending actual response
+
         event["output_type"] = result.delivery_platform
         await egress_service.send_response(event, {"response": result.response, "file_links": result.file_links})
+        await egress_service.stop_typing_indicator(typing_task_id)
 
 
     async def determine_media_presence(self, event: dict) -> bool:

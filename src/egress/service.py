@@ -1,4 +1,6 @@
 import logging
+import asyncio
+from typing import Dict, Optional
 from src.config.settings import settings
 from src.utils.redis_client import publish_message
 from src.integrations.whatsapp.client import WhatsAppClient
@@ -15,6 +17,130 @@ class EgressService:
         self.whatsapp_client = WhatsAppClient()
         self.telegram_client = TelegramClient()
         self.imessage_client = IMessageClient()
+
+        # Track active watchdog tasks per chat/user
+        self.active_typing_tasks: Dict[str, asyncio.Task] = {}
+
+    async def start_typing_indicator(self, event: dict) -> Optional[str]:
+        """
+        Start activity indicator for a user/chat.
+        Returns a unique task_id for later stopping.
+        """
+        try:
+            platform = event.get("source")
+
+            if platform == "telegram":
+                task_id = await self._start_telegram_typing(event)
+                return task_id
+
+            # Future: elif platform == "whatsapp": ...
+
+            return None  # Platform not supported
+        except Exception as e:
+            logger.error(f"Error starting activity indicator: {e}", exc_info=True)
+            return None
+
+    async def stop_typing_indicator(self, task_id: Optional[str]) -> None:
+        """
+        Stop the activity indicator watchdog by task_id.
+        """
+        if not task_id:
+            return
+
+        await self._cleanup_task(task_id)
+
+    async def _cleanup_task(self, task_id: str) -> None:
+        """
+        Cancel and cleanup a specific watchdog task.
+        """
+        task = self.active_typing_tasks.get(task_id)
+
+        if not task:
+            logger.debug(f"Task {task_id} not found (already cleaned up?)")
+            return
+
+        if task.done():
+            # Already finished (crashed or completed)
+            del self.active_typing_tasks[task_id]
+            return
+
+        # Cancel the task
+        task.cancel()
+
+        try:
+            # Wait for cancellation to complete
+            await task
+        except asyncio.CancelledError:
+            # Expected - task was cancelled successfully
+            pass
+        except Exception as e:
+            logger.error(f"Error cleaning up task {task_id}: {e}")
+        finally:
+            # Remove from tracking dict
+            if task_id in self.active_typing_tasks:
+                del self.active_typing_tasks[task_id]
+
+    async def _telegram_typing_watchdog(self, chat_id: int) -> None:
+        """
+        Continuously sends typing action every 4 seconds until cancelled.
+        Telegram typing status lasts ~5 seconds, so we refresh at 4s intervals.
+        """
+        try:
+            while True:
+                try:
+                    # Send typing action
+                    await self.telegram_client.send_typing_action(chat_id)
+                except Exception as e:
+                    # Don't crash on API errors, just log and continue
+                    logger.warning(f"Failed to send typing action to chat {chat_id}: {e}")
+
+                # Wait 4 seconds before next update (or until cancelled)
+                await asyncio.sleep(4)
+
+        except asyncio.CancelledError:
+            # Normal cancellation when processing completes
+            logger.debug(f"Typing watchdog cancelled for chat {chat_id}")
+            # Don't re-raise, allows graceful cleanup
+        except Exception as e:
+            logger.error(f"Unexpected error in typing watchdog for chat {chat_id}: {e}")
+
+    async def _start_telegram_typing(self, event: dict) -> Optional[str]:
+        """
+        Start Telegram typing watchdog and register it.
+        Returns task_id for later cancellation.
+        """
+        # Extract chat_id
+        chat_id = event.get("output_chat_id")
+        if not chat_id:
+            try:
+                integration_record = await integration_service.get_integration_record_for_user_and_name(
+                    user_id=event.get("user_id"),
+                    name="telegram"
+                )
+                if integration_record:
+                    chat_id = integration_record.get("telegram_chat_id")
+            except Exception as e:
+                logger.error(f"Failed to get chat_id for typing indicator: {e}")
+                return None
+
+        if not chat_id:
+            logger.warning("No chat_id found, cannot start typing indicator")
+            return None
+
+        # Create unique task ID
+        task_id = f"telegram:{chat_id}:{event.get('user_id')}"
+
+        # If there's already a watchdog for this chat, cancel it first
+        # (handles rapid messages from same user)
+        if task_id in self.active_typing_tasks:
+            await self._cleanup_task(task_id)
+
+        # Start new watchdog task
+        task = asyncio.create_task(self._telegram_typing_watchdog(chat_id))
+        self.active_typing_tasks[task_id] = task
+
+        logger.debug(f"Started typing watchdog for {task_id}")
+        return task_id
 
     async def _send_email_response(self, event: dict, response_text: str):
         if event.get("email_type") == "unauthorised_user":

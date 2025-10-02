@@ -32,8 +32,9 @@ class EgressService:
             if platform == "telegram":
                 task_id = await self._start_telegram_typing(event)
                 return task_id
-
-            # Future: elif platform == "whatsapp": ...
+            elif platform == "imessage":
+                task_id = await self._start_imessage_typing(event)
+                return task_id
 
             return None  # Platform not supported
         except Exception as e:
@@ -104,6 +105,30 @@ class EgressService:
         except Exception as e:
             logger.error(f"Unexpected error in typing watchdog for chat {chat_id}: {e}")
 
+    async def _imessage_typing_watchdog(self, phone_number: str) -> None:
+        """
+        Continuously sends typing indicator every 10 seconds until cancelled.
+        SendBlue iMessage typing indicator needs periodic refresh.
+        """
+        try:
+            while True:
+                try:
+                    # Send typing indicator
+                    await self.imessage_client.set_typing_indicator(phone_number)
+                except Exception as e:
+                    # Don't crash on API errors, just log and continue
+                    logger.warning(f"Failed to send typing indicator to iMessage {phone_number}: {e}")
+
+                # Wait 10 seconds before next update (or until cancelled)
+                await asyncio.sleep(10)
+
+        except asyncio.CancelledError:
+            # Normal cancellation when processing completes
+            logger.debug(f"Typing watchdog cancelled for iMessage {phone_number}")
+            # Don't re-raise, allows graceful cleanup
+        except Exception as e:
+            logger.error(f"Unexpected error in typing watchdog for iMessage {phone_number}: {e}")
+
     async def _start_telegram_typing(self, event: dict) -> Optional[str]:
         """
         Start Telegram typing watchdog and register it.
@@ -137,6 +162,41 @@ class EgressService:
 
         # Start new watchdog task
         task = asyncio.create_task(self._telegram_typing_watchdog(chat_id))
+        self.active_typing_tasks[task_id] = task
+
+        logger.debug(f"Started typing watchdog for {task_id}")
+        return task_id
+
+    async def _start_imessage_typing(self, event: dict) -> Optional[str]:
+        """
+        Start iMessage typing watchdog and register it.
+        Returns task_id for later cancellation.
+        """
+        # Extract phone_number
+        phone_number = event.get("output_phone_number")
+        if not phone_number:
+            try:
+                user_record = user_service.get_user_by_id(event.get("user_id"))
+                if user_record:
+                    phone_number = user_record.get("phone_number")
+            except Exception as e:
+                logger.error(f"Failed to get phone_number for typing indicator: {e}")
+                return None
+
+        if not phone_number:
+            logger.warning("No phone_number found, cannot start typing indicator")
+            return None
+
+        # Create unique task ID
+        task_id = f"imessage:{phone_number}:{event.get('user_id')}"
+
+        # If there's already a watchdog for this phone, cancel it first
+        # (handles rapid messages from same user)
+        if task_id in self.active_typing_tasks:
+            await self._cleanup_task(task_id)
+
+        # Start new watchdog task
+        task = asyncio.create_task(self._imessage_typing_watchdog(phone_number))
         self.active_typing_tasks[task_id] = task
 
         logger.debug(f"Started typing watchdog for {task_id}")

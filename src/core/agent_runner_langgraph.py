@@ -131,6 +131,7 @@ class LangGraphAgentRunner:
             "do not confirm the scheduling with the user, just do it, unless the user specifically asks you to confirm it with them."
             "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
             "if the user requests generation of audio, video or image, you should simply set the appropriate flag on output_modality, and generation_instructions, and not use any tool to generate them. this will be handled after your response is processed, with systems that are capable of generating them. your response in the final_response field should always simply be to acknowledge the request and say you would be happy to help. you will then describe the media in detail in the appropriate field, using the generation_instructions field, as well as setting the output modality field to the appropriate value for what the user actually wants. do not actually tell the user you won't generate it yourself, that's overly complex and will confuse them. do not ask them for more info in your response either, as the generation will happen regardless."
+            "If the user requests a trigger setup, attempt to use the other tools at your disposal to enrich the information about the trigger's rules. however, only add info that you are certain about to the conditions of the trigger."
         )
 
 

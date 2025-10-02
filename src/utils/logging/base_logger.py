@@ -9,7 +9,7 @@ from contextvars import ContextVar
 request_id_var: ContextVar[Optional[str]] = ContextVar("request_id", default='SYSTEM_LEVEL')
 user_id_var: ContextVar[Optional[str]] = ContextVar("user_id", default='SYSTEM_LEVEL')
 modality_var: ContextVar[Optional[str]] = ContextVar("modality", default='SYSTEM_LEVEL')
-
+json_logging = True
 class ContextFilter(logging.Filter):
     """
     A logging filter that injects context variables (request_id, user_id, modality) into log records.
@@ -66,7 +66,7 @@ class JsonFormatter(logging.Formatter):
         # Use separators for compact output and default=str for robustness
         return json.dumps(log_entry, separators=(',', ':'), default=str)
 
-def setup_logger(name: str, level: int = logging.INFO, json_format: bool = True) -> logging.Logger:
+def setup_logger(name: str, level: int = logging.INFO, json_format: bool = json_logging) -> logging.Logger:
     """Setup a logger with colored output or JSON formatting with context."""
     logger = logging.getLogger(name)
     logger.setLevel(level)

@@ -157,19 +157,19 @@ class ExecutionWorker:
 
             elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram",'imessage','triggered']:
                 # --- Handle Agent Task ---
+
+                if source in ['scheduled', 'recurring']:
+                    task_active = await scheduling_service.verify_task_active(event["metadata"]["task_id"])
+                    if not task_active:
+                        logger.info(f"Task is cancelled for event: {event}")
+                        return  # Changed from continue to return
                 if source == "recurring":
                     try:
                         logger.info(f"Scheduling next run for recurring event: {event}")
                         await scheduling_service.schedule_next_run(event)
                     except Exception as e:
                         logger.error(f"Error scheduling next run for recurring event: {event}, {e}", exc_info=True)
-                
-                if source in ['scheduled', 'recurring']:
-                    task_active = await scheduling_service.verify_task_active(event["metadata"]["task_id"])
-                    if not task_active:
-                        logger.info(f"Task is cancelled for event: {event}")
-                        return  # Changed from continue to return
-                    
+                 
 
                 user_context = await create_user_context(event["user_id"])
                 if not user_context:

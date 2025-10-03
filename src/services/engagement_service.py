@@ -11,7 +11,8 @@ async def research_user_and_engage(user_record, source, messaging_user_id,timest
     last_name = user_record.get("last_name", "")
     email = user_record.get("email", "")
     timezone = user_record.get("timezone", "UTC")
-    location = user_record.get("location", "")
+    city = user_record.get("city", "")
+    country = user_record.get("country", "")
 
     text = f"""
         THIS IS A SYSTEM COMMAND. THIS IS WHY IT IS MORE DETAILED AND HAS PARTICULAR INSTRUCTIONS.
@@ -30,7 +31,9 @@ async def research_user_and_engage(user_record, source, messaging_user_id,timest
         Name: {first_name} {last_name}
         Email: {email}
         Timezone: {timezone}
-        Location: {location} Note that this location is the current one. the user could be travelling. Think about this as you search.
+        City: {city}
+        Country: {country}
+        ## Note that this location information might be approximate. Further, note that it is a current location, and not necessarily where they are originally from or reside.
         Reached out on {source} with id {messaging_user_id} [phone number or telegram user name]
         """
          

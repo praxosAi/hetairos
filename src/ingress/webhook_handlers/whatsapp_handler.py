@@ -4,6 +4,7 @@ import hashlib
 import uuid
 import json
 import os
+from src.services.engagement_service import research_user_and_engage
 from src.utils.logging.webhook_logger import webhook_logger
 from src.config.settings import settings
 from src.core.event_queue import event_queue
@@ -87,9 +88,11 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                     except Exception as e:
                                         webhook_logger.error(f"Failed to send contact card to {phone_number}: {e}")
                                     
-                                    welcome_message_2 = "Recommended Action: Ask me what I can do for you."
-                                    await whatsapp_client.send_message(phone_number, welcome_message_2)
                                     integration_record = integration_record_new
+                                    try:
+                                        await research_user_and_engage(user_record,'whatsapp', phone_number,timestamp = message.get('timestamp'),request_id_var=str(request_id_var.get()))
+                                    except:
+                                        webhook_logger.error(f"Failed to create research order for new whatsapp user {user_record['_id']}")
                                     return
                                 else:
                                     webhook_logger.warning(f"Unauthorized user: {phone_number}")
@@ -107,6 +110,7 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
 
 
                         user_record = user_service.get_user_by_id(integration_record["user_id"])
+
                         message_type = message.get("type")
                         user_id_var.set(str(user_record["_id"]))
                         if message_type == "text":

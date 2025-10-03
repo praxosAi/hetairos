@@ -228,5 +228,22 @@ class UserService:
         )
 
         return result.modified_count > 0 or result.upserted_id is not None
+    def set_first_time_interaction_to_false(self, user_id: str) -> bool:
+        """
+        Sets the 'needs_first_interaction' field to False for the specified user.
+
+        Args:
+            user_id: str or ObjectId of the user.
+        """
+        db = self._get_database()
+        users_collection = db.users
+
+        result = users_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"needs_first_interaction": False}}
+        )
+
+        return result.modified_count > 0
+
 # Global instance
 user_service = UserService()

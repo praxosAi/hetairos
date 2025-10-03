@@ -12,6 +12,7 @@ from src.integrations.calendar.google_calendar import GoogleCalendarIntegration
 from src.integrations.email.gmail_client import GmailIntegration
 from src.integrations.gdrive.gdrive_client import GoogleDriveIntegration
 from src.integrations.dropbox.dropbox_client import DropboxIntegration
+from src.integrations.trello.trello_client import TrelloIntegration
 from src.core.praxos_client import PraxosClient
 
 # Tool Module Imports
@@ -20,6 +21,7 @@ from src.tools.google_mail import create_gmail_tools
 from src.tools.google_drive import create_drive_tools
 from src.tools.microsoft_graph import create_outlook_tools
 from src.tools.notion import create_notion_tools
+from src.tools.trello import create_trello_tools
 from src.tools.praxos import create_praxos_memory_tool
 from src.tools.communication import create_bot_communication_tools
 from src.tools.scheduling import create_scheduling_tools
@@ -57,7 +59,8 @@ class AgentToolsFactory:
         outlook_integration = MicrosoftGraphIntegration(user_id)
         notion_integration = NotionIntegration(user_id)
         dropbox_integration = DropboxIntegration(user_id)
-        tasks = [gcal_integration.authenticate(), gmail_integration.authenticate(), gdrive_integration.authenticate(), outlook_integration.authenticate(), notion_integration.authenticate(), dropbox_integration.authenticate()]
+        trello_integration = TrelloIntegration(user_id)
+        tasks = [gcal_integration.authenticate(), gmail_integration.authenticate(), gdrive_integration.authenticate(), outlook_integration.authenticate(), notion_integration.authenticate(), dropbox_integration.authenticate(), trello_integration.authenticate()]
         authenticated_integrations = await asyncio.gather(*tasks, return_exceptions=True)
         gcal_auth_result = authenticated_integrations[0]
         gmail_auth_result = authenticated_integrations[1]
@@ -65,6 +68,7 @@ class AgentToolsFactory:
         outlook_auth_result = authenticated_integrations[3]
         notion_auth_result = authenticated_integrations[4]
         dropbox_auth_result = authenticated_integrations[5]
+        trello_auth_result = authenticated_integrations[6]
 
         if gcal_auth_result is True:
             try:
@@ -106,6 +110,14 @@ class AgentToolsFactory:
                 tools.extend(create_dropbox_tools(dropbox_integration))
             except Exception as e:
                 logger.error(f"Error creating Dropbox tools: {e}", exc_info=True)
+
+        # --- Trello Integration ---
+        if trello_auth_result is True:
+            try:
+                tools.extend(create_trello_tools(trello_integration))
+                logger.info("Trello tools created successfully.")
+            except Exception as e:
+                logger.error(f"Error creating Trello tools: {e}", exc_info=True)
 
         # --- Praxos & Other Core Tools ---
         from src.config.settings import settings

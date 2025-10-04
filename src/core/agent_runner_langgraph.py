@@ -1,7 +1,7 @@
 import pytz
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,ToolMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
@@ -21,7 +21,7 @@ from langchain.chat_models import init_chat_model
 import uuid
 from src.services.output_generator.generator import OutputGenerator
 from bson import ObjectId
-from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64
+from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64, upload_json_to_blob_storage
 from src.utils.audio import convert_ogg_b64_to_wav_b64
 from src.services.user_service import user_service
 
@@ -557,10 +557,20 @@ class LangGraphAgentRunner:
         for i, msg in enumerate(raw_msgs):
             msg_type = msg.get("message_type")
             role = msg.get("role")
+            metadata = msg.get("metadata", {})
 
             if msg_type == "text":
                 content = msg.get("content", "")
-                history_slots[i] = HumanMessage(content=content) if role == "user" else AIMessage(content=content)
+                # Check if this is a tool result message
+                if role == "assistant" and metadata.get("message_type") == "tool_result":
+                    tool_name = metadata.get("tool_name", "unknown_tool")
+                    # Reconstruct as ToolMessage
+                    history_slots[i] = ToolMessage(content=content, name=tool_name, tool_call_id=metadata.get("tool_call_id", ""))
+                elif role == "user":
+                    history_slots[i] = HumanMessage(content=content)
+                else:
+                    # Regular assistant message (may have tool_calls metadata)
+                    history_slots[i] = AIMessage(content=content)
                 continue
 
             if msg_type in media_types:
@@ -760,13 +770,52 @@ class LangGraphAgentRunner:
             }
             # --- END Graph Definition ---
             final_state = await app.ainvoke(initial_state,{"recursion_limit": 100})
-            
+
+            # Persist only NEW intermediate messages from this execution
+            new_messages = final_state['messages'][len(initial_state['messages']):]
+
+            for msg in new_messages:
+                try:
+                # Skip the final AI message (will be added separately below)
+                    if msg == final_state['messages'][-1]:
+                        continue
+
+                    if isinstance(msg, AIMessage) and msg.tool_calls:
+                        # Persist AI messages with tool calls
+                        tool_names = ', '.join([tc.get('name', 'unknown') for tc in msg.tool_calls])
+                        content = msg.content if msg.content else f"[Calling tools: {tool_names}]"
+                        await self.conversation_manager.add_assistant_message(
+                            user_context.user_id,
+                            conversation_id,
+                            content,
+                            metadata={"tool_calls": [tc.get('name') for tc in msg.tool_calls]}
+                        )
+                    elif isinstance(msg, ToolMessage):
+                        # Persist tool results
+                        content = str(msg.content)[:1000]  # Truncate long results
+                        await self.conversation_manager.add_assistant_message(
+                            user_context.user_id,
+                            conversation_id,
+                            f"[Tool: {msg.name}] {content}",
+                            metadata={
+                                "tool_name": msg.name,
+                                "message_type": "tool_result",
+                                "tool_call_id": msg.tool_call_id if hasattr(msg, 'tool_call_id') else ""
+                            }
+                        )
+                except Exception as e:
+                    logger.error(f"Error persisting intermediate message: {e}", exc_info=True)
             final_response = final_state['final_response']
             output_blobs = []
             await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, final_response.response)
             logger.info(f"Final response generated for execution {execution_id}: {final_response.model_dump_json(indent=2)}")
             final_response = await self.process_media_output(final_response, user_context, source, conversation_id)
             execution_record["status"] = "completed"
+            try:
+                messages_dictified = [msg.dict() for msg in final_state['messages']]
+                await upload_json_to_blob_storage(messages_dictified, f"states/test_state_messages_{execution_id}.json")
+            except Exception as e:
+                logger.error(f"Error uploading state messages to blob storage: {e}", exc_info=True)
             return final_response
 
         except Exception as e:

@@ -102,4 +102,4 @@ def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str
     #     except Exception as e:
     #         return ToolExecutionResponse(status="error", system_error=str(e))
 
-    return [reply_to_user_via_email, send_new_email_as_praxos_bot]
+    return [reply_to_user_via_email, send_new_email_as_praxos_bot,report_bug_to_developers]

@@ -442,6 +442,30 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.error(f"Error getting card members: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
 
+    @tool
+    async def share_trello_board(board_id: str, email: str, full_name: Optional[str] = None) -> ToolExecutionResponse:
+        """
+        Shares a Trello board with a user by inviting them via email address.
+        The user will receive an email invitation to join the board.
+
+        Args:
+            board_id: The ID of the board to share
+            email: Email address of the person to invite
+            full_name: Optional full name of the person being invited
+        """
+        logger.info(f"Sharing board {board_id} with {email}")
+        try:
+            result = await trello_client.invite_member_to_board(board_id, email, full_name)
+            response = ToolExecutionResponse(
+                status="success",
+                result=json.dumps({"result": result})
+            )
+            logger.info(f"Successfully invited {email} to board {board_id}")
+            return response
+        except Exception as e:
+            logger.error(f"Error sharing board: {e}", exc_info=True)
+            return ToolExecutionResponse(status="error", system_error=str(e))
+
     return [
         list_trello_organizations,
         list_trello_boards,
@@ -459,5 +483,6 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
         get_board_members,
         assign_member_to_card,
         unassign_member_from_card,
-        get_card_members
+        get_card_members,
+        share_trello_board
     ]

@@ -275,3 +275,10 @@ class TrelloIntegration(BaseIntegration):
     async def get_card_members(self, card_id: str) -> List[Dict[str, Any]]:
         """Gets all members assigned to a card."""
         return await self._make_request('GET', f'cards/{card_id}/members')
+
+    async def invite_member_to_board(self, board_id: str, email: str, full_name: Optional[str] = None) -> Dict[str, Any]:
+        """Invites a member to a board by email address."""
+        data = {}
+        if full_name:
+            data['fullName'] = full_name
+        return await self._make_request('PUT', f'boards/{board_id}/members', params={'email': email}, data=data)

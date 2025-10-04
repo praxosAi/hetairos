@@ -3,7 +3,7 @@ from src.core.event_queue import event_queue
 from src.services.integration_service import integration_service
 from src.utils.logging.base_logger import setup_logger, user_id_var, modality_var, request_id_var
 from src.integrations.telegram.client import TelegramClient
-from src.utils.blob_utils import upload_to_blob_storage, send_to_service_bus
+from src.utils.blob_utils import upload_to_blob_storage
 
 logger = setup_logger(__name__)
 router = APIRouter()

@@ -10,7 +10,7 @@ from src.config.settings import settings
 from src.core.event_queue import event_queue
 from src.services.user_service import user_service
 from src.integrations.whatsapp.client import WhatsAppClient
-from src.utils.blob_utils import upload_to_blob_storage, send_to_service_bus
+from src.utils.blob_utils import upload_to_blob_storage
 from src.services.integration_service import integration_service
 from src.utils.database import db_manager
 import mimetypes

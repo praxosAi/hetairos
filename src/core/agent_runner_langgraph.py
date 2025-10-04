@@ -179,12 +179,15 @@ class LangGraphAgentRunner:
         
         assistance_name = preferences.get('assistant_name', 'Praxos')
         preferred_language = 'English'
-        if preferences.get('preferred_language'):
-            if preferences.get('preferred_language') in LANGUAGE_MAP:
-                preferred_language = LANGUAGE_MAP[preferences.get('preferred_language')]
-            else:
-                preferred_language = preferences.get('preferred_language')
-
+        try:
+            if preferences.get('preferred_language'):
+                if preferences.get('preferred_language') in LANGUAGE_MAP:
+                    preferred_language = LANGUAGE_MAP[preferences.get('preferred_language')]
+                else:
+                    preferred_language = preferences.get('preferred_language')
+        except Exception as e:
+            logger.error(f"Error determining preferred language: {e}", exc_info=True)
+            preferred_language = 'English'
         personilization_prompt = (f"\nYou are personilized to the user. User wants to call you '{assistance_name}' to get assistance. You should respond to the user's request as if you are the assistant named '{assistance_name}'."
          f"The prefered language to use is '{preferred_language}'. You must always respond in the prefered language, unless the user specifically asks you to respond in a different language. If the user uses a different language than the prefered one, you can respond in the language the user used. if the user asks you to use a different language, you must comply."
          "Pay attention to pronouns and formality levels in the prefered language, pronoun rules, and other similar nuances. mirror the user's language style and formality level in your responses."

@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 from langchain_core.tools import tool
 from src.tools.tool_types import ToolExecutionResponse
 from src.utils.logging import setup_logger
+from typing import Optional
 
 logger = setup_logger(__name__)
 
@@ -108,5 +109,74 @@ def read_webpage_content(url: str) -> ToolExecutionResponse:
         user_message=f"Failed to retrieve the page after multiple strategies. Last error: {last_error}"
     )
 
-def create_web_tools() -> list:
-    return [read_webpage_content]
+def create_browser_tool(llm):
+    """
+    Creates the AI browser tool with access to the agent's LLM.
+    This must be called with the agent's LLM to share context.
+    """
+    @tool
+    async def browse_website_with_ai(url: str, task: str, max_steps: Optional[int] = 10) -> ToolExecutionResponse:
+        """
+        Uses an AI-powered browser to interact with dynamic websites (JavaScript, forms, navigation).
+        This tool can handle complex web interactions that simple HTML parsing cannot.
+        Use this for websites with JavaScript content, forms, modals, or multi-step navigation.
+
+        IMPORTANT: This operation takes 30-60 seconds. ALWAYS use send_intermediate_message FIRST
+        to notify the user you're starting this task.
+
+        Args:
+            url: The website URL to browse
+            task: Natural language description of what to do (e.g., "Find pricing information", "Extract product details")
+            max_steps: Maximum number of browser actions to take (default: 10)
+
+        Examples:
+            - "Navigate to the pricing page and extract all plan details"
+            - "Search for 'laptop' and extract the top 5 results"
+            - "Find the contact email on this site"
+        """
+        logger.info(f"AI browser request: {url}, task: {task}")
+
+        try:
+            # Import browser-use here to avoid import-time dependencies
+            from browser_use import Agent
+
+            # Create browser agent using the SAME LLM as the main agent
+            browser_agent = Agent(
+                task=task,
+                llm=llm,
+                max_steps=max_steps
+            )
+
+            # Execute the browsing task
+            result = await browser_agent.run(url)
+
+            logger.info(f"AI browser succeeded for {url}")
+            return ToolExecutionResponse(
+                status="success",
+                result=str(result)
+            )
+
+        except Exception as e:
+            logger.error(f"AI browser error for {url}: {e}", exc_info=True)
+            return ToolExecutionResponse(
+                status="error",
+                system_error=str(e),
+                user_message="Failed to browse the website. The site may be inaccessible or the task too complex."
+            )
+
+    return browse_website_with_ai
+
+def create_web_tools(llm=None) -> list:
+    """
+    Create web tools. If llm is provided, includes AI browser tool.
+
+    Args:
+        llm: Optional LLM instance for AI browsing capabilities
+    """
+    tools = [read_webpage_content]
+
+    if llm is not None:
+        # Add AI browser tool with shared LLM
+        tools.append(create_browser_tool(llm))
+
+    return tools

@@ -6,7 +6,38 @@ from src.tools.tool_types import ToolExecutionResponse
 def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str = None) -> List:
     """Creates tools for the bot to communicate with users on different platforms."""
 
-    @tool 
+    @tool
+    async def send_intermediate_message(message: str) -> ToolExecutionResponse:
+        """
+        Sends an intermediate message to the user during long-running operations.
+        Use this to notify users that you're working on something that will take time (browsing web, generating media, etc.)
+
+        Args:
+            message: The status update message to send
+
+        Examples:
+            - "I'm browsing that website now, this will take about 30 seconds..."
+            - "Generating your image, this may take a minute..."
+            - "Searching the web for that information..."
+        """
+        try:
+            source = metadata.get("original_source") if metadata else "websocket"
+            output_type = source if source != "scheduled" else "websocket"
+
+            await egress_service.send_response(
+                {
+                    "source": source,
+                    "output_type": output_type,
+                    "original_message": metadata.get("original_message") if metadata else None,
+                    "user_id": str(user_id)
+                },
+                {"response": message}
+            )
+            return ToolExecutionResponse(status="success", result="Intermediate message sent successfully.")
+        except Exception as e:
+            return ToolExecutionResponse(status="error", system_error=str(e))
+
+    @tool
     async def reply_to_user_via_email(body: str) -> ToolExecutionResponse:
         """
         Sends an email using the Praxos bot. this is specifically for replying to a user's email.
@@ -102,4 +133,4 @@ def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str
     #     except Exception as e:
     #         return ToolExecutionResponse(status="error", system_error=str(e))
 
-    return [reply_to_user_via_email, send_new_email_as_praxos_bot,report_bug_to_developers]
+    return [send_intermediate_message, reply_to_user_via_email, send_new_email_as_praxos_bot, report_bug_to_developers]

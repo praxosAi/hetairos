@@ -243,6 +243,10 @@ class ConversationDatabase:
 
             prompt += " Based on the recent conversation context, determine if this new message is a continuation of the previous conversation or a new topic. If it's a continuation, return False. If it's a new topic, return True."
             prompt += "Consider the time, as well as the relation between the recent previous messages and the new message."
+            if '/START_NEW' in prompt:
+                return True
+            if '/CONTINUE_LAST' in prompt:
+                return False
             response = await ai_service.boolean_call(prompt, False)
             return response
             

@@ -21,7 +21,7 @@ from langchain.chat_models import init_chat_model
 import uuid
 from src.services.output_generator.generator import OutputGenerator
 from bson import ObjectId
-from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64, upload_json_to_blob_storage
+from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64, upload_json_to_blob_storage,get_blob_sas_url
 from src.utils.audio import convert_ogg_b64_to_wav_b64
 from src.services.user_service import user_service
 
@@ -236,7 +236,8 @@ class LangGraphAgentRunner:
         if ftype in {"voice", "audio", "video"}:
             return {"type": "media", "data": data_b64, "mime_type": mime_type}
         if ftype in {"image", "photo"}:
-            return {"type": "image_url", "image_url": f"data:{mime_type};base64,{data_b64}"}
+            image_url = await get_blob_sas_url(blob_path)
+            return {"type": "image_url", "image_url": image_url}
         if ftype in {"document", "file"}:
             return {
                 "type": "file",
@@ -495,7 +496,12 @@ class LangGraphAgentRunner:
                         message_prefix + " as caption for media in the previous message: " + cap,
                         metadata={"inserted_id": ins_id, "timestamp": datetime.utcnow().isoformat()},
                     )
-
+                if ftype in {'image', 'photo'}:
+                    logger.info(f"adding the link to the conversation as a text message too, for image/photo types")
+                    if cap is None:
+                        cap = ""
+                    cap += " [Image Attached], the link to the image is: " + payload.get("image_url", "")
+        
             # Build LLM-facing message (caption first, then payload), in-order
             content = ([{"type": "text", "text": cap}] if cap else []) + [payload]
             messages.append(HumanMessage(content=content))

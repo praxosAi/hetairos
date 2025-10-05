@@ -115,7 +115,7 @@ def create_browser_tool(llm):
     This must be called with the agent's LLM to share context.
     """
     @tool
-    async def browse_website_with_ai(url: str, task: str, max_steps: Optional[int] = 10) -> ToolExecutionResponse:
+    async def browse_website_with_ai(task: str, max_steps: Optional[int] = 10) -> ToolExecutionResponse:
         """
         Uses an AI-powered browser to interact with dynamic websites (JavaScript, forms, navigation).
         This tool can handle complex web interactions that simple HTML parsing cannot.
@@ -125,8 +125,7 @@ def create_browser_tool(llm):
         to notify the user you're starting this task.
 
         Args:
-            url: The website URL to browse
-            task: Natural language description of what to do (e.g., "Find pricing information", "Extract product details")
+            task: Natural language description of what to do (e.g., "Find pricing information", "Extract product details"), and on what website, if it's a specific one.
             max_steps: Maximum number of browser actions to take (default: 10)
 
         Examples:
@@ -134,30 +133,28 @@ def create_browser_tool(llm):
             - "Search for 'laptop' and extract the top 5 results"
             - "Find the contact email on this site"
         """
-        logger.info(f"AI browser request: {url}, task: {task}")
+        logger.info(f"AI browser request:  task: {task}")
 
         try:
             # Import browser-use here to avoid import-time dependencies
-            from browser_use import Agent
-
-            # Create browser agent using the SAME LLM as the main agent
+            from browser_use import Agent, ChatGoogle
             browser_agent = Agent(
                 task=task,
-                llm=llm,
-                max_steps=max_steps
+                llm=ChatGoogle(model="gemini-2.5-flash"),
+                # browser=Browser(use_cloud=True),  # Uses Browser-Use cloud for the browser
             )
 
             # Execute the browsing task
-            result = await browser_agent.run(url)
+            result = await browser_agent.run()
 
-            logger.info(f"AI browser succeeded for {url}")
+
             return ToolExecutionResponse(
                 status="success",
                 result=str(result)
             )
 
         except Exception as e:
-            logger.error(f"AI browser error for {url}: {e}", exc_info=True)
+            logger.error(f"AI browser error for {task}: {e}", exc_info=True)
             return ToolExecutionResponse(
                 status="error",
                 system_error=str(e),

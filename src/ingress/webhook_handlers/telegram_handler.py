@@ -94,7 +94,7 @@ async def handle_telegram_webhook(request: Request):
                 "metadata": {'message_id': message["message_id"],'chat_id': chat_id, 'source':'Telegram','forwarded':forwarded,'forward_origin':forward_origin,'timestamp': message.get("date")}
             }
             await event_queue.publish(event)
-        for key in ['video','document','sticker','voice','audio','photo']:
+        for key in ['video','document','sticker','voice','audio','photo','image']:
             if not key in message or not message[key]:
                 continue
             

@@ -441,6 +441,10 @@ class LangGraphAgentRunner:
                                 message_prefix + " as caption for media in the previous message: " + caption,
                                 metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
                             )
+                        if ftype in {'image', 'photo'}:
+                            logger.info(f"adding the link to the conversation as a text message too, for image/photo types")
+                            caption += " [Image Attached], the link to the image is: " + payload.get("image_url", "")
+
                     
                     # Add to LLM message history
                     content = ([{"type": "text", "text": caption}] if caption else []) + [payload]

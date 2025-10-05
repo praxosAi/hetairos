@@ -8,6 +8,7 @@ from langchain_core.tools import tool
 from src.tools.tool_types import ToolExecutionResponse
 from src.utils.logging import setup_logger
 from typing import Optional
+from src.config.settings import settings
 
 logger = setup_logger(__name__)
 
@@ -109,7 +110,7 @@ def read_webpage_content(url: str) -> ToolExecutionResponse:
         user_message=f"Failed to retrieve the page after multiple strategies. Last error: {last_error}"
     )
 
-def create_browser_tool(llm):
+def create_browser_tool(request_id):
     """
     Creates the AI browser tool with access to the agent's LLM.
     This must be called with the agent's LLM to share context.
@@ -137,10 +138,16 @@ def create_browser_tool(llm):
 
         try:
             # Import browser-use here to avoid import-time dependencies
-            from browser_use import Agent, ChatGoogle
+            from browser_use import Agent, ChatOpenAI
+            portkey_headers = {'x-portkey-api-key': settings.PORTKEY_API_KEY,
+                'x-portkey-provider': 'azure-openai',
+                'x-portkey-trace-id': f"{request_id}_browseruse"}
+            portkey_llm =  ChatOpenAI(model='@azureopenai/gpt-5-mini',default_headers=portkey_headers,base_url='https://api.portkey.ai/v1',api_key=settings.PORTKEY_API_KEY)
+
             browser_agent = Agent(
                 task=task,
-                llm=ChatGoogle(model="gemini-2.5-flash"),
+                llm=portkey_llm,
+                use_vision=True,
                 # browser=Browser(use_cloud=True),  # Uses Browser-Use cloud for the browser
             )
 

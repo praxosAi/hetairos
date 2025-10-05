@@ -76,6 +76,7 @@ class LangGraphAgentRunner:
         
         self.tools_factory = AgentToolsFactory(config=settings, db_manager=db_manager)
         self.conversation_manager = ConversationManager(db_manager.db, integration_service)
+        self.trace_id = trace_id
         ### this is here to force langchain lazy importer to pre import before portkey corrupts.
         llm = init_chat_model("gpt-4o", model_provider="openai")
         from src.utils.portkey_headers_isolation import create_port_key_headers
@@ -702,7 +703,7 @@ class LangGraphAgentRunner:
                 logger.info("All input messages are forwarded; verify with the user before taking actions.")
                 return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_platform=source, execution_notes="All input messages were marked as forwarded.", output_modality="text", file_links=[], generation_instructions=None)
 
-            tools = await self.tools_factory.create_tools(user_context, metadata, timezone_name, llm=self.llm)
+            tools = await self.tools_factory.create_tools(user_context, metadata, timezone_name, request_id=self.trace_id)
 
             tool_executor = ToolNode(tools)
             llm_with_tools = self.llm.bind_tools(tools)

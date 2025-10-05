@@ -116,7 +116,7 @@ def create_browser_tool(request_id):
     This must be called with the agent's LLM to share context.
     """
     @tool
-    async def browse_website_with_ai(task: str, max_steps: Optional[int] = 10) -> ToolExecutionResponse:
+    async def browse_website_with_ai(task: str, max_steps: Optional[int] = 30) -> ToolExecutionResponse:
         """
         Uses an AI-powered browser to interact with dynamic websites (JavaScript, forms, navigation).
         This tool can handle complex web interactions that simple HTML parsing cannot.
@@ -152,7 +152,7 @@ def create_browser_tool(request_id):
             )
 
             # Execute the browsing task
-            result = await browser_agent.run()
+            result = await browser_agent.run(max_steps=max_steps)
 
 
             return ToolExecutionResponse(
@@ -170,7 +170,7 @@ def create_browser_tool(request_id):
 
     return browse_website_with_ai
 
-def create_web_tools(llm=None) -> list:
+def create_web_tools(request_id:str) -> list:
     """
     Create web tools. If llm is provided, includes AI browser tool.
 
@@ -179,8 +179,8 @@ def create_web_tools(llm=None) -> list:
     """
     tools = [read_webpage_content]
 
-    if llm is not None:
+    if request_id is not None:
         # Add AI browser tool with shared LLM
-        tools.append(create_browser_tool(llm))
+        tools.append(create_browser_tool(request_id))
 
     return tools

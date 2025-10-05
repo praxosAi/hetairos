@@ -565,3 +565,4 @@ zstandard==0.24.0
 # The following packages are considered to be unsafe in a requirements file:
 # pip
 # setuptools
+browser-use

@@ -115,7 +115,6 @@ def create_browser_tool(request_id):
     Creates the AI browser tool with access to the agent's LLM.
     This must be called with the agent's LLM to share context.
     """
-    
     # Configure browser-use and playwright loggers to use JSON formatting
     import logging
     from src.utils.logging import setup_logger
@@ -127,7 +126,6 @@ def create_browser_tool(request_id):
     # Prevent propagation to avoid duplicate logs
     browser_use_logger.propagate = False
     playwright_logger.propagate = False
-
     @tool
     async def browse_website_with_ai(task: str, max_steps: Optional[int] = 30) -> ToolExecutionResponse:
         """

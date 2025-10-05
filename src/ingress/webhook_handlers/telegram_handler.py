@@ -4,7 +4,7 @@ from src.services.integration_service import integration_service
 from src.utils.logging.base_logger import setup_logger, user_id_var, modality_var, request_id_var
 from src.integrations.telegram.client import TelegramClient
 from src.utils.blob_utils import upload_to_blob_storage
-
+from src.services.engagement_service import research_user_and_engage
 logger = setup_logger(__name__)
 router = APIRouter()
 import mimetypes
@@ -26,11 +26,11 @@ async def handle_telegram_webhook(request: Request):
         chat_id = message["chat"]["id"]
         username = message["from"].get("username", "").lower()
         modality_var.set("telegram")
-        if not username:
-            logger.warning(f"User {message['from']['id']} has no username, cannot authorize")
-            await telegram_client.send_message(message["chat"]["id"], "You seem to have not setup a username on telegram yet. this makes it impossible for us to authorize you. Please set a username in your telegram settings, and integrate with praxos.")
-            return {"status": "ok"}
-        integration_record = await integration_service.is_authorized_user("telegram", username)
+        if username:
+            integration_record = await integration_service.is_authorized_user("telegram", username)
+        else:
+            username = 'NOT_SETUP'
+            integration_record = await integration_service.is_authorized_user_telegram_chat_id(chat_id)
         if not integration_record:
             logger.info(f"User {username} not authorized, attempting to authorize.")
             try:
@@ -41,8 +41,10 @@ async def handle_telegram_webhook(request: Request):
                     try:
                         welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n\nTelegram communication initialized. \n\nWelcome to Praxos, {user_record.get('first_name')}.\nUser name @{username} has been saved. You can now issue orders and communicate with Praxos over Telegram."
                         await telegram_client.send_message(message["chat"]["id"], welcome_message)
-                        welcome_message_2 = "Recommended Action: Ask me what I can do for you."
-                        await telegram_client.send_message(message["chat"]["id"], welcome_message_2)
+                        try:
+                            await research_user_and_engage(user_record,'telegram', chat_id,timestamp = message.get('date'),request_id_var=str(request_id_var.get()))
+                        except:
+                            logger.error(f"Failed to create research order for new telegram user {user_record['_id']}")
                         return {"status": "ok"}
                     except Exception as e:
                         logger.error(f"Failed to send welcome message to {username}: {e}")

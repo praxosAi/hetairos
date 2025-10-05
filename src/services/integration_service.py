@@ -153,6 +153,14 @@ class IntegrationService:
             return integration
         else:
             return False
+        
+    async def is_authorized_user_telegram_chat_id(self, telegram_chat_id) -> bool:
+        """Check if a telegram chat ID belongs to an authorized user"""
+        integration = await self.db_manager.db["integrations"].find_one({"name": "telegram", "telegram_chat_id": telegram_chat_id, 'status': 'active'})
+        if integration:
+            return integration
+        else:
+            return False
 
     async def is_authorizable_user(self, integration_name: str, connected_account: str, message_text: str=None, telegram_chat_id = None) -> bool:
 

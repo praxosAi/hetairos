@@ -10,6 +10,29 @@ request_id_var: ContextVar[Optional[str]] = ContextVar("request_id", default='SY
 user_id_var: ContextVar[Optional[str]] = ContextVar("user_id", default='SYSTEM_LEVEL')
 modality_var: ContextVar[Optional[str]] = ContextVar("modality", default='SYSTEM_LEVEL')
 json_logging = True
+
+# Flag to ensure noisy loggers are only suppressed once
+_loggers_suppressed = False
+
+def _suppress_noisy_loggers():
+    """Suppress verbose third-party library loggers globally."""
+    global _loggers_suppressed
+    if _loggers_suppressed:
+        return
+
+    # Azure SDK - extremely verbose AMQP protocol logs
+    logging.getLogger("azure.servicebus").setLevel(logging.WARNING)
+    logging.getLogger("azure.core").setLevel(logging.WARNING)
+    logging.getLogger("azure.servicebus._pyamqp").setLevel(logging.WARNING)
+
+    # Playwright - can be verbose with browser interactions
+    logging.getLogger("playwright").setLevel(logging.WARNING)
+
+    # Browser-use - only warnings and errors
+    logging.getLogger("browser_use").setLevel(logging.WARNING)
+
+    _loggers_suppressed = True
+
 class ContextFilter(logging.Filter):
     """
     A logging filter that injects context variables (request_id, user_id, modality) into log records.
@@ -70,7 +93,7 @@ def setup_logger(name: str, level: int = logging.INFO, json_format: bool = json_
     """Setup a logger with colored output or JSON formatting with context."""
     logger = logging.getLogger(name)
     logger.setLevel(level)
-    
+
     # Avoid adding handlers multiple times
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stdout)

@@ -6,7 +6,38 @@ from src.tools.tool_types import ToolExecutionResponse
 def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str = None) -> List:
     """Creates tools for the bot to communicate with users on different platforms."""
 
-    @tool 
+    @tool
+    async def send_intermediate_message(message: str) -> ToolExecutionResponse:
+        """
+        Sends an intermediate message to the user during long-running operations.
+        Use this to notify users that you're working on something that will take time (browsing web, generating media, etc.)
+        DO NOT USE THIS IF SIMPLY SENDING AN OUTPUT AT THE END OF YOUR EXECUTION WILL SUFFICE. ONLY USE THIS IF THE GOAL IS TO BROWSE WEB OR GENERATE MEDIA.
+        Args:
+            message: The status update message to send
+
+        Examples:
+            - "I'm browsing that website now, this will take about 30 seconds..."
+            - "Generating your image, this may take a minute..."
+            - "Searching the web for that information..."
+        """
+        try:
+            source = metadata.get("original_source") if metadata else "websocket"
+            output_type = source if source != "scheduled" else "websocket"
+
+            await egress_service.send_response(
+                {
+                    "source": source,
+                    "output_type": output_type,
+                    "original_message": metadata.get("original_message") if metadata else None,
+                    "user_id": str(user_id)
+                },
+                {"response": message}
+            )
+            return ToolExecutionResponse(status="success", result="Intermediate message sent successfully.")
+        except Exception as e:
+            return ToolExecutionResponse(status="error", system_error=str(e))
+
+    @tool
     async def reply_to_user_via_email(body: str) -> ToolExecutionResponse:
         """
         Sends an email using the Praxos bot. this is specifically for replying to a user's email.
@@ -28,6 +59,58 @@ def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str
         except Exception as e:
             return ToolExecutionResponse(status="error", system_error=str(e))
 
+    @tool
+    async def report_bug_to_developers(bug_description: str, additional_context: Optional[str] = None) -> ToolExecutionResponse:
+        """
+        Reports a bug to the Praxos development team via email.
+        Use this when you encounter errors, unexpected behavior, or issues that need developer attention.
+
+        Args:
+            bug_description: Detailed description of the bug, including what happened and what was expected
+            additional_context: Optional additional context like error messages, stack traces, or reproduction steps
+        """
+        try:
+            dev_emails = ["Soheil@praxos.ai", "Masoud@praxos.ai", "lucas@praxos.ai"]
+            subject = "Bug Report from Praxos Agent"
+
+            body = f"""A bug has been reported by the Praxos AI agent:
+
+                    Bug Description:
+                    {bug_description}
+                    """
+            if additional_context:
+                body += f"""
+                Additional Context:
+                {additional_context}
+                """
+
+            body += f"""
+                    ---
+                    Reported by: Agent on behalf of user {user_id}
+                    Timestamp: Generated automatically
+                    """
+
+            await egress_service.send_response(
+                {
+                    "source": "email",
+                    "output_type": "email",
+                    "email_type": "new",
+                    "original_message": metadata.get("original_message") if metadata else None,
+                    "new_email_message": {
+                        "recipients": dev_emails,
+                        "subject": subject,
+                        "body": body
+                    }
+                },
+                {"response": body}
+            )
+            return ToolExecutionResponse(
+                status="success",
+                result=f"Bug report sent successfully to {', '.join(dev_emails)}."
+            )
+        except Exception as e:
+            return ToolExecutionResponse(status="error", system_error=str(e))
+    
     # @tool
     # async def send_whatsapp_message_as_praxos_bot(message: str) -> ToolExecutionResponse:
     #     """
@@ -50,4 +133,4 @@ def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str
     #     except Exception as e:
     #         return ToolExecutionResponse(status="error", system_error=str(e))
 
-    return [reply_to_user_via_email, send_new_email_as_praxos_bot]
+    return [send_intermediate_message, reply_to_user_via_email, send_new_email_as_praxos_bot, report_bug_to_developers]

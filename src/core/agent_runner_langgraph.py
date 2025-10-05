@@ -1,7 +1,7 @@
 import pytz
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,ToolMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
@@ -21,7 +21,7 @@ from langchain.chat_models import init_chat_model
 import uuid
 from src.services.output_generator.generator import OutputGenerator
 from bson import ObjectId
-from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64
+from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64, upload_json_to_blob_storage
 from src.utils.audio import convert_ogg_b64_to_wav_b64
 from src.services.user_service import user_service
 
@@ -76,6 +76,7 @@ class LangGraphAgentRunner:
         
         self.tools_factory = AgentToolsFactory(config=settings, db_manager=db_manager)
         self.conversation_manager = ConversationManager(db_manager.db, integration_service)
+        self.trace_id = trace_id
         ### this is here to force langchain lazy importer to pre import before portkey corrupts.
         llm = init_chat_model("gpt-4o", model_provider="openai")
         from src.utils.portkey_headers_isolation import create_port_key_headers
@@ -130,7 +131,12 @@ class LangGraphAgentRunner:
             "use the available tools to schedule the task."
             "do not confirm the scheduling with the user, just do it, unless the user specifically asks you to confirm it with them."
             "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
-            "if the user requests generation of audio, video or image, you should simply set the appropriate flag on output_modality, and generation_instructions, and not use any tool to generate them. this will be handled after your response is processed, with systems that are capable of generating them. your response in the final_response field should always simply be to acknowledge the request and say you would be happy to help. you will then describe the media in detail in the appropriate field, using the generation_instructions field, as well as setting the output modality field to the appropriate value for what the user actually wants. do not actually tell the user you won't generate it yourself, that's overly complex and will confuse them. do not ask them for more info in your response either, as the generation will happen regardless."
+            "\n\nIMPORTANT - Long-running operations: For operations that take significant time (30+ seconds), such as browsing websites with AI, generating media, or complex research, you MUST:"
+            "\n1. FIRST use send_intermediate_message to notify the user you're starting the task (e.g., 'I'm browsing that website now, this will take about 30 seconds...')"
+            "\n2. THEN execute the long-running tool"
+            "\n3. The final response will be delivered automatically after completion"
+            "\nThis pattern applies to: browse_website_with_ai, and any future long-running tools."
+            "\n\nif the user requests generation of audio, video or image, you should simply set the appropriate flag on output_modality, and generation_instructions, and not use any tool to generate them. this will be handled after your response is processed, with systems that are capable of generating them. your response in the final_response field should always simply be to acknowledge the request and say you would be happy to help. you will then describe the media in detail in the appropriate field, using the generation_instructions field, as well as setting the output modality field to the appropriate value for what the user actually wants. do not actually tell the user you won't generate it yourself, that's overly complex and will confuse them. do not ask them for more info in your response either, as the generation will happen regardless."
             "If the user requests a trigger setup, attempt to use the other tools at your disposal to enrich the information about the trigger's rules. however, only add info that you are certain about to the conditions of the trigger."
         )
 
@@ -178,7 +184,16 @@ class LangGraphAgentRunner:
 
         
         assistance_name = preferences.get('assistant_name', 'Praxos')
-        preferred_language = LANGUAGE_MAP[preferences.get('language_responses', 'en')]
+        preferred_language = 'English'
+        try:
+            if preferences.get('preferred_language'):
+                if preferences.get('preferred_language') in LANGUAGE_MAP:
+                    preferred_language = LANGUAGE_MAP[preferences.get('preferred_language')]
+                else:
+                    preferred_language = preferences.get('preferred_language')
+        except Exception as e:
+            logger.error(f"Error determining preferred language: {e}", exc_info=True)
+            preferred_language = 'English'
         personilization_prompt = (f"\nYou are personilized to the user. User wants to call you '{assistance_name}' to get assistance. You should respond to the user's request as if you are the assistant named '{assistance_name}'."
          f"The prefered language to use is '{preferred_language}'. You must always respond in the prefered language, unless the user specifically asks you to respond in a different language. If the user uses a different language than the prefered one, you can respond in the language the user used. if the user asks you to use a different language, you must comply."
          "Pay attention to pronouns and formality levels in the prefered language, pronoun rules, and other similar nuances. mirror the user's language style and formality level in your responses."
@@ -557,10 +572,20 @@ class LangGraphAgentRunner:
         for i, msg in enumerate(raw_msgs):
             msg_type = msg.get("message_type")
             role = msg.get("role")
+            metadata = msg.get("metadata", {})
 
             if msg_type == "text":
                 content = msg.get("content", "")
-                history_slots[i] = HumanMessage(content=content) if role == "user" else AIMessage(content=content)
+                # Check if this is a tool result message
+                if role == "assistant" and metadata.get("message_type") == "tool_result":
+                    tool_name = metadata.get("tool_name", "unknown_tool")
+                    # Reconstruct as ToolMessage
+                    history_slots[i] = ToolMessage(content=content, name=tool_name, tool_call_id=metadata.get("tool_call_id", ""))
+                elif role == "user":
+                    history_slots[i] = HumanMessage(content=content)
+                else:
+                    # Regular assistant message (may have tool_calls metadata)
+                    history_slots[i] = AIMessage(content=content)
                 continue
 
             if msg_type in media_types:
@@ -678,7 +703,7 @@ class LangGraphAgentRunner:
                 logger.info("All input messages are forwarded; verify with the user before taking actions.")
                 return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_platform=source, execution_notes="All input messages were marked as forwarded.", output_modality="text", file_links=[], generation_instructions=None)
 
-            tools = await self.tools_factory.create_tools(user_context, metadata,timezone_name)
+            tools = await self.tools_factory.create_tools(user_context, metadata, timezone_name, request_id=self.trace_id)
 
             tool_executor = ToolNode(tools)
             llm_with_tools = self.llm.bind_tools(tools)
@@ -760,13 +785,52 @@ class LangGraphAgentRunner:
             }
             # --- END Graph Definition ---
             final_state = await app.ainvoke(initial_state,{"recursion_limit": 100})
-            
+
+            # Persist only NEW intermediate messages from this execution
+            new_messages = final_state['messages'][len(initial_state['messages']):]
+
+            for msg in new_messages:
+                try:
+                # Skip the final AI message (will be added separately below)
+                    if msg == final_state['messages'][-1]:
+                        continue
+
+                    if isinstance(msg, AIMessage) and msg.tool_calls:
+                        # Persist AI messages with tool calls
+                        tool_names = ', '.join([tc.get('name', 'unknown') for tc in msg.tool_calls])
+                        content = msg.content if msg.content else f"[Calling tools: {tool_names}]"
+                        await self.conversation_manager.add_assistant_message(
+                            user_context.user_id,
+                            conversation_id,
+                            content,
+                            metadata={"tool_calls": [tc.get('name') for tc in msg.tool_calls]}
+                        )
+                    elif isinstance(msg, ToolMessage):
+                        # Persist tool results
+                        content = str(msg.content)[:1000]  # Truncate long results
+                        await self.conversation_manager.add_assistant_message(
+                            user_context.user_id,
+                            conversation_id,
+                            f"[Tool: {msg.name}] {content}",
+                            metadata={
+                                "tool_name": msg.name,
+                                "message_type": "tool_result",
+                                "tool_call_id": msg.tool_call_id if hasattr(msg, 'tool_call_id') else ""
+                            }
+                        )
+                except Exception as e:
+                    logger.error(f"Error persisting intermediate message: {e}", exc_info=True)
             final_response = final_state['final_response']
             output_blobs = []
             await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, final_response.response)
             logger.info(f"Final response generated for execution {execution_id}: {final_response.model_dump_json(indent=2)}")
             final_response = await self.process_media_output(final_response, user_context, source, conversation_id)
             execution_record["status"] = "completed"
+            try:
+                messages_dictified = [msg.dict() for msg in final_state['messages']]
+                await upload_json_to_blob_storage(messages_dictified, f"states/test_state_messages_{execution_id}.json")
+            except Exception as e:
+                logger.error(f"Error uploading state messages to blob storage: {e}", exc_info=True)
             return final_response
 
         except Exception as e:

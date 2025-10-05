@@ -1,12 +1,12 @@
 import secrets
-import logging
+from src.utils.logging.base_logger import setup_logger
 from typing import Dict, Optional
 from langchain_core.tools import tool
 
 from src.utils.redis_client import redis_client
 from src.config.settings import settings
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 # This mapping helps construct the correct URL for the provider.
 # It translates a specific integration name (like 'gmail') to the provider name ('google').

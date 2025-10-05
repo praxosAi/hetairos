@@ -94,21 +94,32 @@ class TrelloIntegration(BaseIntegration):
         """Gets information about the authenticated member."""
         return await self._make_request('GET', 'members/me')
 
-    async def list_boards(self) -> List[Dict[str, Any]]:
-        """Lists all boards accessible to the authenticated user."""
-        boards = await self._make_request('GET', 'members/me/boards')
-        return [{'id': b['id'], 'name': b['name'], 'url': b['url'], 'closed': b.get('closed', False)} for b in boards]
+    async def list_organizations(self) -> List[Dict[str, Any]]:
+        """Lists all organizations/workspaces accessible to the authenticated user."""
+        orgs = await self._make_request('GET', 'members/me/organizations')
+        return [{'id': o['id'], 'name': o['name'], 'displayName': o['displayName'], 'url': o.get('url')} for o in orgs]
+
+    async def list_boards(self, organization_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Lists all boards accessible to the authenticated user, optionally filtered by organization."""
+        if organization_id:
+            boards = await self._make_request('GET', f'organizations/{organization_id}/boards')
+        else:
+            boards = await self._make_request('GET', 'members/me/boards')
+        return [{'id': b['id'], 'name': b['name'], 'url': b['url'], 'closed': b.get('closed', False), 'idOrganization': b.get('idOrganization')} for b in boards]
 
     async def get_board(self, board_id: str) -> Dict[str, Any]:
         """Gets details about a specific board."""
         return await self._make_request('GET', f'boards/{board_id}')
 
-    async def create_board(self, name: str, description: str = "") -> Dict[str, Any]:
-        """Creates a new board."""
-        return await self._make_request('POST', 'boards', data={
+    async def create_board(self, name: str, description: str = "", id_organization: Optional[str] = None) -> Dict[str, Any]:
+        """Creates a new board, optionally in a specific organization/workspace."""
+        data = {
             'name': name,
             'desc': description
-        })
+        }
+        if id_organization:
+            data['idOrganization'] = id_organization
+        return await self._make_request('POST', 'boards', data=data)
 
     async def list_lists(self, board_id: str) -> List[Dict[str, Any]]:
         """Lists all lists on a board."""
@@ -198,17 +209,20 @@ class TrelloIntegration(BaseIntegration):
         """Adds a comment to a card."""
         return await self._make_request('POST', f'cards/{card_id}/actions/comments', data={'text': text})
 
-    async def search(self, query: str, model_types: List[str] = None) -> Dict[str, Any]:
+    async def search(self, query: str, model_types: List[str] = None, id_organizations: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Searches Trello for cards, boards, etc.
 
         Args:
             query: Search query
             model_types: Types to search (e.g., ['cards', 'boards', 'organizations'])
+            id_organizations: Optional list of organization IDs to scope the search
         """
         params = {'query': query}
         if model_types:
             params['modelTypes'] = ','.join(model_types)
+        if id_organizations:
+            params['idOrganizations'] = ','.join(id_organizations)
 
         return await self._make_request('GET', 'search', params=params)
 
@@ -261,3 +275,10 @@ class TrelloIntegration(BaseIntegration):
     async def get_card_members(self, card_id: str) -> List[Dict[str, Any]]:
         """Gets all members assigned to a card."""
         return await self._make_request('GET', f'cards/{card_id}/members')
+
+    async def invite_member_to_board(self, board_id: str, email: str, full_name: Optional[str] = None) -> Dict[str, Any]:
+        """Invites a member to a board by email address."""
+        data = {}
+        if full_name:
+            data['fullName'] = full_name
+        return await self._make_request('PUT', f'boards/{board_id}/members', params={'email': email}, data=data)

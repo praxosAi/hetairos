@@ -43,8 +43,15 @@ class AgentToolsFactory:
         self.config = config
         self.db_manager = db_manager
 
-    async def create_tools(self, user_context: UserContext, metadata: Optional[Dict] = None,user_time_zone: str = 'America/New_York') -> List:
-        """Create tools based on agent configuration by instantiating integration clients."""
+    async def create_tools(self, user_context: UserContext, metadata: Optional[Dict] = None, user_time_zone: str = 'America/New_York', request_id: str = None) -> List:
+        """Create tools based on agent configuration by instantiating integration clients.
+
+        Args:
+            user_context: User context information
+            metadata: Optional metadata dictionary
+            user_time_zone: User's timezone
+            llm: Optional LLM instance for AI-powered tools (e.g., browser automation)
+        """
         tools = []
         user_id = user_context.user_id
         user_email = user_context.user_record.get('email')
@@ -142,7 +149,7 @@ class AgentToolsFactory:
         except Exception as e:
             logger.error(f"Error creating basic tools: {e}", exc_info=True)
         try:
-            tools.extend(create_web_tools())
+            tools.extend(create_web_tools(request_id=request_id))
         except Exception as e:
             logger.error(f"Error creating web tools: {e}", exc_info=True)
 

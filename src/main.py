@@ -5,6 +5,10 @@ import logging
 # This is the key change. We configure the root logger right at the start.
 # Now, any logger created in any other file will inherit this configuration.
 
+# Suppress noisy third-party library loggers at startup
+from src.utils.logging.base_logger import _suppress_noisy_loggers
+_suppress_noisy_loggers()
+
 # -----------------------------------------
 
 if __name__ == "__main__":

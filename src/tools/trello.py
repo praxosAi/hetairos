@@ -11,15 +11,38 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
     """Create a comprehensive suite of Trello-related tools for the LangGraph agent."""
 
     @tool
-    async def list_trello_boards() -> ToolExecutionResponse:
+    async def list_trello_organizations() -> ToolExecutionResponse:
+        """
+        Lists all Trello organizations/workspaces accessible to the user.
+        Use this to discover available workspaces and their IDs.
+        Returns organization IDs, names, and URLs.
+        """
+        logger.info("Listing Trello organizations...")
+        try:
+            orgs = await trello_client.list_organizations()
+            response = ToolExecutionResponse(
+                status="success",
+                result=json.dumps({"organizations": orgs})
+            )
+            logger.info(f"Listed {len(orgs)} Trello organizations")
+            return response
+        except Exception as e:
+            logger.error(f"Error listing Trello organizations: {e}", exc_info=True)
+            return ToolExecutionResponse(status="error", system_error=str(e))
+
+    @tool
+    async def list_trello_boards(organization_id: Optional[str] = None) -> ToolExecutionResponse:
         """
         Lists all Trello boards accessible to the user.
         Use this as the first step to understand the user's Trello workspace structure.
-        Returns board IDs, names, and URLs.
+        Returns board IDs, names, URLs, and the organization they belong to.
+
+        Args:
+            organization_id: Optional organization/workspace ID to filter boards (returns all boards if not provided)
         """
-        logger.info("Listing Trello boards...")
+        logger.info(f"Listing Trello boards for organization_id={organization_id}...")
         try:
-            boards = await trello_client.list_boards()
+            boards = await trello_client.list_boards(organization_id=organization_id)
             response = ToolExecutionResponse(
                 status="success",
                 result=json.dumps({"boards": boards})
@@ -234,18 +257,20 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             return ToolExecutionResponse(status="error", system_error=str(e))
 
     @tool
-    async def search_trello(query: str, model_types: str = "cards,boards") -> ToolExecutionResponse:
+    async def search_trello(query: str, model_types: str = "cards,boards", organization_ids: Optional[str] = None) -> ToolExecutionResponse:
         """
         Searches Trello for cards, boards, and other items matching a query.
 
         Args:
             query: The search query
             model_types: Comma-separated types to search - "cards", "boards", "organizations" (default: "cards,boards")
+            organization_ids: Optional comma-separated organization IDs to scope the search to specific workspaces
         """
         logger.info(f"Searching Trello for: {query}")
         try:
             types_list = [t.strip() for t in model_types.split(',')]
-            results = await trello_client.search(query, types_list)
+            orgs_list = [o.strip() for o in organization_ids.split(',')] if organization_ids else None
+            results = await trello_client.search(query, types_list, orgs_list)
             response = ToolExecutionResponse(
                 status="success",
                 result=json.dumps(results)
@@ -286,17 +311,18 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             return ToolExecutionResponse(status="error", system_error=str(e))
 
     @tool
-    async def create_trello_board(name: str, description: str = "") -> ToolExecutionResponse:
+    async def create_trello_board(name: str, description: str = "", organization_id: Optional[str] = None) -> ToolExecutionResponse:
         """
         Creates a new Trello board.
 
         Args:
             name: Name of the board
             description: Board description (optional)
+            organization_id: ID of the organization/workspace to create the board in (optional, defaults to personal workspace)
         """
-        logger.info(f"Creating Trello board: {name}")
+        logger.info(f"Creating Trello board: {name} in organization {organization_id}")
         try:
-            board = await trello_client.create_board(name, description)
+            board = await trello_client.create_board(name, description, organization_id)
             response = ToolExecutionResponse(
                 status="success",
                 result=json.dumps({"board": board})
@@ -416,7 +442,32 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.error(f"Error getting card members: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
 
+    @tool
+    async def share_trello_board(board_id: str, email: str, full_name: Optional[str] = None) -> ToolExecutionResponse:
+        """
+        Shares a Trello board with a user by inviting them via email address.
+        The user will receive an email invitation to join the board.
+
+        Args:
+            board_id: The ID of the board to share
+            email: Email address of the person to invite
+            full_name: Optional full name of the person being invited
+        """
+        logger.info(f"Sharing board {board_id} with {email}")
+        try:
+            result = await trello_client.invite_member_to_board(board_id, email, full_name)
+            response = ToolExecutionResponse(
+                status="success",
+                result=json.dumps({"result": result})
+            )
+            logger.info(f"Successfully invited {email} to board {board_id}")
+            return response
+        except Exception as e:
+            logger.error(f"Error sharing board: {e}", exc_info=True)
+            return ToolExecutionResponse(status="error", system_error=str(e))
+
     return [
+        list_trello_organizations,
         list_trello_boards,
         get_trello_board_details,
         list_trello_cards,
@@ -432,5 +483,6 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
         get_board_members,
         assign_member_to_card,
         unassign_member_from_card,
-        get_card_members
+        get_card_members,
+        share_trello_board
     ]

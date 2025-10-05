@@ -82,10 +82,15 @@ async def download_from_blob_storage(blob_name: str) -> str:
         data = await downloader.readall()
         ## return bytes
         return data
-async def send_to_service_bus(message_body: str):
-    """Sends a message to Azure Service Bus."""
-    async with ServiceBusClient.from_connection_string(settings.AZURE_SERVICEBUS_CONNECTION_STRING) as client:
-        sender = client.get_queue_sender(queue_name="audio")
-        async with sender:
-            message = ServiceBusMessage(message_body)
-            await sender.send_messages(message)
+
+
+async def upload_json_to_blob_storage(json_data: dict, blob_name: str):
+    """Uploads JSON data to Azure Blob Storage."""
+    import json
+    blob_service_client = BlobServiceClient.from_connection_string(settings.AZURE_STORAGE_CONNECTION_STRING)
+    async with blob_service_client:
+        container_client = blob_service_client.get_container_client(settings.AZURE_BLOB_CONTAINER_NAME)
+        data = json.dumps(json_data,default=str).encode('utf-8')
+        await container_client.upload_blob(name=blob_name, data=data, overwrite=True, content_settings=ContentSettings(content_type="application/json"))
+    return blob_name
+    

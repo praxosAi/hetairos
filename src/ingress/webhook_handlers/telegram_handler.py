@@ -3,7 +3,7 @@ from src.core.event_queue import event_queue
 from src.services.integration_service import integration_service
 from src.utils.logging.base_logger import setup_logger, user_id_var, modality_var, request_id_var
 from src.integrations.telegram.client import TelegramClient
-from src.utils.blob_utils import upload_to_blob_storage, send_to_service_bus
+from src.utils.blob_utils import upload_to_blob_storage
 
 logger = setup_logger(__name__)
 router = APIRouter()
@@ -57,6 +57,7 @@ async def handle_telegram_webhook(request: Request):
                 await telegram_client.send_message(message["chat"]["id"], "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com, and add your telegram username to your account. if this message seems to be an error, please contact support on discord.")
                 return {"status": "ok"}
         user_id = str(integration_record["user_id"])
+
         ### for telegram, on the first message, we must store the chat id in the user record.
         if not integration_record.get("telegram_chat_id"):
             integration_record["telegram_chat_id"] = chat_id
@@ -93,54 +94,58 @@ async def handle_telegram_webhook(request: Request):
                 "metadata": {'message_id': message["message_id"],'chat_id': chat_id, 'source':'Telegram','forwarded':forwarded,'forward_origin':forward_origin,'timestamp': message.get("date")}
             }
             await event_queue.publish(event)
-        for key in ['video','document','sticker','voice','audio','photo']:
+        for key in ['video','document','sticker','voice','audio','photo','image']:
             if not key in message or not message[key]:
                 continue
             
-            document = message[key]
-            file_id = document["file_id"]
-            mime_type = document.get("mime_type")
-            file_path_data = await telegram_client.get_file_path(file_id)
-            file_path = file_path_data["result"]["file_path"]
-            file_unique_id = file_path_data["result"]["file_unique_id"]
-            caption = message.get("caption","")
-            logger.info(f"Received voice message from Telegram: {file_path}")
-            file_path_local = await telegram_client.download_file_to_temp_path(file_path, file_unique_id)
-            logger.info(f"Downloaded voice message from Telegram: {file_path_local}")
-            if not mime_type:
-                mime_type = mimetypes.guess_type(file_path_local)
-            else:
-                mime_type = [mime_type]
-            logger.info(f"Mime type of the voice message: {mime_type}")
-            if mime_type[0] is None and ('oga' in file_path_local or 'ogg' in file_path_local):
-                mime_type = ['audio/ogg']
-            blob_name =await upload_to_blob_storage(file_path_local, f"{user_id}/telegram/{file_path_local}")
-            file_name_og = document.get("file_name",'Original filename not accessible')
-            type_to_use = key
-            if key == 'sticker':
-                type_to_use = 'image'
-            document_entry = {
-                "user_id": ObjectId(user_id),
-                "platform_file_id": file_unique_id,
-                "platform_message_id": chat_id,
-                "platform": "telegram",
-                'type': type_to_use,
-                "blob_path": blob_name,
-                "mime_type": mime_type[0],
-                "caption": caption,
-                'file_name': file_name_og
+            documents = message[key]
+            if isinstance(documents, dict):
+                documents = [documents]
 
-            }
-            inserted_id = await db_manager.add_document(document_entry)
-            event = {
-                "user_id": user_id,
-                'output_type': 'telegram',
-                'output_chat_id': chat_id,
-                'logging_context': {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get() },
-
-                "source": "telegram",
-                "payload": {"files": [{'type': type_to_use, 'blob_path': blob_name, 'mime_type': mime_type[0],'caption': caption,'inserted_id': str(inserted_id)}]},
-                "metadata": {'message_id': message["message_id"],'chat_id': chat_id,'source':'Telegram', 'forwarded':forwarded,'forward_origin':forward_origin, 'timestamp': message.get("date")}
-            }
-            await event_queue.publish(event)
+            for document in documents:
+                file_id = document["file_id"]
+                mime_type = document.get("mime_type")
+                file_path_data = await telegram_client.get_file_path(file_id)
+                file_path = file_path_data["result"]["file_path"]
+                file_unique_id = file_path_data["result"]["file_unique_id"]
+                caption = message.get("caption","")
+                logger.info(f"Received voice message from Telegram: {file_path}")
+                file_path_local = await telegram_client.download_file_to_temp_path(file_path, file_unique_id)
+                logger.info(f"Downloaded voice message from Telegram: {file_path_local}")
+                if not mime_type:
+                    mime_type = mimetypes.guess_type(file_path_local)
+                else:
+                    mime_type = [mime_type]
+                logger.info(f"Mime type of the voice message: {mime_type}")
+                if mime_type[0] is None and ('oga' in file_path_local or 'ogg' in file_path_local):
+                    mime_type = ['audio/ogg']
+                blob_name = await upload_to_blob_storage(file_path_local, f"{user_id}/telegram/{file_path_local}")
+                file_name_og = document.get("file_name",'Original filename not accessible')
+                type_to_use = key
+                if key in ['sticker','photo']:
+                    type_to_use = 'image'
+                
+                document_entry = {
+                    "user_id": ObjectId(user_id),
+                    "platform_file_id": file_unique_id,
+                    "platform_message_id": chat_id,
+                    "platform": "telegram",
+                    'type': type_to_use,
+                    "blob_path": blob_name,
+                    "mime_type": mime_type[0],
+                    "caption": caption,
+                    'file_name': file_name_og
+                }
+                
+                inserted_id = await db_manager.add_document(document_entry)
+                event = {
+                    "user_id": user_id,
+                    'output_type': 'telegram',
+                    'output_chat_id': chat_id,
+                    'logging_context': {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get() },
+                    "source": "telegram",
+                    "payload": {"files": [{'type': type_to_use, 'blob_path': blob_name, 'mime_type': mime_type[0],'caption': caption,'inserted_id': str(inserted_id)}]},
+                    "metadata": {'message_id': message["message_id"],'chat_id': chat_id,'source':'Telegram', 'forwarded':forwarded,'forward_origin':forward_origin, 'timestamp': message.get("date")}
+                }
+                await event_queue.publish(event)
     return {"status": "ok"}

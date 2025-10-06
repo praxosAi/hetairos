@@ -205,10 +205,14 @@ class EgressService:
     async def _send_email_response(self, event: dict, response_text: str):
         if event.get("email_type") == "unauthorised_user":
             await send_unauthorised_user_bot_reply(event.get("original_message"))
-        elif event.get("email_type") == "new":
+
+        elif event.get("email_type") == "reply":
+            await send_bot_reply(event.get('metadata',{}).get("original_message"), response_text)
+        elif event.get("email_type") == "new" :
             await send_new_email_bot(event.get('metadata',{}).get("original_message"), event.get("new_email_message"))
         else:
-            await send_bot_reply(event.get('metadata',{}).get("original_message"), response_text)
+            logger.error(f"Unknown email_type '{event.get('email_type')}' in event metadata. Cannot send email response.")
+            
 
     async def _send_whatsapp_reponse(self, event: dict, response_text, response_files):
         phone_number = event.get("output_phone_number")

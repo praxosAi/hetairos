@@ -1,7 +1,7 @@
 import pytz
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,ToolMessage,SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,ToolMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
@@ -137,6 +137,7 @@ class LangGraphAgentRunner:
             "\nThis pattern applies to: browse_website_with_ai, and any future long-running tools."
             "\n\nif the user requests generation of audio, video or image, you should simply set the appropriate flag on output_modality, and generation_instructions, and not use any tool to generate them. this will be handled after your response is processed, with systems that are capable of generating them. your response in the final_response field should always simply be to acknowledge the request and say you would be happy to help. you will then describe the media in detail in the appropriate field, using the generation_instructions field, as well as setting the output modality field to the appropriate value for what the user actually wants. do not actually tell the user you won't generate it yourself, that's overly complex and will confuse them. do not ask them for more info in your response either, as the generation will happen regardless."
             "If the user requests a trigger setup, attempt to use the other tools at your disposal to enrich the information about the trigger's rules. however, only add info that you are certain about to the conditions of the trigger."
+            "IMPORTANT: YOU MUST ALWAYS USE APPROPRIATE TOOLS AND PERFORM THE REQUESTED TASK BEFORE OUTPUTTING TO THE USER. YOU MAY NOT SEND AN OUTPUT TO THE USER TELLING THEM YOU ARE PERFORMING A TASK WITHOUT ACTUALLY PERFORMING THE TASK."
         )
 
 
@@ -176,7 +177,8 @@ class LangGraphAgentRunner:
                 task_prompt += f" The output modality for the final response of this scheduled task was previously specified as '{metadata.get('output_type')}'. the original source was '{metadata.get('original_source')}'."
             else:
                 task_prompt += " The output modality for the final response of this scheduled task was not specified, so you should choose the most appropriate one based on the user's preferences and context. this cannot be websocket in this case."
-        
+        elif source == "websocket":
+            task_prompt = "\nIMPORTANT NOTE: this message was received on the 'websocket' channel. You must respond on the websocket channel. if they asked for sending an email or a message or similar, this will be a side effect, and you must use the appropriate tool. Note that there is no way to send intermediate messages on websocket, so you should focus on performing the task, only sending a final response without having performed a task if there is missing information that is critical to performing the task."
         else:
             task_prompt = f"\n\nThis message was received on the '{source}' channel. \n\n"
         logger.info(f"Task prompt: {task_prompt}")
@@ -730,8 +732,10 @@ class LangGraphAgentRunner:
                         if planning.steps:
                             plan_str += f"the steps are as follows: {'\n'.join(planning.steps)}. "
                         if plan_str:
-                            plan_str = "the following initial plan has been suggested by the system. take the plan into account when generating the response, but do not feel bound by it. you can deviate from the plan if you think it's necessary. \n" + plan_str
-                            history = SystemMessage(content=plan_str) + history
+                            plan_str = """the following initial plan has been suggested by the system. take the plan into account when generating the response, but do not feel bound by it. you can deviate from the plan if you think it's necessary. 
+                             In either case, make sure to use the appropriate tools that are provided to you for performing this task. Do not respond that you are doing a task, without actually doing it.  \n\n""" + plan_str
+                            history.append(AIMessage(content=plan_str))
+
                             logger.info(f"Added planning context to history: {plan_str}")
             except Exception as e:
                 logger.error(f"Error during planning call: {e}", exc_info=True)
@@ -788,6 +792,7 @@ class LangGraphAgentRunner:
                     f"Given the final response from an agent: '{final_message}', "
                     f"and knowing the initial request came from the '{source_to_use}' channel, "
                     "format this into the required JSON structure. The delivery_platform must match the source channel, unless the user indicates or implies otherwise, or the command requires a different channel. Note that a scheduled/recurring/triggered command cannot have websocket as the delivery platform. If the user has specifically asked for a different delivery platform, you must comply. for example, if the user has sent an email, but requests a response on imessage, comply. Explain the choice of delivery platform in the execution_notes field, acknowledging if the user requested a particular platform or not. "
+                    "IF the source channel is 'websocket', you must always respond on websocket. assume that any actions that required different platforms, such as sending an email, have already been handled. "
                     f"the user's original message in this case was {input_text}. pay attention to whether it contains a particular request for delivery platform. "
                     "If the response requires generating audio, video, or image, set the output_modality and generation_instructions fields accordingly.  the response should simply acknowledge the request to generate the media, and not attempt to generate it yourself. this is not a task for you. simply trust in the systems that will handle it after you. "
                 )

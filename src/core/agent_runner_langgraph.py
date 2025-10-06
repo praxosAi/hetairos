@@ -1,7 +1,7 @@
 import pytz
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,ToolMessage,SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
@@ -721,8 +721,18 @@ class LangGraphAgentRunner:
             try:
                 planning = await ai_service.planning_call(history)
                 if planning:
-                    if (not planning.tooling_needed ) and planning.query_type == "conversational": 
+                    if (not planning.tooling_need ) and planning.query_type == "conversational": 
                         minimal_tools = True
+                    else:
+                        plan_str = ""
+                        if planning.plan:
+                            plan_str += f"the plan is as follows: {planning.plan}. \n"
+                        if planning.steps:
+                            plan_str += f"the steps are as follows: {'\n'.join(planning.steps)}. "
+                        if plan_str:
+                            plan_str = "the following initial plan has been suggested by the system. take the plan into account when generating the response, but do not feel bound by it. you can deviate from the plan if you think it's necessary. \n" + plan_str
+                            history = SystemMessage(content=plan_str) + history
+                            logger.info(f"Added planning context to history: {plan_str}")
             except Exception as e:
                 logger.error(f"Error during planning call: {e}", exc_info=True)
                 minimal_tools = False

@@ -70,7 +70,7 @@ class SchedulingService:
                 "user_id": str(user_id),
                 "source": "scheduled",
                 "payload": {"text": command_to_perform},
-                "metadata": {"task_id": task_id, 'output_type': delivery_platform, 'original_source': original_source, 'source': original_source + '_recurring', 'conversation_id': conversation_id},
+                "metadata": {"task_id": task_id, 'output_type': delivery_platform, 'original_source': original_source, 'source': original_source, 'source_flag': f"{original_source}_recurring", 'conversation_id': conversation_id},
                 "output_type": delivery_platform
             }
             logger.info(f"Publishing scheduled event for user {user_id} at {time_to_do.isoformat()}")
@@ -143,7 +143,7 @@ class SchedulingService:
                 "user_id": str(user_id),
                 "source": "recurring",
                 "payload": {"text": command_to_perform},
-                "metadata": {"task_id": task_id,'output_type': delivery_platform, 'original_source':original_source, 'source': original_source + '_recurring','conversation_id': conversation_id},
+                "metadata": {"task_id": task_id,'output_type': delivery_platform, 'original_source':original_source, 'source': original_source, 'source_flag': f"{original_source}_recurring",'conversation_id': conversation_id},
                 "output_type": delivery_platform
             }
             await event_queue.publish_scheduled_event(

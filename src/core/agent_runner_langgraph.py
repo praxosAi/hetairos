@@ -787,7 +787,7 @@ class LangGraphAgentRunner:
 
             def should_continue(state: AgentState):
                 new_state = state['messages'][len(initial_state['messages']):]
-                logger.info(f"New messages since last model call: {new_state}")
+                # logger.info(f"New messages since last model call: {new_state}")
                 if not minimal_tools:
                     ### if no tool has been called yet, we should continue.
                     tool_called = False

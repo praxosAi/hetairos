@@ -122,11 +122,15 @@ async def handle_telegram_webhook(request: Request):
                 logger.info(f"Mime type of the voice message: {mime_type}")
                 if mime_type[0] is None and ('oga' in file_path_local or 'ogg' in file_path_local):
                     mime_type = ['audio/ogg']
-                blob_name = await upload_to_blob_storage(file_path_local, f"{user_id}/telegram/{file_path_local}")
-                file_name_og = document.get("file_name",'Original filename not accessible')
-                type_to_use = key
+                # Upload images to CDN container, everything else to default container
                 if key in ['sticker','photo']:
+                    blob_name = await upload_to_blob_storage(file_path_local, f"{user_id}/telegram/{file_path_local}", container_name="cdn-container")
                     type_to_use = 'image'
+                else:
+                    blob_name = await upload_to_blob_storage(file_path_local, f"{user_id}/telegram/{file_path_local}")
+                    type_to_use = key
+
+                file_name_og = document.get("file_name",'Original filename not accessible')
                 
                 document_entry = {
                     "user_id": ObjectId(user_id),

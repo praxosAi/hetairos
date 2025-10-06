@@ -139,7 +139,12 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
 
                                         blob_name = f"{str(user_record['_id'])}/whatsapp/{media_id or job_id}.{extension.lstrip('.')}"
                                         caption = message.get(message_type, {}).get("caption", "")
-                                        file_path_blob = await upload_to_blob_storage(file_path, blob_name)
+
+                                        # Upload images to CDN container, other files to default container
+                                        if message_type == 'image':
+                                            file_path_blob = await upload_to_blob_storage(file_path, blob_name, container_name="cdn-container")
+                                        else:
+                                            file_path_blob = await upload_to_blob_storage(file_path, blob_name)
                                         document_entry = {
                                             "user_id": ObjectId(user_record["_id"]),
                                             "platform_file_id": media_id,

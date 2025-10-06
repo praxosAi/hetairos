@@ -231,13 +231,17 @@ class LangGraphAgentRunner:
         if not blob_path or not ftype:
             return None
 
+        if ftype in {"image", "photo"}:
+            # Images are in CDN container - use public CDN URL instead of SAS URL
+            from src.utils.blob_utils import get_cdn_url
+            image_url = await get_cdn_url(blob_path, container_name="cdn-container")
+            return {"type": "image_url", "image_url": image_url}
+
+        # Download non-image files from default container
         data_b64 = await download_from_blob_storage_and_encode_to_base64(blob_path)
 
         if ftype in {"voice", "audio", "video"}:
             return {"type": "media", "data": data_b64, "mime_type": mime_type}
-        if ftype in {"image", "photo"}:
-            image_url = await get_blob_sas_url(blob_path)
-            return {"type": "image_url", "image_url": image_url}
         if ftype in {"document", "file"}:
             return {
                 "type": "file",

@@ -178,7 +178,7 @@ class LangGraphAgentRunner:
             else:
                 task_prompt += " The output modality for the final response of this scheduled task was not specified, so you should choose the most appropriate one based on the user's preferences and context. this cannot be websocket in this case."
         elif source == "websocket":
-            task_prompt = "\nIMPORTANT NOTE: this message was received on the 'websocket' channel. You must respond on the websocket channel. if they asked for sending an email or a message or similar, this will be a side effect, and you must use the appropriate tool. Note that there is no way to send intermediate messages on websocket, so you should focus on performing the task, only sending a final response without having performed a task if there is missing information that is critical to performing the task."
+            task_prompt = "\nIMPORTANT NOTE: this message was received on the 'websocket' channel. You must respond on the websocket channel. if they asked for sending an email or a message or similar, you must use the appropriate tools. Note that there is no way to send intermediate messages on websocket, so you should focus on performing the task."
         else:
             task_prompt = f"\n\nThis message was received on the '{source}' channel. \n\n"
         logger.info(f"Task prompt: {task_prompt}")
@@ -225,6 +225,7 @@ class LangGraphAgentRunner:
             system_prompt += f"\n\nThe following tools are available to you:\n{tool_descriptions}\nUse them in accordance with the user intent."
         if plan:
             system_prompt += f"\n\nThe following plan has been created for you:\n{plan}\n Use it to guide your actions, but do not feel bound by it. You can deviate from the plan if you think it's necessary."
+        return system_prompt
     async def _build_payload_entry(self, file: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Create a single payload dict for a file entry."""
         ftype = file.get("type")
@@ -651,7 +652,7 @@ class LangGraphAgentRunner:
             "status": "running",
             "started_at": start_time,
         }
-
+        
         await db_manager.db["execution_history"].insert_one(execution_record)      
         try:
             
@@ -750,10 +751,12 @@ class LangGraphAgentRunner:
             tool_executor = ToolNode(tools)
             llm_with_tools = self.llm.bind_tools(tools)
             tool_descriptions = ""
-            for tool in tools:
+            logger.info(f"Tools available to the agent: {str(tools)}, {len(tools)} tools, minimal_tools={minimal_tools}")
+            for i, tool in enumerate(tools):
                 try:
                     tool_descriptions += f"{tool.name}: {tool.description}\n"
                 except Exception as e:
+                    logger.error(f"Error getting description for tool: {e}, for tool {str(tool)}", exc_info=True)
                     continue
             system_prompt = self._create_system_prompt(user_context, source, metadata, tool_descriptions, plan)
             ### this creates unnecessary overhead and latency, so we'll disable it for now.
@@ -784,8 +787,22 @@ class LangGraphAgentRunner:
                 return {"messages": state['messages'] + [response]}
 
             def should_continue(state: AgentState):
+                new_state = state['messages'][len(initial_state['messages']):]
+                logger.info(f"New messages since last model call: {new_state}")
+                if not minimal_tools:
+                    ### if no tool has been called yet, we should continue.
+                    tool_called = False
+                    for msg in new_state:
+                        if isinstance(msg, AIMessage) and msg.tool_calls:
+                            tool_called = True
+                            break 
+                    if not tool_called:
+                        logger.info("No tools have been called yet; which is required in this situation. continuing to tool execution.")
+                        return "continue"
+                
                 last_message = state['messages'][-1]
                 if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
+                    logger.info("No tool calls in the last message; proceeding to final response generation.")
                     return "end"
                 else:
                     return "continue"

@@ -45,7 +45,7 @@ class AIService:
     
     
 
-    async def planning_call(self, context: list):
+    async def planning_call(self, context: list[BaseMessage]) -> PlanningResponse:
         planning_prompt = f"""You are an expert planner. the goal is to determine:
         1- is the user simply sending a basic conversational query without a specific intent, such as a side effect, a tool use, or a task to be done? If so, respond with "simple_conversation", set tooling_need to false, and leave the steps and plan empty.
         2- is the user requesting a specific task to be done, such as scheduling, sending a message, using any of the integrations (Notion, Gmail, Calendar, Drive, Trello, Outlook, iMessage, WhatsApp, Telegram),  web browsing, Search, etc? If so, respond with "task_execution", set tooling_need to true, and provide a detailed plan with steps to accomplish the task.

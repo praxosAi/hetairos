@@ -717,8 +717,17 @@ class LangGraphAgentRunner:
             if all_forwarded:
                 logger.info("All input messages are forwarded; verify with the user before taking actions.")
                 return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_platform=source, execution_notes="All input messages were marked as forwarded.", output_modality="text", file_links=[], generation_instructions=None)
-            planning = await ai_service.planning_call(history)
-            tools = await self.tools_factory.create_tools(user_context, metadata, timezone_name, request_id=self.trace_id)
+            minimal_tools = False
+
+            try:
+                planning = await ai_service.planning_call(history)
+                if planning:
+                    if (not planning.tooling_needed ) and planning.query_type == "conversational": 
+                        minimal_tools = True
+            except Exception as e:
+                logger.error(f"Error during planning call: {e}", exc_info=True)
+                minimal_tools = False
+            tools = await self.tools_factory.create_tools(user_context, metadata, timezone_name, request_id=self.trace_id,minimal_tools=minimal_tools)
             
             tool_executor = ToolNode(tools)
             llm_with_tools = self.llm.bind_tools(tools)

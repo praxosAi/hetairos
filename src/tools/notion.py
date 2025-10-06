@@ -31,7 +31,7 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             logger.error(f"Error listing Notion workspace content: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
 
-
+    @tool
     async def list_notion_pages() -> List[Dict[str, Any]]:
         """
         Lists all top-level pages in the Notion workspace.

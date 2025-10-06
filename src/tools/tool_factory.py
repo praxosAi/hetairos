@@ -54,10 +54,13 @@ class AgentToolsFactory:
             llm: Optional LLM instance for AI-powered tools (e.g., browser automation)
         """
         tools = []
+
         user_id = user_context.user_id
         user_email = user_context.user_record.get('email')
         have_email_tool = False
         have_calendar_tool = False
+        if not user_id:
+            return []
         try:
             tools.extend(create_bot_communication_tools(metadata, user_id))
         except Exception as e:
@@ -84,16 +87,15 @@ class AgentToolsFactory:
         except Exception as e:
             logger.error(f"Error creating database access tools: {e}", exc_info=True)
         # --- Mock Tools ---
-        if not have_calendar_tool:
-            tools.extend(mock_tools.create_calendar_tools())
-        if not have_email_tool:
-            tools.extend(mock_tools.create_email_tools())
+        # if not have_calendar_tool:
+        #     tools.extend(mock_tools.create_calendar_tools())
+        # if not have_email_tool:
+        #     tools.extend(mock_tools.create_email_tools())
 
         if minimal_tools:
             return tools
 
-        if not user_id:
-            return []
+
         gcal_integration = GoogleCalendarIntegration(user_id)
         gmail_integration = GmailIntegration(user_id)
         gdrive_integration = GoogleDriveIntegration(user_id)

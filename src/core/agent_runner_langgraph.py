@@ -127,8 +127,7 @@ class LangGraphAgentRunner:
             "You are a helpful AI assistant. Use the available tools to complete the user's request. "
             "If it's not a request, but a general conversation, just respond to the user's message. "
             "Do not mention tools if the user's final, most current request, does not require them. "
-            "If the user's request requires you to do an action in the future or in a recurring manner, "
-            "use the available tools to schedule the task."
+            "If the user's request requires you to do an action in the future or in a recurring manner, or to set a trigger on an event, use the appropriate scheduling, recurring scheduled, or trigger setup tool. "
             "do not confirm the scheduling with the user, just do it, unless the user specifically asks you to confirm it with them."
             "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
             "\n\nIMPORTANT - Long-running operations: For operations that take significant time (30+ seconds), such as browsing websites with AI, generating media, or complex research, you MUST:"
@@ -728,7 +727,14 @@ class LangGraphAgentRunner:
                 logger.error(f"Error during planning call: {e}", exc_info=True)
                 minimal_tools = False
             tools = await self.tools_factory.create_tools(user_context, metadata, timezone_name, request_id=self.trace_id,minimal_tools=minimal_tools)
-            
+            tool_desc_str = ''
+            try:
+                for tool in tools:
+                    tool_desc_str += f"- {tool.name}: {tool.description}\n"
+            except Exception as e:
+                logger.error(f"Error generating tool descriptions: {e}", exc_info=True)
+            logger.info(f"Using {len(tools)} tools: {tool_desc_str}")
+
             tool_executor = ToolNode(tools)
             llm_with_tools = self.llm.bind_tools(tools)
 

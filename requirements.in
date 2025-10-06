@@ -31,7 +31,6 @@ langchain[openai]
 langchain-community
 google-genai
 google-ai-generativelanguage==0.7.0
-google-cloud-vision
 langchain-google-genai==2.1.12
 langchain_google_community
 pydantic
@@ -60,3 +59,4 @@ pip-tools
 python-multipart
 playwright==1.55.0
 browser-use
+google-search-results

@@ -566,4 +566,3 @@ zstandard==0.24.0
 # pip
 # setuptools
 browser-use
-google-cloud-vision

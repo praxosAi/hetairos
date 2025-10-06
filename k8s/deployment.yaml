@@ -18,21 +18,10 @@ spec:
         imagePullPolicy: Always
         ports:
         - containerPort: 8000
-        env:
-        - name: GOOGLE_APPLICATION_CREDENTIALS
-          value: /var/secrets/google/key.json
         envFrom:
         - secretRef:
             name: hetairoi-secrets
-        volumeMounts:
-        - name: google-vision-credentials
-          mountPath: /var/secrets/google
-          readOnly: true
         command: ["/app/entrypoint.sh", "web"]
-      volumes:
-      - name: google-vision-credentials
-        secret:
-          secretName: google-vision-credentials
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -52,22 +41,11 @@ spec:
       - name: hetairoi-worker
         image: praxosagentcontainers.azurecr.io/hetairoi-worker:latest
         imagePullPolicy: Always
-        env:
-        - name: GOOGLE_APPLICATION_CREDENTIALS
-          value: /var/secrets/google/key.json
         envFrom:
         - secretRef:
             name: hetairoi-secrets
-        volumeMounts:
-        - name: google-vision-credentials
-          mountPath: /var/secrets/google
-          readOnly: true
         # This command tells the container to run the background workers
         command: ["/app/entrypoint.sh", "worker"]
-      volumes:
-      - name: google-vision-credentials
-        secret:
-          secretName: google-vision-credentials
         # ports:
         # - containerPort: 8001
         #   name: metrics

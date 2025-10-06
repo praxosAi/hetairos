@@ -24,7 +24,7 @@ from bson import ObjectId
 from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64, upload_json_to_blob_storage,get_blob_sas_url
 from src.utils.audio import convert_ogg_b64_to_wav_b64
 from src.services.user_service import user_service
-
+from src.services.ai_service.ai_service import ai_service
 logger = setup_logger(__name__)
 
 LANGUAGE_MAP = {
@@ -717,9 +717,9 @@ class LangGraphAgentRunner:
             if all_forwarded:
                 logger.info("All input messages are forwarded; verify with the user before taking actions.")
                 return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_platform=source, execution_notes="All input messages were marked as forwarded.", output_modality="text", file_links=[], generation_instructions=None)
-
+            planning = await ai_service.planning_call(history)
             tools = await self.tools_factory.create_tools(user_context, metadata, timezone_name, request_id=self.trace_id)
-
+            
             tool_executor = ToolNode(tools)
             llm_with_tools = self.llm.bind_tools(tools)
 

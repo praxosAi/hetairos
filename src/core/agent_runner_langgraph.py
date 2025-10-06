@@ -110,7 +110,7 @@ class LangGraphAgentRunner:
             long_term_memory_context = "\n\nThe following relevant information is known about this user from their long-term memory:\n" + long_term_memory_context
         return long_term_memory_context
 
-    def _create_system_prompt(self, user_context: UserContext, source: str, metadata: Optional[Dict[str, Any]]) -> str:
+    def _create_system_prompt(self, user_context: UserContext, source: str, metadata: Optional[Dict[str, Any]], tool_descriptions: str, plan: str) -> str:
         """Replicates the system prompt construction from the original AgentRunner."""
         user_record = user_context.user_record
         user_record_for_context = "\n\nThe following information is known about this user of the assistant:"
@@ -219,8 +219,12 @@ class LangGraphAgentRunner:
             I can also chain any of the above together to accomplish more complex tasks.
 
         """
-        return base_prompt + praxos_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt + total_system_capabilities_prompt
 
+        system_prompt = base_prompt + praxos_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt + total_system_capabilities_prompt
+        if tool_descriptions:
+            system_prompt += f"\n\nThe following tools are available to you:\n{tool_descriptions}\nUse them in accordance with the user intent."
+        if plan:
+            system_prompt += f"\n\nThe following plan has been created for you:\n{plan}\n Use it to guide your actions, but do not feel bound by it. You can deviate from the plan if you think it's necessary."
     async def _build_payload_entry(self, file: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Create a single payload dict for a file entry."""
         ftype = file.get("type")
@@ -719,7 +723,7 @@ class LangGraphAgentRunner:
                 logger.info("All input messages are forwarded; verify with the user before taking actions.")
                 return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_platform=source, execution_notes="All input messages were marked as forwarded.", output_modality="text", file_links=[], generation_instructions=None)
             minimal_tools = False
-
+            plan = None
             try:
                 planning = await ai_service.planning_call(history)
                 if planning:
@@ -733,9 +737,9 @@ class LangGraphAgentRunner:
                             plan_str += f"the steps are as follows: {'\n'.join(planning.steps)}. "
                         if plan_str:
                             plan_str = """the following initial plan has been suggested by the system. take the plan into account when generating the response, but do not feel bound by it. you can deviate from the plan if you think it's necessary. 
-                             In either case, make sure to use the appropriate tools that are provided to you for performing this task. Do not respond that you are doing a task, without actually doing it.  \n\n""" + plan_str
-                            history.append(AIMessage(content=plan_str))
-
+                             In either case, make sure to use the appropriate tools that are provided to you for performing this task. Do not respond that you are doing a task, without actually doing it. instead, do the task, then send the user indication that you have done it, with any necessary result data.  \n\n""" + plan_str
+                            
+                            plan = planning
                             logger.info(f"Added planning context to history: {plan_str}")
             except Exception as e:
                 logger.error(f"Error during planning call: {e}", exc_info=True)
@@ -745,8 +749,13 @@ class LangGraphAgentRunner:
 
             tool_executor = ToolNode(tools)
             llm_with_tools = self.llm.bind_tools(tools)
-
-            system_prompt = self._create_system_prompt(user_context, source, metadata)
+            tool_descriptions = ""
+            for tool in tools:
+                try:
+                    tool_descriptions += f"{tool.name}: {tool.description}\n"
+                except Exception as e:
+                    continue
+            system_prompt = self._create_system_prompt(user_context, source, metadata, tool_descriptions, plan)
             ### this creates unnecessary overhead and latency, so we'll disable it for now.
             # from src.config.settings import settings
             # if settings.OPERATING_MODE == "local":

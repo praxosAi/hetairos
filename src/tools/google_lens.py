@@ -1,108 +1,94 @@
 """
-Google Lens tools using direct URL access + browser automation.
-Simpler alternative to Google Cloud Vision API - no credentials needed!
+Product recognition tools using Google Cloud Vision API.
+No CAPTCHA issues, works with any product image.
 """
 
 from typing import Optional
 from langchain_core.tools import tool
 from src.tools.tool_types import ToolExecutionResponse
 from src.utils.logging import setup_logger
-from src.config.settings import settings
 
 logger = setup_logger(__name__)
 
 
-def create_google_lens_tools(request_id: str):
+def create_google_lens_tools(vision_client):
     """
-    Creates Google Lens tools using browser automation.
+    Creates product recognition tools using Google Cloud Vision API.
 
     Args:
-        request_id: Request ID for tracing
+        vision_client: Authenticated GoogleVisionClient instance
     """
 
     @tool
-    async def search_image_with_google_lens(
-        image_url: str,
-        search_type: str = "products"
+    async def identify_product_in_image(
+        image_url: str
     ) -> ToolExecutionResponse:
         """
-        Search for an image using Google Lens to identify products, brands, similar items, or text.
-        Perfect for identifying shoe brands, clothing items, products, logos, landmarks, etc.
+        Identify products, brands, and objects in an image using Google Vision AI.
+        Perfect for identifying shoe brands, clothing items, products, logos, etc.
 
-        IMPORTANT: This takes 30-60 seconds. Use send_intermediate_message first to notify the user.
+        Works with Azure Blob SAS URLs - fast and reliable, no CAPTCHA.
 
         Args:
             image_url: Public URL to the image (e.g., Azure Blob SAS URL from conversation context)
-            search_type: What to search for:
-                - "products" (default) - Find products, brands, where to buy
-                - "text" - Extract and translate text from image
-                - "similar" - Find visually similar images
-                - "all" - All available information
 
         Examples:
-            - search_image_with_google_lens("https://blob.../shoe.jpg", "products")
-            - search_image_with_google_lens("https://blob.../receipt.jpg", "text")
-            - search_image_with_google_lens("https://blob.../painting.jpg", "similar")
+            - identify_product_in_image("https://blob.../shoe.jpg")
+            - identify_product_in_image("https://blob.../clothing.jpg")
+            - identify_product_in_image("https://blob.../gadget.jpg")
         """
-        logger.info(f"Google Lens search for image: {image_url}, type: {search_type}")
+        logger.info(f"Identifying product in image: {image_url}")
 
         try:
-            from browser_use import Agent, ChatOpenAI
-            from urllib.parse import quote
-
-            # URL-encode the image URL to handle SAS query parameters properly
-            encoded_image_url = quote(image_url, safe='')
-
-            # Construct Google Lens URL with properly encoded image URL
-            lens_url = f"https://lens.google.com/uploadbyurl?url={encoded_image_url}"
-
-            logger.info(f"Encoded Lens URL: {lens_url}")
-
-            # Create task based on search type
-            task_descriptions = {
-                "products": "Navigate to this Google Lens page and extract: 1) Brand/product name, 2) Product details, 3) Where to buy (shopping links). Focus on identifying the brand.",
-                "text": "Navigate to this Google Lens page and extract all readable text from the image using the Text tab.",
-                "similar": "Navigate to this Google Lens page and find visually similar images and where they appear online.",
-                "all": "Navigate to this Google Lens page and extract all available information: products, text, similar images, and any other relevant data."
-            }
-
-            task = f"{task_descriptions.get(search_type, task_descriptions['products'])} URL: {lens_url}"
-
-            # Use browser-use with same Portkey config as main agent
-            portkey_headers = {
-                'x-portkey-api-key': settings.PORTKEY_API_KEY,
-                'x-portkey-provider': 'azure-openai',
-                'x-portkey-trace-id': f"{request_id}_googlelens"
-            }
-            portkey_llm = ChatOpenAI(
-                model='@azureopenai/gpt-5-mini',
-                default_headers=portkey_headers,
-                base_url='https://api.portkey.ai/v1',
-                api_key=settings.PORTKEY_API_KEY
+            # Analyze image with logo, web, and label detection
+            results = await vision_client.analyze_image_from_url(
+                image_url,
+                detect_logos=True,
+                detect_web=True,
+                detect_labels=True
             )
 
-            browser_agent = Agent(
-                task=task,
-                llm=portkey_llm,
-                use_vision=True
-            )
+            # Format results for user
+            summary = []
 
-            # Execute browsing task
-            result = await browser_agent.run(max_steps=20)
+            # Brand/logo detection (most important for products)
+            if results.get('logos'):
+                brands = [f"{logo['brand']} ({logo['confidence']:.0%})" for logo in results['logos']]
+                summary.append(f"**Brand detected**: {', '.join(brands)}")
 
-            logger.info(f"Google Lens search completed for {image_url}")
+            # Web detection - what is this product?
+            if results.get('web', {}).get('product_match'):
+                product_names = results['web']['product_match']
+                summary.append(f"**Product**: {', '.join(product_names)}")
+
+            # Shopping links
+            if results.get('web', {}).get('shopping_links'):
+                links = [f"- {link['title']}: {link['url']}"
+                        for link in results['web']['shopping_links'][:3]]
+                if links:
+                    summary.append(f"**Where to buy**:\n" + '\n'.join(links))
+
+            # Object labels (fallback if no brand detected)
+            if results.get('labels') and not results.get('logos'):
+                objects = [f"{label['description']} ({label['confidence']:.0%})"
+                          for label in results['labels'][:5]]
+                summary.append(f"**Objects detected**: {', '.join(objects)}")
+
+            formatted_result = "\n\n".join(summary) if summary else "Unable to identify specific brand or product in the image."
+
+            logger.info("Product identification completed")
 
             return ToolExecutionResponse(
                 status="success",
-                result=str(result)
+                result=formatted_result
             )
 
         except Exception as e:
-            logger.error(f"Error in Google Lens search: {e}", exc_info=True)
+            logger.error(f"Error identifying product: {e}", exc_info=True)
             return ToolExecutionResponse(
                 status="error",
                 system_error=str(e),
-                user_message="Failed to search with Google Lens. The image may not be accessible or the service is unavailable."
+                user_message="Failed to analyze the image. Please ensure the image URL is accessible."
             )
 
-    return [search_image_with_google_lens]
+    return [identify_product_in_image]

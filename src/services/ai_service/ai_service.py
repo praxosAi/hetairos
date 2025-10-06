@@ -9,6 +9,8 @@ from src.utils.logging import setup_logger
 from src.utils.file_msg_utils import build_payload_entry_from_inserted_id
 from langchain.chat_models import init_chat_model
 from src.services.ai_service.ai_service_models import *
+from src.services.ai_service.prompts.tooling_capabilities import TOOLING_CAPABILITIES_PROMPT
+
 logger = setup_logger(__name__)
 class AIService:
     def __init__(self, model_name: str = "gemini-2.5-pro"):
@@ -46,10 +48,13 @@ class AIService:
     
 
     async def planning_call(self, context: list[BaseMessage]) -> PlanningResponse:
-        planning_prompt = f"""You are an expert planner. the goal is to determine:
-        1- is the user simply sending a basic conversational query without a specific intent, such as a side effect, a tool use, or a task to be done? If so, respond with "simple_conversation", set tooling_need to false, and leave the steps and plan empty.
-        2- is the user requesting a specific task to be done, such as scheduling, sending a message, using any of the integrations (Notion, Gmail, Calendar, Drive, Trello, Outlook, iMessage, WhatsApp, Telegram),  web browsing, Search, etc? If so, respond with "task_execution", set tooling_need to true, and provide a detailed plan with steps to accomplish the task.
-        Consider both the context of the conversation and the user's latest message to determine their intent. If previous messages required a task, which was already done, do not assume the new message also requires a task. our goal is to determine whether AT THIS moment, for this message, a task is needed or not.
+        planning_prompt = f"""You are an expert planner. The goal is to determine:
+        1- Is the user simply sending a basic conversational query without a specific intent, such as a side effect, a tool use, or a task to be done? If so, respond with "simple_conversation", set tooling_needed to false, and leave the steps and plan empty.
+        2- Is the user requesting a specific task to be done? If so, respond with "task_execution", set tooling_needed to true, and provide a detailed plan with steps to accomplish the task.
+
+        Consider both the context of the conversation and the user's latest message to determine their intent. If previous messages required a task which was already done, do not assume the new message also requires a task. Our goal is to determine whether AT THIS moment, for this message, a task is needed or not.
+
+        {TOOLING_CAPABILITIES_PROMPT}
         """
         from src.utils.file_msg_utils import replace_media_with_placeholders
 

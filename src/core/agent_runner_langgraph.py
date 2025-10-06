@@ -727,13 +727,7 @@ class LangGraphAgentRunner:
                 logger.error(f"Error during planning call: {e}", exc_info=True)
                 minimal_tools = False
             tools = await self.tools_factory.create_tools(user_context, metadata, timezone_name, request_id=self.trace_id,minimal_tools=minimal_tools)
-            tool_desc_str = ''
-            try:
-                for tool in tools:
-                    tool_desc_str += f"- {tool.name}: {tool.description}\n"
-            except Exception as e:
-                logger.error(f"Error generating tool descriptions: {e}", exc_info=True)
-            logger.info(f"Using {len(tools)} tools: {tool_desc_str}")
+
 
             tool_executor = ToolNode(tools)
             llm_with_tools = self.llm.bind_tools(tools)

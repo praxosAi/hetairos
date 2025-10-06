@@ -13,7 +13,7 @@ from src.utils.database import db_manager
 @router.post("/telegram")
 async def handle_telegram_webhook(request: Request):
     """Handles incoming Telegram updates."""
-    
+    modality_var.set("telegram")
     try:
         data = await request.json()
     except Exception as e:
@@ -103,7 +103,8 @@ async def handle_telegram_webhook(request: Request):
             documents = message[key]
             if isinstance(documents, dict):
                 documents = [documents]
-
+            if key in ['photo','image','sticker'] and len(documents) > 1:
+                documents = [documents[-1]]  # Get the highest resolution photo only
             for document in documents:
                 file_id = document["file_id"]
                 mime_type = document.get("mime_type")

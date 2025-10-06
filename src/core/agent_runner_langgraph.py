@@ -751,7 +751,6 @@ class LangGraphAgentRunner:
             tool_executor = ToolNode(tools)
             llm_with_tools = self.llm.bind_tools(tools)
             tool_descriptions = ""
-            logger.info(f"Tools available to the agent: {str(tools)}, {len(tools)} tools, minimal_tools={minimal_tools}")
             for i, tool in enumerate(tools):
                 try:
                     tool_descriptions += f"{tool.name}: {tool.description}\n"

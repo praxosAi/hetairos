@@ -32,7 +32,6 @@ from src.tools.playwright import create_playwright_tools
 from src.tools.preference_tools import create_preference_tools
 from src.tools.integration_tools import create_integration_tools
 from src.tools.database_tools import create_database_access_tools
-from src.integrations.google_vision.vision_client import GoogleVisionClient
 from src.tools.google_lens import create_google_lens_tools
 import src.tools.mock_tools as mock_tools
 
@@ -177,15 +176,12 @@ class AgentToolsFactory:
         except Exception as e:
             logger.error(f"Error creating Playwright browser tools: {e}", exc_info=True)
 
-        # --- Google Vision Tools (Product/Brand Recognition) ---
+        # --- Google Lens Tools (Product/Brand Recognition via SerpAPI) ---
         try:
-            vision_client = GoogleVisionClient()
-            vision_auth = await vision_client.authenticate()
-            if vision_auth:
-                tools.extend(create_google_lens_tools(vision_client))
-                logger.info("Google Vision product recognition tools created successfully.")
+            tools.extend(create_google_lens_tools())
+            logger.info("Google Lens product recognition tools created successfully.")
         except Exception as e:
-            logger.error(f"Error creating Google Vision tools: {e}", exc_info=True)
+            logger.error(f"Error creating Google Lens tools: {e}", exc_info=True)
         
         # --- External API Tools ---
         try:

@@ -48,6 +48,7 @@ The system has access to the following tools and integrations (user-dependent):
   - Store and retrieve long-term information
   - Search across user's historical data
   - Remember facts, preferences, patterns
+  - Create triggers for future events, in the form of conditionals. E.g. "When I receive an email from X, remind me to reply in 2 hours"
 
 ### Web & Research
 - **Web Browsing**:

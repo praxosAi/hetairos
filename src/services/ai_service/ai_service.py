@@ -51,29 +51,10 @@ class AIService:
         2- is the user requesting a specific task to be done, such as scheduling, sending a message, using any of the integrations (Notion, Gmail, Calendar, Drive, Trello, Outlook, iMessage, WhatsApp, Telegram),  web browsing, Search, etc? If so, respond with "task_execution", set tooling_need to true, and provide a detailed plan with steps to accomplish the task.
         Consider both the context of the conversation and the user's latest message to determine their intent. If previous messages required a task, which was already done, do not assume the new message also requires a task. our goal is to determine whether AT THIS moment, for this message, a task is needed or not.
         """
-        context_without_sys_message = [msg for msg in context if not isinstance(msg, SystemMessage)]
-        ### we should replace media messaages with placeholders here.
-        msgs_with_placeholders = []
-        for msg in context_without_sys_message:
-            try:
-                content = msg.content
-                if isinstance(content, list):
-                    for i,item in enumerate(content):
-                        if isinstance(item, dict):
-                            if 'type' in item and item['type'] != 'text':
-                                ### here, we apply a placeholder
-                                msg.content[i] = {'type': 'text', 'text': f"PLACEHOLDER FOR [{item['type']}]"}
-                    msgs_with_placeholders.append(msg)
-                    continue         
-                if isinstance(content, str):
-                    msgs_with_placeholders.append(msg)
-                    continue
-                for item in content:
-                    if isinstance(item, dict) and 'type' in item and item['type'] == 'file':
-                        content = content.replace(str(item), '[file]')
-            except Exception as e:
-                logger.error(f"Error processing message content: {e}", exc_info=True)
-                msgs_with_placeholders.append(msg)
+        from src.utils.file_msg_utils import replace_media_with_placeholders
+
+        # Replace media content with text placeholders for planning call
+        msgs_with_placeholders = replace_media_with_placeholders(context)
         sys_message = SystemMessage(content=planning_prompt)
         messages = [sys_message] + msgs_with_placeholders  
         logger.info('calling for planning')

@@ -32,6 +32,7 @@ from src.tools.playwright import create_playwright_tools
 from src.tools.preference_tools import create_preference_tools
 from src.tools.integration_tools import create_integration_tools
 from src.tools.database_tools import create_database_access_tools
+from src.tools.google_lens import create_google_lens_tools
 import src.tools.mock_tools as mock_tools
 
 logger = setup_logger(__name__)
@@ -174,6 +175,14 @@ class AgentToolsFactory:
             tools.extend(create_playwright_tools())
         except Exception as e:
             logger.error(f"Error creating Playwright browser tools: {e}", exc_info=True)
+
+        # --- Google Lens Tools (via browser-use) ---
+        try:
+            if request_id:
+                tools.extend(create_google_lens_tools(request_id))
+                logger.info("Google Lens tools created successfully.")
+        except Exception as e:
+            logger.error(f"Error creating Google Lens tools: {e}", exc_info=True)
         
         # --- External API Tools ---
         try:

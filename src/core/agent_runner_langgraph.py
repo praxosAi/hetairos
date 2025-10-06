@@ -472,7 +472,7 @@ class LangGraphAgentRunner:
         logger.info(f"Generating file messages; current messages length: {len(messages)}")
 
         # Build captions list and payload tasks in the same order as input_files
-        captions: List[Optional[str]] = [f.get("caption") for f in input_files]
+        captions: List[Optional[str]] = [f.get("caption",'') for f in input_files]
         file_types: List[Optional[str]] = [f.get("type") for f in input_files]
         inserted_ids: List[Optional[str]] = [f.get("inserted_id") for f in input_files]
 
@@ -495,6 +495,9 @@ class LangGraphAgentRunner:
                     message_type=ftype,
                     metadata={"inserted_id": ins_id, "timestamp": datetime.utcnow().isoformat()},
                 )
+                if ftype in {'image', 'photo'}:
+                    logger.info(f"adding the link to the conversation as a text message too, for image/photo types")
+                    cap += " [Image Attached], the link to the image is: " + payload.get("image_url", "")
                 if cap:
                     await self.conversation_manager.add_user_message(
                         user_id,
@@ -502,11 +505,7 @@ class LangGraphAgentRunner:
                         message_prefix + " as caption for media in the previous message: " + cap,
                         metadata={"inserted_id": ins_id, "timestamp": datetime.utcnow().isoformat()},
                     )
-                if ftype in {'image', 'photo'}:
-                    logger.info(f"adding the link to the conversation as a text message too, for image/photo types")
-                    if cap is None:
-                        cap = ""
-                    cap += " [Image Attached], the link to the image is: " + payload.get("image_url", "")
+
         
             # Build LLM-facing message (caption first, then payload), in-order
             content = ([{"type": "text", "text": cap}] if cap else []) + [payload]

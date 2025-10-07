@@ -149,21 +149,15 @@ class AgentToolsFactory:
             except Exception as e:
                 logger.error(f"Error creating Google Lens tools: {e}", exc_info=True)
 
-        # Web tools
-        if needs_category(['read_webpage_content', 'browse_website_with_ai']):
+        # Web tools: if google search or places is needed, also load web browsing
+        if needs_category(['read_webpage_content', 'browse_website_with_ai','google_search','GooglePlacesTool']):
             try:
                 tools.extend(create_web_tools(request_id))
                 logger.info("Web tools created successfully.")
             except Exception as e:
                 logger.error(f"Error creating web tools: {e}", exc_info=True)
 
-        # Playwright tools (if needed)
-        if needs_category(['playwright_tools']):  # Update with actual tool names if playwright tools exist
-            try:
-                tools.extend(create_playwright_tools())
-                logger.info("Playwright tools created successfully.")
-            except Exception as e:
-                logger.error(f"Error creating Playwright tools: {e}", exc_info=True)
+
 
         # Legacy minimal_tools mode - return early if set
         if minimal_tools:

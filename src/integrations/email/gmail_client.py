@@ -51,7 +51,10 @@ class GmailIntegration(BaseIntegration):
         
         logger.info(f"Creating Google credentials for user {self.user_id}")
         self.credentials = await integration_service.create_google_credentials(self.user_id, 'gmail')
-
+        integration_record = await integration_service.get_integration_record_for_user_and_name(self.user_id, 'gmail')
+        if integration_record:
+            self.gmail_address = integration_record.get('connected_account')
+            
         if not self.credentials:
             logger.error("Failed to create Google credentials")
             return False

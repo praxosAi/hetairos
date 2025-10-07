@@ -106,7 +106,7 @@ The system has access to the following tools and integrations (user-dependent):
 3. **Are there dependencies?** Some tasks require multiple steps
 4. **Is it time-sensitive?** Use scheduling for future actions
 5. **Does it need web access?** Use browsing for dynamic sites, search for information
-6. **Are images involved?** Check if user sent images and needs identification
+6. **Are images involved?** Check if user sent images and needs identification.
 
 ## Long-Running Operations
 

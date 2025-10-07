@@ -92,3 +92,4 @@ inspect_db.py
 k8s/keda-scaler.yaml
 k8s/certificate.yaml
 k8s/secret.yaml
+run_workers_local.py

@@ -10,6 +10,7 @@ from src.utils.file_msg_utils import build_payload_entry_from_inserted_id
 from langchain.chat_models import init_chat_model
 from src.services.ai_service.ai_service_models import *
 from src.services.ai_service.prompts.tooling_capabilities import TOOLING_CAPABILITIES_PROMPT
+from src.services.ai_service.prompts.granular_tooling_capabilities import GRANULAR_TOOLING_CAPABILITIES
 
 logger = setup_logger(__name__)
 class AIService:
@@ -68,6 +69,42 @@ class AIService:
         response = await structured_llm.ainvoke(messages)
         logger.info(f"Planning call response: {response}")
         return response
+
+    async def granular_planning(self, context: list[BaseMessage]) -> GranularPlanningResponse:
+        """
+        Enhanced planning call that returns specific tool function IDs needed for the task.
+        This enables precise tool loading instead of all-or-nothing approach.
+        """
+        planning_prompt = f"""You are an expert task planner with deep knowledge of available tools.
+
+            **Your goal:** Analyze the user's request and determine:
+            1. **Query Type**: Is this a 'command' (task to execute) or 'conversational' (no action needed)?
+            2. **Tooling Need**: Does this require any tools, or can it be answered conversationally?
+            3. **Required Tools**: If tools are needed, specify EXACTLY which tool function IDs are required. Be precise and minimal.
+
+            **CRITICAL**: Only include tools that are ACTUALLY needed for THIS specific task. Don't include tools "just in case."
+
+            {GRANULAR_TOOLING_CAPABILITIES}
+
+            Consider the conversation context. If a task was just completed, the user might be responding conversationally.
+            """
+
+        from src.utils.file_msg_utils import replace_media_with_placeholders
+
+        # Replace media with placeholders
+        msgs_with_placeholders = replace_media_with_placeholders(context)
+        sys_message = SystemMessage(content=planning_prompt)
+        messages = [sys_message] + msgs_with_placeholders
+
+        logger.info('Calling granular_planning for precise tool selection')
+
+        structured_llm = self.model_gemini_flash_no_thinking.with_structured_output(GranularPlanningResponse)
+        response = await structured_llm.ainvoke(messages)
+        logger.info(f"Granular planning response: {response}")
+        logger.info(f"Required tools: {[tool.value for tool in response.required_tools]}")
+
+        return response
+
     async def multi_modal_by_doc_id(self, prompt: str, doc_id: str):
         logger.info(f"Fetching payload for doc_id: {doc_id}")
         payload =   await build_payload_entry_from_inserted_id(doc_id)

@@ -21,10 +21,10 @@ from langchain.chat_models import init_chat_model
 import uuid
 from src.services.output_generator.generator import OutputGenerator
 from bson import ObjectId
-from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64, upload_json_to_blob_storage
+from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64, upload_json_to_blob_storage,get_blob_sas_url
 from src.utils.audio import convert_ogg_b64_to_wav_b64
 from src.services.user_service import user_service
-
+from src.services.ai_service.ai_service import ai_service
 logger = setup_logger(__name__)
 
 LANGUAGE_MAP = {
@@ -110,7 +110,7 @@ class LangGraphAgentRunner:
             long_term_memory_context = "\n\nThe following relevant information is known about this user from their long-term memory:\n" + long_term_memory_context
         return long_term_memory_context
 
-    def _create_system_prompt(self, user_context: UserContext, source: str, metadata: Optional[Dict[str, Any]]) -> str:
+    def _create_system_prompt(self, user_context: UserContext, source: str, metadata: Optional[Dict[str, Any]], tool_descriptions: str, plan: str) -> str:
         """Replicates the system prompt construction from the original AgentRunner."""
         user_record = user_context.user_record
         user_record_for_context = "\n\nThe following information is known about this user of the assistant:"
@@ -127,8 +127,7 @@ class LangGraphAgentRunner:
             "You are a helpful AI assistant. Use the available tools to complete the user's request. "
             "If it's not a request, but a general conversation, just respond to the user's message. "
             "Do not mention tools if the user's final, most current request, does not require them. "
-            "If the user's request requires you to do an action in the future or in a recurring manner, "
-            "use the available tools to schedule the task."
+            "If the user's request requires you to do an action in the future or in a recurring manner, or to set a trigger on an event, use the appropriate scheduling, recurring scheduled, or trigger setup tool. "
             "do not confirm the scheduling with the user, just do it, unless the user specifically asks you to confirm it with them."
             "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
             "\n\nIMPORTANT - Long-running operations: For operations that take significant time (30+ seconds), such as browsing websites with AI, generating media, or complex research, you MUST:"
@@ -138,6 +137,7 @@ class LangGraphAgentRunner:
             "\nThis pattern applies to: browse_website_with_ai, and any future long-running tools."
             "\n\nif the user requests generation of audio, video or image, you should simply set the appropriate flag on output_modality, and generation_instructions, and not use any tool to generate them. this will be handled after your response is processed, with systems that are capable of generating them. your response in the final_response field should always simply be to acknowledge the request and say you would be happy to help. you will then describe the media in detail in the appropriate field, using the generation_instructions field, as well as setting the output modality field to the appropriate value for what the user actually wants. do not actually tell the user you won't generate it yourself, that's overly complex and will confuse them. do not ask them for more info in your response either, as the generation will happen regardless."
             "If the user requests a trigger setup, attempt to use the other tools at your disposal to enrich the information about the trigger's rules. however, only add info that you are certain about to the conditions of the trigger."
+            "IMPORTANT: YOU MUST ALWAYS USE APPROPRIATE TOOLS AND PERFORM THE REQUESTED TASK BEFORE OUTPUTTING TO THE USER. YOU MAY NOT SEND AN OUTPUT TO THE USER TELLING THEM YOU ARE PERFORMING A TASK WITHOUT ACTUALLY PERFORMING THE TASK."
         )
 
 
@@ -177,7 +177,8 @@ class LangGraphAgentRunner:
                 task_prompt += f" The output modality for the final response of this scheduled task was previously specified as '{metadata.get('output_type')}'. the original source was '{metadata.get('original_source')}'."
             else:
                 task_prompt += " The output modality for the final response of this scheduled task was not specified, so you should choose the most appropriate one based on the user's preferences and context. this cannot be websocket in this case."
-        
+        elif source == "websocket":
+            task_prompt = "\nIMPORTANT NOTE: this message was received on the 'websocket' channel. You must respond on the websocket channel. if they asked for sending an email or a message or similar, you must use the appropriate tools. Note that there is no way to send intermediate messages on websocket, so you should focus on performing the task."
         else:
             task_prompt = f"\n\nThis message was received on the '{source}' channel. \n\n"
         logger.info(f"Task prompt: {task_prompt}")
@@ -198,7 +199,7 @@ class LangGraphAgentRunner:
          f"The prefered language to use is '{preferred_language}'. You must always respond in the prefered language, unless the user specifically asks you to respond in a different language. If the user uses a different language than the prefered one, you can respond in the language the user used. if the user asks you to use a different language, you must comply."
          "Pay attention to pronouns and formality levels in the prefered language, pronoun rules, and other similar nuances. mirror the user's language style and formality level in your responses."
         )
-        total_system_capabilities_prompt = """The system is capable of integrating with various third party services. these are, Notion, Dropbox, Gmail, Google Drive, Google Calendar, Outlook and Outlook Calendar, One Drive, WhatsApp, Telegram, iMessage. The given user, however, may have not integrated any, or only integrated a subset. the user may ask for tasks that require an integration you do not have. in such cases, use the integration tool to help them integrate the tool.
+        total_system_capabilities_prompt = """The system is capable of integrating with various third party services. these are, Notion, Dropbox, Gmail, Google Drive, Google Calendar, Outlook and Outlook Calendar, One Drive, WhatsApp, Telegram, iMessage, Trello. The given user, however, may have not integrated any, or only integrated a subset. the user may ask for tasks that require an integration you do not have. in such cases, use the integration tool to help them integrate the tool. Further, you have access to robust web tools, which you can use to browser, as well as good tools for google search and google lens.
             
             If the user explicitly asks for what you can do, tell them the following capabilities you have. 
             Email management: I can find, summarize, respond to, or draft emails. Just ask me to "find emails about X" or "draft a reply to Y"
@@ -211,15 +212,20 @@ class LangGraphAgentRunner:
 
             Calendar management: Create, update, or delete events and get reminders
 
-            Research: I can look things up for you online, from restaurant recommendations to market research
+            Research: I can look things up for you online, from restaurant recommendations to market research.
 
             Draft emails in your voice: Need to write something? I'll draft it for you to review before sending
 
             I can also chain any of the above together to accomplish more complex tasks.
 
         """
-        return base_prompt + praxos_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt + total_system_capabilities_prompt
 
+        system_prompt = base_prompt + praxos_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt + total_system_capabilities_prompt
+        if tool_descriptions:
+            system_prompt += f"\n\nThe following tools are available to you:\n{tool_descriptions}\nUse them in accordance with the user intent."
+        if plan:
+            system_prompt += f"\n\nThe following plan has been created for you:\n{plan}\n Use it to guide your actions, but do not feel bound by it. You can deviate from the plan if you think it's necessary."
+        return system_prompt
     async def _build_payload_entry(self, file: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Create a single payload dict for a file entry."""
         ftype = file.get("type")
@@ -231,12 +237,17 @@ class LangGraphAgentRunner:
         if not blob_path or not ftype:
             return None
 
+        if ftype in {"image", "photo"}:
+            # Images are in CDN container - use public CDN URL instead of SAS URL
+            from src.utils.blob_utils import get_cdn_url
+            image_url = await get_cdn_url(blob_path, container_name="cdn-container")
+            return {"type": "image_url", "image_url": image_url}
+
+        # Download non-image files from default container
         data_b64 = await download_from_blob_storage_and_encode_to_base64(blob_path)
 
         if ftype in {"voice", "audio", "video"}:
             return {"type": "media", "data": data_b64, "mime_type": mime_type}
-        if ftype in {"image", "photo"}:
-            return {"type": "image_url", "image_url": f"data:{mime_type};base64,{data_b64}"}
         if ftype in {"document", "file"}:
             return {
                 "type": "file",
@@ -433,6 +444,9 @@ class LangGraphAgentRunner:
                             message_type=ftype,
                             metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
                         )
+                        if ftype in {'image', 'photo'}:
+                            logger.info(f"adding the link to the conversation as a text message too, for image/photo types")
+                            caption += " [Image Attached], the link to the image is: " + payload.get("image_url", "")
                         if caption:
                             await self.conversation_manager.add_user_message(
                                 user_context.user_id,
@@ -440,8 +454,11 @@ class LangGraphAgentRunner:
                                 message_prefix + " as caption for media in the previous message: " + caption,
                                 metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
                             )
+
+
                     
                     # Add to LLM message history
+                    logger.info(f"caption is {caption}")
                     content = ([{"type": "text", "text": caption}] if caption else []) + [payload]
                     messages.append(HumanMessage(content=content))
                 
@@ -465,7 +482,7 @@ class LangGraphAgentRunner:
         logger.info(f"Generating file messages; current messages length: {len(messages)}")
 
         # Build captions list and payload tasks in the same order as input_files
-        captions: List[Optional[str]] = [f.get("caption") for f in input_files]
+        captions: List[Optional[str]] = [f.get("caption",'') for f in input_files]
         file_types: List[Optional[str]] = [f.get("type") for f in input_files]
         inserted_ids: List[Optional[str]] = [f.get("inserted_id") for f in input_files]
 
@@ -488,6 +505,9 @@ class LangGraphAgentRunner:
                     message_type=ftype,
                     metadata={"inserted_id": ins_id, "timestamp": datetime.utcnow().isoformat()},
                 )
+                if ftype in {'image', 'photo'}:
+                    logger.info(f"adding the link to the conversation as a text message too, for image/photo types")
+                    cap += " [Image Attached], the link to the image is: " + payload.get("image_url", "")
                 if cap:
                     await self.conversation_manager.add_user_message(
                         user_id,
@@ -496,6 +516,7 @@ class LangGraphAgentRunner:
                         metadata={"inserted_id": ins_id, "timestamp": datetime.utcnow().isoformat()},
                     )
 
+        
             # Build LLM-facing message (caption first, then payload), in-order
             content = ([{"type": "text", "text": cap}] if cap else []) + [payload]
             messages.append(HumanMessage(content=content))
@@ -631,7 +652,7 @@ class LangGraphAgentRunner:
             "status": "running",
             "started_at": start_time,
         }
-
+        
         await db_manager.db["execution_history"].insert_one(execution_record)      
         try:
             
@@ -702,13 +723,41 @@ class LangGraphAgentRunner:
             if all_forwarded:
                 logger.info("All input messages are forwarded; verify with the user before taking actions.")
                 return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_platform=source, execution_notes="All input messages were marked as forwarded.", output_modality="text", file_links=[], generation_instructions=None)
+            minimal_tools = False
+            plan = None
+            try:
+                planning = await ai_service.planning_call(history)
+                if planning:
+                    if (not planning.tooling_need ) and planning.query_type == "conversational": 
+                        minimal_tools = True
+                    else:
+                        plan_str = ""
+                        if planning.plan:
+                            plan_str += f"the plan is as follows: {planning.plan}. \n"
+                        if planning.steps:
+                            plan_str += f"the steps are as follows: {'\n'.join(planning.steps)}. "
+                        if plan_str:
+                            plan_str = """the following initial plan has been suggested by the system. take the plan into account when generating the response, but do not feel bound by it. you can deviate from the plan if you think it's necessary. 
+                             In either case, make sure to use the appropriate tools that are provided to you for performing this task. Do not respond that you are doing a task, without actually doing it. instead, do the task, then send the user indication that you have done it, with any necessary result data.  \n\n""" + plan_str
+                            
+                            plan = planning
+                            logger.info(f"Added planning context to history: {plan_str}")
+            except Exception as e:
+                logger.error(f"Error during planning call: {e}", exc_info=True)
+                minimal_tools = False
+            tools = await self.tools_factory.create_tools(user_context, metadata, timezone_name, request_id=self.trace_id,minimal_tools=minimal_tools)
 
-            tools = await self.tools_factory.create_tools(user_context, metadata, timezone_name, request_id=self.trace_id)
 
             tool_executor = ToolNode(tools)
             llm_with_tools = self.llm.bind_tools(tools)
-
-            system_prompt = self._create_system_prompt(user_context, source, metadata)
+            tool_descriptions = ""
+            for i, tool in enumerate(tools):
+                try:
+                    tool_descriptions += f"{tool.name}: {tool.description}\n"
+                except Exception as e:
+                    logger.error(f"Error getting description for tool: {e}, for tool {str(tool)}", exc_info=True)
+                    continue
+            system_prompt = self._create_system_prompt(user_context, source, metadata, tool_descriptions, plan)
             ### this creates unnecessary overhead and latency, so we'll disable it for now.
             # from src.config.settings import settings
             # if settings.OPERATING_MODE == "local":
@@ -737,8 +786,23 @@ class LangGraphAgentRunner:
                 return {"messages": state['messages'] + [response]}
 
             def should_continue(state: AgentState):
+                new_state = state['messages'][len(initial_state['messages']):]
+                # logger.info(f"New messages since last model call: {new_state}")
+                if not minimal_tools:
+                    ### if no tool has been called yet, we should continue.
+                    tool_called = False
+                    for msg in new_state:
+                        if isinstance(msg, AIMessage) and msg.tool_calls:
+                            tool_called = True
+                            break 
+                    if not tool_called:
+                        logger.info("No tools have been called yet; which is required in this situation. continuing to tool execution.")
+                        state['messages'].append(AIMessage(content=f"I need to use a tool to proceed. Let me consult the plan and use the appropriate tool. the original plan was: \n \n {plan_str}"))
+                        return "continue"
+                
                 last_message = state['messages'][-1]
                 if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
+                    logger.info("No tool calls in the last message; proceeding to final response generation.")
                     return "end"
                 else:
                     return "continue"
@@ -754,6 +818,7 @@ class LangGraphAgentRunner:
                     f"Given the final response from an agent: '{final_message}', "
                     f"and knowing the initial request came from the '{source_to_use}' channel, "
                     "format this into the required JSON structure. The delivery_platform must match the source channel, unless the user indicates or implies otherwise, or the command requires a different channel. Note that a scheduled/recurring/triggered command cannot have websocket as the delivery platform. If the user has specifically asked for a different delivery platform, you must comply. for example, if the user has sent an email, but requests a response on imessage, comply. Explain the choice of delivery platform in the execution_notes field, acknowledging if the user requested a particular platform or not. "
+                    "IF the source channel is 'websocket', you must always respond on websocket. assume that any actions that required different platforms, such as sending an email, have already been handled. "
                     f"the user's original message in this case was {input_text}. pay attention to whether it contains a particular request for delivery platform. "
                     "If the response requires generating audio, video, or image, set the output_modality and generation_instructions fields accordingly.  the response should simply acknowledge the request to generate the media, and not attempt to generate it yourself. this is not a task for you. simply trust in the systems that will handle it after you. "
                 )

@@ -8,6 +8,7 @@ from src.utils.logging import setup_logger
 from src.utils.blob_utils import download_from_blob_storage
 from src.utils.text_chunker import TextChunker
 import requests
+import json
 class TelegramClient:
     def __init__(self):
         self.token = settings.TELEGRAM_BOT_TOKEN
@@ -38,6 +39,15 @@ class TelegramClient:
         return responses
 
     async def send_media(self, chat_id: int, media_obj: dict):
+        if not isinstance(media_obj, dict):
+            if isinstance(media_obj, str):
+                media_obj = json.loads(media_obj)
+            else:
+                try:
+                    media_obj = media_obj.dict()
+                except:
+                    self.logger.error(f"Invalid media_obj format: {media_obj}")
+                    return None
         media_url = media_obj.get("url")
         file_name = media_obj.get("file_name", "file")
         media_type = media_obj.get("file_type", "document")  # Default to Document if not specified

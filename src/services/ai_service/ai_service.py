@@ -2,13 +2,15 @@
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from src.config.settings import settings
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,SystemMessage
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from src.utils.logging import setup_logger
 from src.utils.file_msg_utils import build_payload_entry_from_inserted_id
 from langchain.chat_models import init_chat_model
 from src.services.ai_service.ai_service_models import *
+from src.services.ai_service.prompts.tooling_capabilities import TOOLING_CAPABILITIES_PROMPT
+
 logger = setup_logger(__name__)
 class AIService:
     def __init__(self, model_name: str = "gemini-2.5-pro"):
@@ -44,6 +46,28 @@ class AIService:
         return await self.model_gemini_flash.ainvoke(prompt)
     
     
+
+    async def planning_call(self, context: list[BaseMessage]) -> PlanningResponse:
+        planning_prompt = f"""You are an expert planner. The goal is to determine:
+        1- Is the user simply sending a basic conversational query without a specific intent, such as a side effect, a tool use, or a task to be done? If so, respond with "simple_conversation", set tooling_needed to false, and leave the steps and plan empty.
+        2- Is the user requesting a specific task to be done? If so, respond with "task_execution", set tooling_needed to true, and provide a detailed plan with steps to accomplish the task.
+
+        Consider both the context of the conversation and the user's latest message to determine their intent. If previous messages required a task which was already done, do not assume the new message also requires a task. Our goal is to determine whether AT THIS moment, for this message, a task is needed or not.
+
+        {TOOLING_CAPABILITIES_PROMPT}
+        """
+        from src.utils.file_msg_utils import replace_media_with_placeholders
+
+        # Replace media content with text placeholders for planning call
+        msgs_with_placeholders = replace_media_with_placeholders(context)
+        sys_message = SystemMessage(content=planning_prompt)
+        messages = [sys_message] + msgs_with_placeholders  
+        logger.info('calling for planning')
+
+        structured_llm = self.model_gemini_flash_no_thinking.with_structured_output(PlanningResponse)
+        response = await structured_llm.ainvoke(messages)
+        logger.info(f"Planning call response: {response}")
+        return response
     async def multi_modal_by_doc_id(self, prompt: str, doc_id: str):
         logger.info(f"Fetching payload for doc_id: {doc_id}")
         payload =   await build_payload_entry_from_inserted_id(doc_id)
@@ -52,5 +76,7 @@ class AIService:
         logger.info(f"Retrieved payload for doc_id: {doc_id}, preparing messages for AI model.")
         messages = [HumanMessage(content=prompt), HumanMessage(content=[payload])]
         return await self.model_gemini_flash.ainvoke(messages)
+    
+    
 ai_service = AIService()
     

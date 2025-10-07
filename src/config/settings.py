@@ -40,6 +40,9 @@ class Settings:
     GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
     GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
     GOOGLE_REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN")
+
+    # SerpAPI (for Google Lens product recognition)
+    SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
     
     # Microsoft OAuth
     MICROSOFT_CLIENT_ID = os.getenv("MICROSOFT_CLIENT_ID")

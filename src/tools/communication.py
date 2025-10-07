@@ -21,14 +21,14 @@ def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str
             - "Searching the web for that information..."
         """
         try:
-            source = metadata.get("original_source") if metadata else "websocket"
+            source = metadata.get("source") if metadata else "websocket"
             output_type = source if source != "scheduled" else "websocket"
 
             await egress_service.send_response(
                 {
                     "source": source,
                     "output_type": output_type,
-                    "original_message": metadata.get("original_message") if metadata else None,
+                    "metadata": metadata,
                     "user_id": str(user_id)
                 },
                 {"response": message}

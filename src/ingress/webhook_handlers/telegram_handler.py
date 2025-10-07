@@ -4,7 +4,7 @@ from src.services.integration_service import integration_service
 from src.utils.logging.base_logger import setup_logger, user_id_var, modality_var, request_id_var
 from src.integrations.telegram.client import TelegramClient
 from src.utils.blob_utils import upload_to_blob_storage
-
+from src.services.engagement_service import research_user_and_engage
 logger = setup_logger(__name__)
 router = APIRouter()
 import mimetypes
@@ -13,7 +13,7 @@ from src.utils.database import db_manager
 @router.post("/telegram")
 async def handle_telegram_webhook(request: Request):
     """Handles incoming Telegram updates."""
-    
+    modality_var.set("telegram")
     try:
         data = await request.json()
     except Exception as e:
@@ -26,11 +26,11 @@ async def handle_telegram_webhook(request: Request):
         chat_id = message["chat"]["id"]
         username = message["from"].get("username", "").lower()
         modality_var.set("telegram")
-        if not username:
-            logger.warning(f"User {message['from']['id']} has no username, cannot authorize")
-            await telegram_client.send_message(message["chat"]["id"], "You seem to have not setup a username on telegram yet. this makes it impossible for us to authorize you. Please set a username in your telegram settings, and integrate with praxos.")
-            return {"status": "ok"}
-        integration_record = await integration_service.is_authorized_user("telegram", username)
+        if username:
+            integration_record = await integration_service.is_authorized_user("telegram", username)
+        else:
+            username = 'NOT_SETUP'
+            integration_record = await integration_service.is_authorized_user_telegram_chat_id(chat_id)
         if not integration_record:
             logger.info(f"User {username} not authorized, attempting to authorize.")
             try:
@@ -41,8 +41,10 @@ async def handle_telegram_webhook(request: Request):
                     try:
                         welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n\nTelegram communication initialized. \n\nWelcome to Praxos, {user_record.get('first_name')}.\nUser name @{username} has been saved. You can now issue orders and communicate with Praxos over Telegram."
                         await telegram_client.send_message(message["chat"]["id"], welcome_message)
-                        welcome_message_2 = "Recommended Action: Ask me what I can do for you."
-                        await telegram_client.send_message(message["chat"]["id"], welcome_message_2)
+                        try:
+                            await research_user_and_engage(user_record,'telegram', chat_id,timestamp = message.get('date'),request_id_var=str(request_id_var.get()))
+                        except:
+                            logger.error(f"Failed to create research order for new telegram user {user_record['_id']}")
                         return {"status": "ok"}
                     except Exception as e:
                         logger.error(f"Failed to send welcome message to {username}: {e}")
@@ -101,7 +103,8 @@ async def handle_telegram_webhook(request: Request):
             documents = message[key]
             if isinstance(documents, dict):
                 documents = [documents]
-
+            if key in ['photo','image','sticker'] and len(documents) > 1:
+                documents = [documents[-1]]  # Get the highest resolution photo only
             for document in documents:
                 file_id = document["file_id"]
                 mime_type = document.get("mime_type")
@@ -119,11 +122,15 @@ async def handle_telegram_webhook(request: Request):
                 logger.info(f"Mime type of the voice message: {mime_type}")
                 if mime_type[0] is None and ('oga' in file_path_local or 'ogg' in file_path_local):
                     mime_type = ['audio/ogg']
-                blob_name = await upload_to_blob_storage(file_path_local, f"{user_id}/telegram/{file_path_local}")
-                file_name_og = document.get("file_name",'Original filename not accessible')
-                type_to_use = key
+                # Upload images to CDN container, everything else to default container
                 if key in ['sticker','photo']:
+                    blob_name = await upload_to_blob_storage(file_path_local, f"{user_id}/telegram/{file_path_local}", container_name="cdn-container")
                     type_to_use = 'image'
+                else:
+                    blob_name = await upload_to_blob_storage(file_path_local, f"{user_id}/telegram/{file_path_local}")
+                    type_to_use = key
+
+                file_name_og = document.get("file_name",'Original filename not accessible')
                 
                 document_entry = {
                     "user_id": ObjectId(user_id),

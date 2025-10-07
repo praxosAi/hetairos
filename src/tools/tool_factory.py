@@ -32,6 +32,7 @@ from src.tools.playwright import create_playwright_tools
 from src.tools.preference_tools import create_preference_tools
 from src.tools.integration_tools import create_integration_tools
 from src.tools.database_tools import create_database_access_tools
+from src.tools.google_lens import create_google_lens_tools
 import src.tools.mock_tools as mock_tools
 
 logger = setup_logger(__name__)
@@ -43,7 +44,7 @@ class AgentToolsFactory:
         self.config = config
         self.db_manager = db_manager
 
-    async def create_tools(self, user_context: UserContext, metadata: Optional[Dict] = None, user_time_zone: str = 'America/New_York', request_id: str = None) -> List:
+    async def create_tools(self, user_context: UserContext, metadata: Optional[Dict] = None, user_time_zone: str = 'America/New_York', request_id: str = None, minimal_tools: bool = False) -> List:
         """Create tools based on agent configuration by instantiating integration clients.
 
         Args:
@@ -53,13 +54,62 @@ class AgentToolsFactory:
             llm: Optional LLM instance for AI-powered tools (e.g., browser automation)
         """
         tools = []
+
         user_id = user_context.user_id
         user_email = user_context.user_record.get('email')
-
         have_email_tool = False
         have_calendar_tool = False
         if not user_id:
             return []
+        try:
+            tools.extend(create_bot_communication_tools(metadata, user_id))
+        except Exception as e:
+            logger.error(f"Error creating bot communication tools: {e}", exc_info=True)
+        try:
+            tools.extend(create_scheduling_tools(user_id, metadata.get('source'), str(metadata.get('conversation_id'))))
+        except Exception as e:
+            logger.error(f"Error creating scheduling tools: {e}", exc_info=True)
+        try:
+            tools.extend(create_basic_tools(user_time_zone))
+        except Exception as e:
+            logger.error(f"Error creating basic tools: {e}", exc_info=True)
+        try:
+            tools.extend(create_preference_tools(user_id))
+        except Exception as e:
+            logger.error(f"Error creating preference tools: {e}", exc_info=True)
+        try:
+            tools.extend(create_integration_tools(user_id))
+            logger.info("Integration tools created successfully.")
+        except Exception as e:
+            logger.error(f"Error creating integration tools: {e}", exc_info=True)
+        try:
+            tools.extend(create_database_access_tools(user_id))
+        except Exception as e:
+            logger.error(f"Error creating database access tools: {e}", exc_info=True)
+        try:
+            search = GoogleSearchAPIWrapper()
+            tools.append(Tool(name="google_search", description="Search Google for recent results.", func=search.run))
+        except Exception as e:
+            logger.error(f"Error creating Google search tool: {e}", exc_info=True)
+
+        try:
+            tools.append(GooglePlacesTool())
+        except Exception as e:
+            logger.error(f"Error creating Google places tool: {e}", exc_info=True)
+        # --- Mock Tools ---
+        # if not have_calendar_tool:
+        #     tools.extend(mock_tools.create_calendar_tools())
+        # if not have_email_tool:
+        #     tools.extend(mock_tools.create_email_tools())
+        try:
+            tools.extend(create_google_lens_tools())
+            logger.info("Google Lens product recognition tools created successfully.")
+        except Exception as e:
+            logger.error(f"Error creating Google Lens tools: {e}", exc_info=True)
+        if minimal_tools:
+            return tools
+
+
         gcal_integration = GoogleCalendarIntegration(user_id)
         gmail_integration = GmailIntegration(user_id)
         gdrive_integration = GoogleDriveIntegration(user_id)
@@ -138,60 +188,31 @@ class AgentToolsFactory:
             tools.extend(create_praxos_memory_tool(praxos_client, user_id, str(metadata.get('conversation_id'))))
         else:
             logger.warning("Praxos API key not found, memory tools will be unavailable.")
+        
 
-        tools.extend(create_bot_communication_tools(metadata, user_id))
-        try:
-            tools.extend(create_scheduling_tools(user_id, metadata.get('source'), str(metadata.get('conversation_id'))))
-        except Exception as e:
-            logger.error(f"Error creating scheduling tools: {e}", exc_info=True)
-        try:
-            tools.extend(create_basic_tools(user_time_zone))
-        except Exception as e:
-            logger.error(f"Error creating basic tools: {e}", exc_info=True)
+        ## web tools
+
         try:
             tools.extend(create_web_tools(request_id=request_id))
         except Exception as e:
             logger.error(f"Error creating web tools: {e}", exc_info=True)
 
-        try:
-            tools.extend(create_preference_tools(user_id))
-        except Exception as e:
-            logger.error(f"Error creating preference tools: {e}", exc_info=True)
+
         
-        try:
-            tools.extend(create_integration_tools(user_id))
-            logger.info("Integration tools created successfully.")
-        except Exception as e:
-            logger.error(f"Error creating integration tools: {e}", exc_info=True)
 
-
-        try:
-            tools.extend(create_database_access_tools(user_id))
-        except Exception as e:
-            logger.error(f"Error creating database access tools: {e}", exc_info=True)
         # --- Browser Tools ---
-        try:
-            tools.extend(create_playwright_tools())
-        except Exception as e:
-            logger.error(f"Error creating Playwright browser tools: {e}", exc_info=True)
+        # PLAYWRIGHT DEPRECATED
+        # try:
+        #     tools.extend(create_playwright_tools())
+        # except Exception as e:
+        #     logger.error(f"Error creating Playwright browser tools: {e}", exc_info=True)
+
+        # --- Google Lens Tools (Product/Brand Recognition via SerpAPI) ---
+
         
         # --- External API Tools ---
-        try:
-            search = GoogleSearchAPIWrapper()
-            tools.append(Tool(name="google_search", description="Search Google for recent results.", func=search.run))
-        except Exception as e:
-            logger.error(f"Error creating Google search tool: {e}", exc_info=True)
-
-        try:
-            tools.append(GooglePlacesTool())
-        except Exception as e:
-            logger.error(f"Error creating Google places tool: {e}", exc_info=True)
 
 
-        # --- Mock Tools ---
-        if not have_calendar_tool:
-            tools.extend(mock_tools.create_calendar_tools())
-        if not have_email_tool:
-            tools.extend(mock_tools.create_email_tools())
+
 
         return tools

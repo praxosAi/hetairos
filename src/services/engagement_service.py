@@ -35,6 +35,8 @@ async def research_user_and_engage(user_record, source, messaging_user_id,timest
         Country: {country}
         ## Note that this location information might be approximate. Further, note that it is a current location, and not necessarily where they are originally from or reside.
         Reached out on {source} with id {messaging_user_id} [phone number or telegram user name]
+        
+
         """
          
     event = {

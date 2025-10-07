@@ -82,6 +82,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
         except Exception as e:
             logger.error(f"Error enriching Praxos memory entries: {e}")
             return ToolExecutionResponse(status="error", system_error=str(e))
+    @tool
     async def setup_new_trigger(trigger_conditional_statement: str, one_time: bool = True) -> ToolExecutionResponse:
         """Setup a trigger in Praxos memory. a trigger is a conditional statement, of form "If I receive an email from X, then do Y"
         Args:

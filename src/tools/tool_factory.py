@@ -86,12 +86,26 @@ class AgentToolsFactory:
             tools.extend(create_database_access_tools(user_id))
         except Exception as e:
             logger.error(f"Error creating database access tools: {e}", exc_info=True)
+        try:
+            search = GoogleSearchAPIWrapper()
+            tools.append(Tool(name="google_search", description="Search Google for recent results.", func=search.run))
+        except Exception as e:
+            logger.error(f"Error creating Google search tool: {e}", exc_info=True)
+
+        try:
+            tools.append(GooglePlacesTool())
+        except Exception as e:
+            logger.error(f"Error creating Google places tool: {e}", exc_info=True)
         # --- Mock Tools ---
         # if not have_calendar_tool:
         #     tools.extend(mock_tools.create_calendar_tools())
         # if not have_email_tool:
         #     tools.extend(mock_tools.create_email_tools())
-
+        try:
+            tools.extend(create_google_lens_tools())
+            logger.info("Google Lens product recognition tools created successfully.")
+        except Exception as e:
+            logger.error(f"Error creating Google Lens tools: {e}", exc_info=True)
         if minimal_tools:
             return tools
 
@@ -194,23 +208,10 @@ class AgentToolsFactory:
         #     logger.error(f"Error creating Playwright browser tools: {e}", exc_info=True)
 
         # --- Google Lens Tools (Product/Brand Recognition via SerpAPI) ---
-        try:
-            tools.extend(create_google_lens_tools())
-            logger.info("Google Lens product recognition tools created successfully.")
-        except Exception as e:
-            logger.error(f"Error creating Google Lens tools: {e}", exc_info=True)
+
         
         # --- External API Tools ---
-        try:
-            search = GoogleSearchAPIWrapper()
-            tools.append(Tool(name="google_search", description="Search Google for recent results.", func=search.run))
-        except Exception as e:
-            logger.error(f"Error creating Google search tool: {e}", exc_info=True)
 
-        try:
-            tools.append(GooglePlacesTool())
-        except Exception as e:
-            logger.error(f"Error creating Google places tool: {e}", exc_info=True)
 
 
 

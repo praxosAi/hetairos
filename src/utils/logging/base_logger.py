@@ -9,7 +9,7 @@ from contextvars import ContextVar
 request_id_var: ContextVar[Optional[str]] = ContextVar("request_id", default='SYSTEM_LEVEL')
 user_id_var: ContextVar[Optional[str]] = ContextVar("user_id", default='SYSTEM_LEVEL')
 modality_var: ContextVar[Optional[str]] = ContextVar("modality", default='SYSTEM_LEVEL')
-json_logging = False
+json_logging = True
 
 # Flag to ensure noisy loggers are only suppressed once
 _loggers_suppressed = False

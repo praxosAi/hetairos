@@ -11,7 +11,7 @@ from langchain.chat_models import init_chat_model
 from src.services.ai_service.ai_service_models import *
 from src.services.ai_service.prompts.tooling_capabilities import TOOLING_CAPABILITIES_PROMPT
 from src.services.ai_service.prompts.granular_tooling_capabilities import GRANULAR_TOOLING_CAPABILITIES
-
+from src.services.ai_service.prompts.caches import PLANNING_PROMPT_CACHE
 logger = setup_logger(__name__)
 class AIService:
     def __init__(self, model_name: str = "gemini-2.5-pro"):
@@ -49,6 +49,8 @@ class AIService:
     
 
     async def planning_call(self, context: list[BaseMessage]) -> PlanningResponse:
+        planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0, cached_content=PLANNING_PROMPT_CACHE)
+        
         planning_prompt = f"""You are an expert planner. The goal is to determine:
         1- Is the user simply sending a basic conversational query without a specific intent, such as a side effect, a tool use, or a task to be done? If so, respond with "simple_conversation", set tooling_needed to false, and leave the steps and plan empty.
         2- Is the user requesting a specific task to be done? If so, respond with "task_execution", set tooling_needed to true, and provide a detailed plan with steps to accomplish the task.
@@ -65,7 +67,7 @@ class AIService:
         messages = [sys_message] + msgs_with_placeholders  
         logger.info('calling for planning')
 
-        structured_llm = self.model_gemini_flash_no_thinking.with_structured_output(PlanningResponse)
+        structured_llm = planning_llm.with_structured_output(PlanningResponse)
         response = await structured_llm.ainvoke(messages)
         logger.info(f"Planning call response: {response}")
         return response

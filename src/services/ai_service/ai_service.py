@@ -59,20 +59,10 @@ class AIService:
         Enhanced planning call that returns specific tool function IDs needed for the task.
         This enables precise tool loading instead of all-or-nothing approach.
         """
-        # planning_prompt = f"""You are an expert task planner with deep knowledge of available tools.
+        ### we now use caching for this. this further reduces latency of this call, as well as its cost.
+        
+        
 
-        #     **Your goal:** Analyze the user's request and determine:
-        #     1. **Query Type**: Is this a 'command' (task to execute) or 'conversational' (no action needed)?
-        #     2. **Tooling Need**: Does this require any tools, or can it be answered conversationally?
-        #     3. **Required Tools**: If tools are needed, specify EXACTLY which tool function IDs are required. Be precise and minimal.
-
-        #     **CRITICAL**: Only include tools that are ACTUALLY needed for THIS specific task. Don't include tools "just in case." However, consider tools that need to be used in tandem to accomplish the task.
-
-        #     **IMPORTANT**: If multiple tools are needed, list them all and explain how they work together to complete the task.
-
-        #     the tooling capabilities are detailed in the system prompt.
-        #     Consider the conversation context. If a task was just completed, the user might be responding conversationally.
-        #     """
 
         from src.utils.file_msg_utils import replace_media_with_placeholders
 

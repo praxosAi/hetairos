@@ -299,6 +299,9 @@ class EgressService:
         Routes the final response to the appropriate channel based on the event source.
         """
         source = event.get("source")
+        ### cast to lower-case to avoid case sensitivity issues
+        if source and isinstance(source, str):
+            source = source.lower()
         response_text = result.get("response", "Sorry, something went wrong.")
         response_files = result.get("file_links", [])
         logger.info(f"the following response payload will be sent: text: {response_text}, files: {response_files}")

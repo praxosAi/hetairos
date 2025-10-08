@@ -1,10 +1,13 @@
 import pytz
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Tuple,Literal
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,ToolMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
+import json
+from src.tools.tool_types import ToolExecutionResponse
 from langgraph.prebuilt import ToolNode
+from langgraph.types import Command
 from src.config.settings import settings
 from src.core.context import UserContext
 from src.tools.tool_factory import AgentToolsFactory
@@ -14,126 +17,22 @@ from src.services.integration_service import integration_service
 from pydantic import BaseModel, Field
 from src.utils.logging import setup_logger
 from src.core.praxos_client import PraxosClient
-from langgraph.graph import MessagesState
-from langchain_core.utils.function_calling import convert_to_openai_function
+from src.core.models.agent_runner_models import AgentFinalResponse, AgentState, FileLink
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chat_models import init_chat_model
 import uuid
-from src.services.output_generator.generator import OutputGenerator
+from src.core.prompts.system_prompt import create_system_prompt
 from bson import ObjectId
 from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64, upload_json_to_blob_storage,get_blob_sas_url
-from src.utils.audio import convert_ogg_b64_to_wav_b64
 from src.services.user_service import user_service
 from src.services.ai_service.ai_service import ai_service
-from langchain.callbacks.base import AsyncCallbackHandler
+from src.core.callbacks.ToolMonitorCallback import ToolMonitorCallback
+from src.utils.file_msg_utils import generate_file_messages,get_conversation_history,process_media_output, generate_user_messages_parallel
 logger = setup_logger(__name__)
 
-LANGUAGE_MAP = {
-    'en': 'English',
-    'es': 'Spanish',
-    'pt': 'Portuguese',
-    'fr': 'French',
-    'it': 'Italian',
-    'de': 'German',
-    'ja': 'Japanese',
-    'vn': 'Vietnamese',
-}
-import asyncio
-async def _gather_bounded(coros: List[Any], limit: int = 8):
-    sem = asyncio.Semaphore(limit)
-
-    async def _run(coro):
-        async with sem:
-            return await coro
-
-    # Order of results matches order of coros
-    return await asyncio.gather(*(_run(c) for c in coros), return_exceptions=True)
-
-# --- Tool Monitoring Callback ---
-class ToolMonitorCallback(AsyncCallbackHandler):
-    """Callback handler for monitoring tool usage and tracking milestones."""
-
-    def __init__(self, user_id: str, execution_id: str):
-        super().__init__()
-        self.user_id = user_id
-        self.execution_id = execution_id
-
-    async def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs) -> None:
-        """Called when a tool starts execution."""
-        tool_name = serialized.get('name', 'unknown_tool')
-        logger.info(f"[TOOL START] {tool_name} | User: {self.user_id} | Execution: {self.execution_id}")
-        logger.debug(f"[TOOL INPUT] {tool_name}: {input_str[:200]}")
-
-        # Track milestone in MongoDB - fire and forget (non-blocking)
-        try:
-            asyncio.create_task(self._track_tool_milestone(tool_name))
-        except Exception as e:
-            logger.error(f"Error creating milestone tracking task for {tool_name}: {e}", exc_info=True)
-
-    async def on_tool_end(self, output: str, **kwargs) -> None:
-        """Called when a tool completes successfully."""
-        tool_name = kwargs.get('name', 'unknown_tool')
-        output_preview = str(output)[:200] if output else "No output"
-        logger.info(f"[TOOL END] {tool_name} | Output: {output_preview}")
-
-    async def on_tool_error(self, error: Exception, **kwargs) -> None:
-        """Called when a tool encounters an error."""
-        tool_name = kwargs.get('name', 'unknown_tool')
-        logger.error(f"[TOOL ERROR] {tool_name} | Error: {error}", exc_info=True)
-
-    async def _track_tool_milestone(self, tool_name: str) -> None:
-        """Track user tool usage milestone in MongoDB."""
 
 
-        # Check if this is the first time user has called this tool
-        existing = await db_manager.get_existing_tool_milestone(self.user_id, tool_name)
 
-        now = datetime.utcnow()
-
-        if not existing:
-            # First time using this tool - create milestone
-            milestone_doc = {
-                "user_id": ObjectId(self.user_id),
-                "tool_name": tool_name,
-                "first_called_at": now,
-                "last_called_at": now,
-                "call_count": 1,
-                "execution_ids": [self.execution_id]
-            }
-            await db_manager.insert_tool_milestone(milestone_doc)
-            logger.info(f"[MILESTONE] User {self.user_id} first time using tool: {tool_name}")
-        else:
-            # Update existing milestone
-            await db_manager.update_tool_milestone(self.user_id, tool_name,                {
-                    "$set": {"last_called_at": now},
-                    "$inc": {"call_count": 1},
-                    "$addToSet": {"execution_ids": self.execution_id}
-                })
-
-# --- 1. Define the Structured Output and State ---
-class FileLink(BaseModel):
-    url: str = Field(description="URL to the file.")
-    file_type: Optional[str] = Field(description="Type of the file, e.g., image, document, etc.", enum=["image", "document", "audio", "video","other_file"])
-    file_name: Optional[str] = Field(description=" name of the file, if available. if not, come up with a descriptive name based on the content of the file.")
-class AgentFinalResponse(BaseModel):
-    """The final structured response from the agent."""
-    response: str = Field(description="The final, user-facing response to be delivered.")
-    execution_notes: Optional[str] = Field(description="Internal notes about the execution, summarizing tool calls or errors.")
-
-    delivery_platform: str = Field(description="The channel for the response. Should be the same as the input source, unless otherwise specified.", enum=["email", "whatsapp", "websocket", "telegram",'imessage'])
-    output_modality: Optional[str] = Field(description="The modality of the output, e.g., text, image, file, etc. unless otherwise specified by user needs, this should be text", enum=["text", "voice", 'audio', "image", "video",'file'])
-    generation_instructions: Optional[str] = Field(description="Instructions for generating audio, video, or image if applicable.")
-    file_links: Optional[List[FileLink]] = Field(description="Links to any files generated or used in the response.")
-    class Config:
-        extra = "forbid"
-        arbitrary_types_allowed = True
-
-class AgentState(MessagesState):
-    user_context: UserContext
-    metadata: Optional[Dict[str, Any]]
-    final_response: Optional[AgentFinalResponse] # To hold the structured output
-    tool_iter_counter: int = 0  # Counter for tool iterations
-# --- 2. Define the Agent Runner Class ---
 class LangGraphAgentRunner:
     def __init__(self,trace_id: str, has_media: bool = False,override_user_id: Optional[str] = None):
         
@@ -179,535 +78,8 @@ class LangGraphAgentRunner:
             long_term_memory_context = "\n\nThe following relevant information is known about this user from their long-term memory:\n" + long_term_memory_context
         return long_term_memory_context
 
-    def _create_system_prompt(self, user_context: UserContext, source: str, metadata: Optional[Dict[str, Any]], tool_descriptions: str, plan: str) -> str:
-        """Replicates the system prompt construction from the original AgentRunner."""
-        user_record = user_context.user_record
-        user_record_for_context = "\n\nThe following information is known about this user of the assistant:"
-        if user_record:
-            if user_record.get("first_name"): user_record_for_context += f"\nFirst Name: {user_record.get('first_name')}"
-            if user_record.get("last_name"): user_record_for_context += f"\nLast Name: {user_record.get('last_name')}"
-            if user_record.get("email"): user_record_for_context += f"\nEmail: {user_record.get('email')}"
-            if user_record.get("phone_number"): user_record_for_context += f"\nPhone Number: {user_record.get('phone_number')}"
-        else:
-            user_record_for_context = ""
 
-
-        base_prompt = (
-            "You are a helpful AI assistant. Use the available tools to complete the user's request. "
-            "If it's not a request, but a general conversation, just respond to the user's message. "
-            "Do not mention tools if the user's final, most current request, does not require them. "
-            "If the user's request requires you to do an action in the future or in a recurring manner, or to set a trigger on an event, use the appropriate scheduling, recurring scheduled, or trigger setup tool. "
-            "do not confirm the scheduling with the user, just do it, unless the user specifically asks you to confirm it with them."
-            "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
-            "\n\n IMPORTANT - Long-running operations: For operations that take significant time (30+ seconds), such as browsing websites with AI, generating media, or complex research, you MUST:"
-            "\n1. FIRST use send_intermediate_message to notify the user you're starting the task (e.g., 'I'm browsing that website now, this will take about 30 seconds...')"
-            "\n2. THEN execute the long-running tool"
-            "\n3. The final response will be delivered automatically after completion"
-            "\nThis pattern applies to: browse_website_with_ai, and any future long-running tools."
-            "\n\nif the user requests generation of audio, video or image, you should simply set the appropriate flag on output_modality, and generation_instructions, and not use any tool to generate them. this will be handled after your response is processed, with systems that are capable of generating them. your response in the final_response field should always simply be to acknowledge the request and say you would be happy to help. you will then describe the media in detail in the appropriate field, using the generation_instructions field, as well as setting the output modality field to the appropriate value for what the user actually wants. do not actually tell the user you won't generate it yourself, that's overly complex and will confuse them. do not ask them for more info in your response either, as the generation will happen regardless."
-            "If the user requests a trigger setup, attempt to use the other tools at your disposal to enrich the information about the trigger's rules. however, only add info that you are certain about to the conditions of the trigger."
-            "IMPORTANT: YOU MUST ALWAYS USE APPROPRIATE TOOLS AND PERFORM THE REQUESTED TASK BEFORE OUTPUTTING TO THE USER. YOU MAY NOT SEND AN OUTPUT TO THE USER TELLING THEM YOU ARE PERFORMING A TASK WITHOUT ACTUALLY PERFORMING THE TASK."
-        )
-
-
-
-        praxos_prompt = """
-        this assistant service has been developed by Praxos AI. the user can register and manage their account at https://www.mypraxos.com.
-        the user can see the web application at https://app.mypraxos.com and can see their integrations at https://app.mypraxos.com/integrations. if the user is missing an integration they want, direct them there.
-        """
-        preferences = user_service.get_user_preferences(user_context.user_id) 
-        preferences = preferences if preferences else {}
-        timezone_name = preferences.get('timezone', 'America/New_York')
-        annotations = preferences.get('annotations', [])
-
-        if annotations:
-            logger.info(f"User has provided additional context and preferences: {annotations}")
-            praxos_prompt += f"\n\nThe user has provided the following additional context and preferences for you to consider in your responses: {'\n'.join(annotations)}\n"
-        nyc_tz = pytz.timezone(timezone_name)
-        current_time_nyc = datetime.now(nyc_tz).isoformat()
-        time_prompt = f"\nThe current time in the user's timezone is {current_time_nyc}. You should always assume the user is in the '{timezone_name}' timezone unless specified otherwise."
-        logger.info(time_prompt)
-        tool_output_prompt = (
-            "\nThe output format of most tools will be an object containing information, including the status of the tool execution. "
-            "If the execution is successful, the status will be 'success'. In cases where the tool execution is not successful, "
-            "there might be a property called 'user_message' which contains an error message. This message must be relayed to the user EXACTLY as it is. "
-            "Do not add any other text to the user's message in these cases. If the preferd language has been set up to something different than English, you must translate the 'user_message' message to prefered language in the unsuccessful cases."
-        )
-        side_effect_explanation_prompt = """ note that there is a difference between the final output delivery modality, and using tools to send a response. the tool usage for communication is to be used when the act of sending a communication is a side effect, and not the final output or goal. """
-        
-        
-        if source in ["scheduled", "recurring",'triggered']:
-            task_prompt = "\nIMPORTANT NOTE: this is the command part of a previously scheduled task. You should now complete the task. Do not ask the user when to perform it, this task was scheduled to be performed for this exact time.  Note that at this time, you should not use the scheduling tool again, as this is the scheduled execution. Instead, perform the task now. If the task is phrased as a reminder or a request for scheduling, assume that you are now supposed to perform the reminding act itself, NOT scheduling it for the future. The task may even mention a need for a reminder, but that is because the user previously asked for it. You must now do the reminding act itself, and not schedule it again. "
-            if source == "triggered":
-                task_prompt += "This task was triggered by an external event, and must be performed now. Pay close attention to the user's original instructions when the task was created. Pay close attention to any delivery instructions. if the user asked for it on whatsapp/imessage/telegram/email, you must comply. "
-            elif metadata and metadata.get("output_type"):
-                task_prompt += f" The output modality for the final response of this scheduled task was previously specified as '{metadata.get('output_type')}'. the original source was '{metadata.get('original_source')}'."
-            else:
-                task_prompt += " The output modality for the final response of this scheduled task was not specified, so you should choose the most appropriate one based on the user's preferences and context. this cannot be websocket in this case."
-        elif source == "websocket":
-            task_prompt = "\nIMPORTANT NOTE: this message was received on the 'websocket' channel. You must respond on the websocket channel. if they asked for sending an email or a message or similar, you must use the appropriate tools. Note that there is no way to send intermediate messages on websocket, so you should focus on performing the task."
-        else:
-            task_prompt = f"\n\nThis message was received on the '{source}' channel. \n\n"
-        logger.info(f"Task prompt: {task_prompt}")
-
-        
-        assistance_name = preferences.get('assistant_name', 'Praxos')
-        preferred_language = 'English'
-        try:
-            if preferences.get('preferred_language'):
-                if preferences.get('preferred_language') in LANGUAGE_MAP:
-                    preferred_language = LANGUAGE_MAP[preferences.get('preferred_language')]
-                else:
-                    preferred_language = preferences.get('preferred_language')
-        except Exception as e:
-            logger.error(f"Error determining preferred language: {e}", exc_info=True)
-            preferred_language = 'English'
-        personilization_prompt = (f"\nYou are personilized to the user. User wants to call you '{assistance_name}' to get assistance. You should respond to the user's request as if you are the assistant named '{assistance_name}'."
-         f"The prefered language to use is '{preferred_language}'. You must always respond in the prefered language, unless the user specifically asks you to respond in a different language. If the user uses a different language than the prefered one, you can respond in the language the user used. if the user asks you to use a different language, you must comply."
-         "Pay attention to pronouns and formality levels in the prefered language, pronoun rules, and other similar nuances. mirror the user's language style and formality level in your responses."
-        )
-        total_system_capabilities_prompt = """The system is capable of integrating with various third party services. these are, Notion, Dropbox, Gmail, Google Drive, Google Calendar, Outlook and Outlook Calendar, One Drive, WhatsApp, Telegram, iMessage, Trello. The given user, however, may have not integrated any, or only integrated a subset. the user may ask for tasks that require an integration you do not have. in such cases, use the integration tool to help them integrate the tool. Further, you have access to robust web tools, which you can use to browser, as well as good tools for google search and google lens.
-            
-            If the user explicitly asks for what you can do, tell them the following capabilities you have. 
-            Email management: I can find, summarize, respond to, or draft emails. Just ask me to "find emails about X" or "draft a reply to Y"
-
-            Answer questions from your data: Ask me things like "when's my flight?" or "what's the tracking number for my package?"
-
-            General knowledge: Ask me anything from "how tall is the Eiffel Tower?" to "what's the weather in Marion, Illinois?"
-
-            Set up automations: I can automatically forward emails, notify you about important messages, or handle repetitive tasks
-
-            Calendar management: Create, update, or delete events and get reminders
-
-            Research: I can look things up for you online, from restaurant recommendations to market research.
-
-            Draft emails in your voice: Need to write something? I'll draft it for you to review before sending
-
-            I can also chain any of the above together to accomplish more complex tasks.
-
-        """
-
-        system_prompt = base_prompt + praxos_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt + total_system_capabilities_prompt
-        if tool_descriptions:
-            system_prompt += f"\n\nThe following tools are available to you:\n{tool_descriptions}\nUse them in accordance with the user intent."
-        if plan:
-            system_prompt += f"\n\nThe following plan has been created for you:\n{plan}\n Use it to guide your actions, but do not feel bound by it. You can deviate from the plan if you think it's necessary."
-        return system_prompt
-    async def _build_payload_entry(self, file: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Create a single payload dict for a file entry."""
-        ftype = file.get("type")
-        mime_type = file.get("mime_type")
-        if not mime_type:
-            mime_type = file.get("mimetype")
-
-        blob_path = file.get("blob_path")
-        if not blob_path or not ftype:
-            return None
-
-        if ftype in {"image", "photo"}:
-            # Images are in CDN container - use public CDN URL instead of SAS URL
-            from src.utils.blob_utils import get_cdn_url
-            image_url = await get_cdn_url(blob_path, container_name="cdn-container")
-            return {"type": "image_url", "image_url": image_url}
-
-        # Download non-image files from default container
-        data_b64 = await download_from_blob_storage_and_encode_to_base64(blob_path)
-
-        if ftype in {"voice", "audio", "video"}:
-            return {"type": "media", "data": data_b64, "mime_type": mime_type}
-        if ftype in {"document", "file"}:
-            return {
-                "type": "file",
-                "source_type": "base64",
-                "mime_type": mime_type,
-                "data": data_b64,
-            }
-        return None
-
-
-    async def _build_payload_entry_from_inserted_id(self, inserted_id: str) -> Optional[Dict[str, Any]]:
-        file = await db_manager.get_document_by_id(inserted_id)
-        return await self._build_payload_entry(file) if file else None
-
-
-    # ---------------------------------------------------
-    # Generate user messages from list structure (grouped messages)
-    # ---------------------------------------------------
-    async def _generate_user_messages(
-        self,
-        input_messages: List[Dict],
-        messages: List[BaseMessage],
-        conversation_id: str = None,
-        base_message_prefix: str = "",
-        user_context: UserContext = None,
-    ) -> List[BaseMessage]:
-        """
-        Process grouped messages (list format) and add them to conversation history.
-        Each message gets proper metadata and forwarding context.
-        """
-        logger.info(f"Processing {len(input_messages)} grouped user messages")
-        
-        for i, message_entry in enumerate(input_messages):
-            # Extract content and metadata
-            text_content = message_entry.get("text", "")
-            files_content = message_entry.get("files", [])
-            metadata = message_entry.get("metadata", {})
-            
-            # Build message prefix with forwarding context
-            message_prefix = base_message_prefix
-            
-            if metadata.get("forwarded"):
-                message_prefix += " [FORWARDED MESSAGE] "
-                if forward_origin := metadata.get("forward_origin"):
-                    if forward_origin.get("original_sender_identifier"):
-                        message_prefix += f"originally from {forward_origin['original_sender_identifier']} "
-                    if forward_origin.get("forward_date"):
-                        message_prefix += f"(sent: {forward_origin['forward_date']}) "
-            
-            # Process this message as a complete unit (text + files together)
-            if text_content and files_content:
-                # Message with both text and files - process together
-                full_message = message_prefix + text_content
-                
-                # Add text to conversation DB first
-                await self.conversation_manager.add_user_message(
-                    user_context.user_id,
-                    conversation_id, 
-                    full_message, 
-                    metadata
-                )
-                
-                # Add text to LLM message history
-                messages.append(HumanMessage(content=full_message))
-                
-                # Then immediately add the files for this same message
-                messages = await self._generate_file_messages(
-                    files_content,
-                    messages,
-                    conversation_id=conversation_id,
-                    message_prefix=message_prefix,
-                    max_concurrency=8
-                )
-                logger.info(f"Added combined text+files message {i+1}/{len(input_messages)} to conversation")
-                
-            elif text_content:
-                # Text-only message
-                full_message = message_prefix + text_content
-                
-                await self.conversation_manager.add_user_message(
-                    user_context.user_id,
-                    conversation_id, 
-                    full_message, 
-                    metadata
-                )
-                
-                messages.append(HumanMessage(content=full_message))
-                logger.info(f"Added text-only message {i+1}/{len(input_messages)} to conversation")
-                
-            elif files_content:
-                # Files-only message
-                messages = await self._generate_file_messages(
-                    files_content,
-                    messages,
-                    conversation_id=conversation_id,
-                    message_prefix=message_prefix,
-                    max_concurrency=8
-                )
-                logger.info(f"Added files-only message {i+1}/{len(input_messages)} to conversation")
-            
-            # If neither text nor files, skip this message entry
-            else:
-                logger.warning(f"Message {i+1} has neither text nor files, skipping")
-        
-        return messages
-
-    async def _generate_user_messages_parallel(
-        self,
-        input_messages: List[Dict],
-        messages: List[BaseMessage],
-        conversation_id: str = None,
-        base_message_prefix: str = "",
-        user_context: UserContext = None,
-        max_concurrency: int = 8,
-    ) -> Tuple[List[BaseMessage], bool]:
-        """Parallel version of _generate_user_messages with better performance."""
-        logger.info(f"Processing {len(input_messages)} grouped messages with parallel file handling")
-        has_media = False
-        # Phase 1: Build structure and collect file tasks
-        message_structure = []
-        all_file_tasks = []
-        
-        for i, message_entry in enumerate(input_messages):
-            text_content = message_entry.get("text", "")
-            files_content = message_entry.get("files", [])
-            metadata = message_entry.get("metadata", {})
-            
-            # Build prefix with forwarding context
-            message_prefix = base_message_prefix
-            if metadata.get("forwarded"):
-                message_prefix += " [FORWARDED MESSAGE] "
-                if forward_origin := metadata.get("forward_origin"):
-                    if forward_origin.get("original_sender_identifier"):
-                        message_prefix += f"originally from {forward_origin['original_sender_identifier']} "
-                    if forward_origin.get("forward_date"):
-                        message_prefix += f"(sent: {forward_origin['forward_date']}) "
-            
-            structure_entry = {
-                "message_index": i,
-                "text_content": text_content,
-                "message_prefix": message_prefix,
-                "metadata": metadata,
-                "files_info": files_content,
-                "file_task_start_index": len(all_file_tasks),
-                "file_count": len(files_content)
-            }
-            
-            # Queue file tasks
-            for file_info in files_content:
-                all_file_tasks.append(self._build_payload_entry(file_info))
-            
-            message_structure.append(structure_entry)
-        
-        # Phase 2: Execute all file tasks in parallel
-        file_payloads = []
-        if all_file_tasks:
-            logger.info(f"Executing {len(all_file_tasks)} file tasks in parallel")
-            file_payloads = await _gather_bounded(all_file_tasks, limit=max_concurrency)
-        
-        # Phase 3: Reconstruct in order
-        for structure_entry in message_structure:
-            i = structure_entry["message_index"]
-            text_content = structure_entry["text_content"]
-            message_prefix = structure_entry["message_prefix"]
-            metadata = structure_entry["metadata"]
-            files_info = structure_entry["files_info"]
-            file_start = structure_entry["file_task_start_index"]
-            file_count = structure_entry["file_count"]
-            
-            # Add text message
-            if text_content:
-                full_message = message_prefix + text_content
-                await self.conversation_manager.add_user_message(user_context.user_id, conversation_id, full_message, metadata)
-                messages.append(HumanMessage(content=full_message))
-                logger.info(f"Added text for message {i+1}/{len(input_messages)}")
-            
-            # Add file messages
-            if file_count > 0:
-                has_media = True
-                message_payloads = file_payloads[file_start:file_start + file_count]
-                for file_info, payload in zip(files_info, message_payloads):
-                    if isinstance(payload, Exception) or payload is None:
-                        continue
-                    
-                    # Add to conversation DB
-                    ftype = file_info.get("type")
-                    caption = file_info.get("caption", "")
-                    inserted_id = file_info.get("inserted_id")
-                    
-                    if inserted_id and conversation_id:
-                        await self.conversation_manager.add_user_media_message(
-                            user_context.user_id,
-                            conversation_id, message_prefix, inserted_id,
-                            message_type=ftype,
-                            metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
-                        )
-                        if ftype in {'image', 'photo'}:
-                            logger.info(f"adding the link to the conversation as a text message too, for image/photo types")
-                            caption += " [Image Attached], the link to the image is: " + payload.get("image_url", "")
-                        if caption:
-                            await self.conversation_manager.add_user_message(
-                                user_context.user_id,
-                                conversation_id,
-                                message_prefix + " as caption for media in the previous message: " + caption,
-                                metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
-                            )
-
-
-                    
-                    # Add to LLM message history
-                    logger.info(f"caption is {caption}")
-                    content = ([{"type": "text", "text": caption}] if caption else []) + [payload]
-                    messages.append(HumanMessage(content=content))
-                
-                logger.info(f"Added {file_count} files for message {i+1}/{len(input_messages)}")
-        
-        return messages, has_media
-
-    # ---------------------------------------------------
-    # Generate file messages (parallel, order preserved)
-    # ---------------------------------------------------
-    async def _generate_file_messages(
-        self,
-        input_files: List[Dict],
-        messages: List[BaseMessage],
-        model: str = None,           # kept for compatibility; unused
-        conversation_id: str = None,
-        message_prefix: str = "",
-        max_concurrency: int = 8,
-        user_id: str = None,
-    ) -> List[BaseMessage]:
-        logger.info(f"Generating file messages; current messages length: {len(messages)}")
-
-        # Build captions list and payload tasks in the same order as input_files
-        captions: List[Optional[str]] = [f.get("caption",'') for f in input_files]
-        file_types: List[Optional[str]] = [f.get("type") for f in input_files]
-        inserted_ids: List[Optional[str]] = [f.get("inserted_id") for f in input_files]
-
-        payload_tasks = [self._build_payload_entry(f) for f in input_files]
-        payloads = await _gather_bounded(payload_tasks, limit=max_concurrency)
-
-        # Assemble messages & persist conversation log in order
-        for idx, (ftype, cap, payload, ins_id) in enumerate(zip(file_types, captions, payloads, inserted_ids)):
-            if isinstance(payload, Exception) or payload is None:
-                logger.warning(f"Skipping file at index {idx} due to payload error/None")
-                continue
-
-            # Persist to conversation log first, in-order
-            if ins_id and conversation_id:
-                await self.conversation_manager.add_user_media_message(
-                    user_id,
-                    conversation_id,
-                    message_prefix,
-                    ins_id,
-                    message_type=ftype,
-                    metadata={"inserted_id": ins_id, "timestamp": datetime.utcnow().isoformat()},
-                )
-                if ftype in {'image', 'photo'}:
-                    logger.info(f"adding the link to the conversation as a text message too, for image/photo types")
-                    cap += " [Image Attached], the link to the image is: " + payload.get("image_url", "")
-                if cap:
-                    await self.conversation_manager.add_user_message(
-                        user_id,
-                        conversation_id,
-                        message_prefix + " as caption for media in the previous message: " + cap,
-                        metadata={"inserted_id": ins_id, "timestamp": datetime.utcnow().isoformat()},
-                    )
-
-        
-            # Build LLM-facing message (caption first, then payload), in-order
-            content = ([{"type": "text", "text": cap}] if cap else []) + [payload]
-            messages.append(HumanMessage(content=content))
-            logger.info(f"Added '{ftype}' message; messages length now {len(messages)}")
-
-        return messages
-
-    async def process_media_output(self,final_response:AgentFinalResponse, user_context: UserContext, source: str, conversation_id: str) -> AgentFinalResponse:
-        try:
-            output_blobs = []
-            if final_response.output_modality and final_response.output_modality != "text":
-                logger.info(f"Non-text output modality '{final_response.output_modality}' detected; invoking output generator")
-                generation_instructions = final_response.generation_instructions or f"Generate a {final_response.output_modality} based on the following text: {final_response.response}"
-                output_generator = OutputGenerator()
-                prefix = f"{user_context.user_id}/{source}/{conversation_id}/"
-                if final_response.output_modality == "image":
-                    try:
-                        image_blob_url, image_file_name = await output_generator.generate_image(generation_instructions, prefix)
-                        if image_blob_url:
-                            output_blobs.append({"url": image_blob_url, "file_type": "image", "file_name": image_file_name})
-                            await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we generated an image for the user. this image was described as follows: " + generation_instructions)
-                    except Exception as e:
-                        logger.info(f"Error generating image output: {e}", exc_info=True)
-                        await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we failed to generate an image for the user. there was an error: " + str(e) + " the image was described as follows: " + generation_instructions)
-                if final_response.output_modality in {"audio", "voice"}:
-                    is_imessage = final_response.delivery_platform == "imessage"
-                    logger.info(f"Generating audio with is_imessage={is_imessage}")
-                    try:
-                        audio_blob_url, audio_file_name = await output_generator.generate_speech(generation_instructions, prefix, is_imessage)
-                        if audio_blob_url:
-                            output_blobs.append({"url": audio_blob_url, "file_type": "audio", "file_name": audio_file_name})
-                            await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we generated audio for the user. this audio was described as follows: " + generation_instructions)
-                    except Exception as e:
-                        logger.info(f"Error generating audio output: {e}", exc_info=True)
-                        await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we failed to generate audio for the user. there was an error: " + str(e) + " the audio was described as follows: " + generation_instructions)
-
-                if final_response.output_modality == "video":
-                    try:
-                        video_blob_url, video_file_name = await output_generator.generate_video(generation_instructions, prefix)
-                        if video_blob_url:
-                            output_blobs.append({"url": video_blob_url, "file_type": "video", "file_name": video_file_name})
-                            await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we generated a video for the user. this video was described as follows: " + generation_instructions)
-                    except Exception as e:
-                        logger.info(f"Error generating video output: {e}", exc_info=True)
-                        await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we failed to generate a video for the user. there was an error: " + str(e) + " the video was described as follows: " + generation_instructions)
-        except Exception as e:
-            logger.error(f"Error during output generation: {e}", exc_info=True)
-            # Append error message to final response
-            final_response.response += "\n\n(Note: There was an error generating the requested media output. Please try again later.)"
-            # Downgrade to text-only response
-            final_response.output_modality = "text"
-            final_response.generation_instructions = None
-        if not final_response.file_links:
-            final_response.file_links = []
-        final_response.file_links.extend(output_blobs)
-        return final_response
-    async def _get_conversation_history(
-        self,
-        conversation_id: str,
-        max_concurrency: int = 8,
-    ) -> List[BaseMessage]:
-        """Fetches and formats the conversation history with concurrent media fetches."""
-        context = await self.conversation_manager.get_conversation_context(conversation_id)
-        raw_msgs: List[Dict[str, Any]] = context.get("messages", [])
-        n = len(raw_msgs)
-        has_media = False
-        history_slots: List[Optional[BaseMessage]] = [None] * n
-        fetch_tasks: List[Any] = []
-        task_meta: List[Tuple[int, str]] = []  # (index, role)
-        cache: Dict[str, Any] = {}  # inserted_id -> task to dedupe identical media
-
-        media_types = {"voice", "audio", "video", "image", "document", "file"}
-
-        for i, msg in enumerate(raw_msgs):
-            msg_type = msg.get("message_type")
-            role = msg.get("role")
-            metadata = msg.get("metadata", {})
-
-            if msg_type == "text":
-                content = msg.get("content", "")
-                # Check if this is a tool result message
-                if role == "assistant" and metadata.get("message_type") == "tool_result":
-                    tool_name = metadata.get("tool_name", "unknown_tool")
-                    # Reconstruct as ToolMessage
-                    history_slots[i] = ToolMessage(content=content, name=tool_name, tool_call_id=metadata.get("tool_call_id", ""))
-                elif role == "user":
-                    history_slots[i] = HumanMessage(content=content)
-                else:
-                    # Regular assistant message (may have tool_calls metadata)
-                    history_slots[i] = AIMessage(content=content)
-                continue
-
-            if msg_type in media_types:
-                has_media = True
-                inserted_id = (msg.get("metadata") or {}).get("inserted_id")
-                if not inserted_id:
-                    logger.warning(f"Media message missing inserted_id at index {i}")
-                    continue
-
-                # De-duplicate downloads for the same inserted_id
-                task = cache.get(inserted_id)
-                if task is None:
-                    task = self._build_payload_entry_from_inserted_id(inserted_id)
-                    cache[inserted_id] = task
-
-                fetch_tasks.append(task)
-                task_meta.append((i, role))
-                continue
-
-            logger.warning(f"Unknown message_type '{msg_type}' at index {i}")
-
-        # Run all media fetches concurrently, keeping order by input task list
-        results = await _gather_bounded(fetch_tasks, limit=max_concurrency)
-
-        # Place media messages back into the original positions
-        for (i, role), payload in zip(task_meta, results):
-            if isinstance(payload, Exception) or payload is None:
-                logger.warning(f"Failed to build payload for message at index {i}")
-                continue
-            msg_obj = HumanMessage(content=[payload]) if role == "user" else AIMessage(content=[payload])
-            history_slots[i] = msg_obj
-
-        # Return in original order, skipping any None (e.g., malformed entries)
-        return [m for m in history_slots if m is not None],has_media
+    
     async def run(self, user_context: UserContext, input: Dict, source: str, metadata: Optional[Dict] = None) -> AgentFinalResponse:
         execution_id = str(uuid.uuid4())
         start_time = datetime.utcnow()
@@ -742,12 +114,12 @@ class LangGraphAgentRunner:
             conversation_id = metadata.get("conversation_id") or await self.conversation_manager.get_or_create_conversation(user_context.user_id, source, input)
             metadata['conversation_id'] = conversation_id
             # Get conversation history first (before adding new messages)
-            history, has_media = await self._get_conversation_history(conversation_id)
+            history, has_media = await get_conversation_history(conversation_manager=self.conversation_manager, conversation_id=conversation_id)
 
             
 
 
-            ### TODO: use user timezone from preferences object.        
+                  
             user_preferences = user_service.get_user_preferences(user_context.user_id)    
             timezone_name = user_preferences.get('timezone', 'America/New_York') if user_preferences else 'America/New_York'
             user_tz = pytz.timezone(timezone_name)
@@ -756,9 +128,10 @@ class LangGraphAgentRunner:
             if isinstance(input, list):
                 # Grouped messages - use the parallel method
                 base_message_prefix = f'message sent on date {current_time_user} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
-                history, has_media = await self._generate_user_messages_parallel(
-                    input, 
-                    history, 
+                history, has_media = await generate_user_messages_parallel(
+                    conversation_manager=self.conversation_manager, 
+                    input_messages=input,
+                    messages=history, 
                     conversation_id=conversation_id,
                     base_message_prefix=base_message_prefix,
                     user_context=user_context
@@ -767,14 +140,19 @@ class LangGraphAgentRunner:
                 # Single message - existing logic
                 message_prefix = f'message sent on date {current_time_user} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
                 if input_text:
+                    ### filter out flags, empty text, etc.
+                    input_text = input_text.replace('/START_NEW','').replace('/start_new','').strip()
+                    if not input_text:
+                        input_text = "The user sent a message with no text. if there are also no files, indicate that the user sent an empty message."
                     await self.conversation_manager.add_user_message(user_context.user_id, conversation_id, message_prefix + input_text, metadata)
                     history.append(HumanMessage(content=message_prefix + input_text))
                 
                 # Handle files for single message
                 if input_files:
-                    history = await self._generate_file_messages(
-                        input_files, 
-                        history, 
+                    history = await generate_file_messages(
+                        conversation_manager=self.conversation_manager,
+                        input_files=input_files, 
+                        messages=history, 
                         conversation_id=conversation_id,
                         message_prefix=message_prefix
                     )
@@ -794,31 +172,13 @@ class LangGraphAgentRunner:
             # Use granular planning to determine exact tools needed
             plan = None
             required_tool_ids = None
+            plan_str = ''
             try:
-                planning = await ai_service.granular_planning(history)
-                logger.info(f"Granular planning result: query_type={planning.query_type}, tooling_need={planning.tooling_need}")
-                logger.info(f"Required tools: {[tool.value for tool in planning.required_tools]}")
-
-                if planning:
-                    # Extract required tool IDs from enum to string list
-                    required_tool_ids = [tool.value for tool in planning.required_tools] if planning.required_tools else []
-                    logger.info('required tool ids are: ' + str(required_tool_ids))
-                    # Build plan string if plan/steps are provided
-                    plan_str = ""
-                    if planning.plan:
-                        plan_str += f"the plan is as follows: {planning.plan}. \n"
-                    if planning.steps:
-                        plan_str += f"the steps are as follows: {'\n'.join(planning.steps)}. "
-                    if plan_str:
-                        plan_str = """the following initial plan has been suggested by the system. take the plan into account when generating the response, but do not feel bound by it. you can deviate from the plan if you think it's necessary.
-                         In either case, make sure to use the appropriate tools that are provided to you for performing this task. Do not respond that you are doing a task, without actually doing it. instead, do the task, then send the user indication that you have done it, with any necessary result data.  \n\n""" + plan_str
-                        plan = planning
-                        logger.info(f"Added planning context to history: {plan_str}")
+                plan, required_tool_ids, plan_str = await ai_service.granular_planning(history)
             except Exception as e:
                 logger.error(f"Error during granular planning call: {e}", exc_info=True)
                 required_tool_ids = None  # Fallback to loading all tools
 
-            # Create tools based on granular planning results
             tools = await self.tools_factory.create_tools(
                 user_context,
                 metadata,
@@ -839,23 +199,10 @@ class LangGraphAgentRunner:
                 except Exception as e:
                     logger.error(f"Error getting description for tool: {e}, for tool {str(tool)}", exc_info=True)
                     continue
-            system_prompt = self._create_system_prompt(user_context, source, metadata, tool_descriptions, plan)
-            ### this creates unnecessary overhead and latency, so we'll disable it for now.
-            # from src.config.settings import settings
-            # if settings.OPERATING_MODE == "local":
-            #     praxos_api_key = settings.PRAXOS_API_KEY
-            # else:
-            #     praxos_api_key = user_context.user_record.get("praxos_api_key")
+            system_prompt = create_system_prompt(user_context, source, metadata, tool_descriptions, plan)
 
-            # try:
-            #     if input_text and len(input_text) > 5 and praxos_api_key:
-            #         praxos_client = PraxosClient(f"env_for_{user_context.user_record.get('email')}", api_key=praxos_api_key)
-            #         ### @TODO: this needs a more intelligent approach. for example, if the input is just "hi" or "hello", we don't need to fetch long term memory.
-            #         # long_term_memory_context = await self._get_long_term_memory(praxos_client, input_text)
-            #         # if long_term_memory_context:
-            #         #     system_prompt += long_term_memory_context
-            # except Exception as e:
-            #     logger.error(f"Error fetching long-term memory: {e}", exc_info=True)
+            MAX_TOOL_ITERS = 3
+            MAX_DATA_ITERS = 2  # guard against loops in obtain_data
 
 
             # --- Graph Definition ---
@@ -863,77 +210,144 @@ class LangGraphAgentRunner:
                 messages = state['messages']
                 response = await llm_with_tools.ainvoke([("system", system_prompt)] + messages)
                 return {"messages": state['messages'] + [response]}
-            
-            def should_continue(state: AgentState):
-                
+            ### /// for a true good should continue graph, we should have much more extensive error handling.
+            def should_continue_router(state: AgentState) -> Command[Literal["obtain_data","action","finalize"]]:
+                """
+                Router that can jump to obtain_data (missing params), action (tool execution), or finalize.
+                It also mutates state via Command.update to avoid conditional-edge state-loss.
+                """
                 try:
                     new_state = state['messages'][len(initial_state['messages']):]
-                    # logger.info(f"New messages since last model call: {new_state}")
+                    last_message = state['messages'][-1] if state['messages'] else None
+                    try:
+                        if last_message and isinstance(last_message, ToolMessage):
+                            if  isinstance(last_message.content,ToolExecutionResponse):
+                                if last_message.content.status == "error" and state.get("tool_iter_counter", 0) < MAX_TOOL_ITERS:
+                                    next_count = state.get("tool_iter_counter", 0) + 1
+                                    appended = AIMessage(
+                                        content="The last tool execution resulted in an error. I will retry, trying to analyze what failed and adjusting my approach. "
+                                    )
+                                    return Command(
+                                        goto="action",
+                                        update={"messages": state["messages"] + [appended], "tool_iter_counter": next_count},
+                                    )
+                    except Exception as e:
+                        logger.error(f"Error checking last message type: {e}", exc_info=True)
+                        #
+                    # 1) Missing-params path → obtain_data (only if not already probed too many times)
+                    if not minimal_tools and 'ask_user_for_missing_params' in required_tool_ids:
+                        if state.get("param_probe_done", False):
+                            ### now we finalize. 
+                            logger.info("Param probe already done; proceeding to finalize.")
+                            return Command(goto="finalize")
+                        if state.get("data_iter_counter", 0) >= MAX_DATA_ITERS:
+                            logger.info("Missing-param probe reached cap; finalizing.")
+                            return Command(goto="finalize")
+                        if not state.get("param_probe_done", False):
+                            logger.info("Missing params required; routing to obtain_data node.")
+                            return Command(goto="obtain_data")
+
+                    # 2) Tools required but none called yet → push toward action
                     if not minimal_tools:
-                        logger.info('required_tool_ids are: ' + str(required_tool_ids))
-                        if 'ask_user_for_missing_params' in required_tool_ids:
-                            logger.info("ask_user_for_missing_params is in required tools; forcing end of execution.")
-                            return "end"
-                        ### if no tool has been called yet, we should continue.
-                        tool_called = False
-                        for msg in new_state:
-                            if isinstance(msg, AIMessage) and msg.tool_calls:
-                                tool_called = True
-                                break 
+                        tool_called = any(isinstance(m, AIMessage) and getattr(m, "tool_calls", None) for m in new_state)
                         if not tool_called:
-                            logger.info("No tools have been called yet; which is required in this situation. continuing to tool execution.")
-                            state['messages'].append(AIMessage(content=f"I need to use a tool to proceed. Let me consult the plan and use the appropriate tool. the original plan was: \n \n {plan_str}"))
-                            state['tool_iter_counter'] += 1
-                            if state['tool_iter_counter'] > 3:
-                                logger.info("Too many iterations without tool usage; forcing final response.")
-                                return "end"
-                            return "continue"
+                            next_count = state.get("tool_iter_counter", 0) + 1
+                            appended = AIMessage(
+                                content=(
+                                    "I need to use a tool to proceed. Let me consult the plan and use the appropriate tool. "
+                                    f"The original plan was:\n\n{plan_str}"
+                                )
+                            )
+                            if next_count > MAX_TOOL_ITERS:
+                                logger.info("Too many iterations without tool usage; finalizing.")
+                                return Command(
+                                    goto="finalize",
+                                    update={"messages": state["messages"] + [appended], "tool_iter_counter": next_count},
+                                )
+                            return Command(
+                                goto="action",
+                                update={"messages": state["messages"] + [appended], "tool_iter_counter": next_count},
+                            )
                 except Exception as e:
-                    logger.error(f"Error in should_continue evaluation: {e}", exc_info=True)
-                    pass
+                    logger.error(f"Error in router evaluation: {e}", exc_info=True)
+                    # fall through
+
+                # 3) Default: if last AI message has tool_calls → action; else → finalize
                 try:
-                    last_message = state['messages'][-1]
-                    if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
-                        logger.info("No tool calls in the last message; proceeding to final response generation.")
-                        return "end"
-                    else:
-                        return "continue"
+                    last_message = state['messages'][-1] if state['messages'] else None
+                    if not isinstance(last_message, AIMessage) or not getattr(last_message, "tool_calls", None):
+                        logger.info("No tool calls in the last message; proceeding to finalize.")
+                        return Command(goto="finalize")
+                    return Command(goto="action")
                 except Exception as e:
-                    logger.error(f"Error in should_continue evaluation: {e}", exc_info=True)
-                    return "end"
+                    logger.error(f"Error in router default evaluation: {e}", exc_info=True)
+                    return Command(goto="finalize")
+
+            async def obtain_data(state: AgentState) -> Command[Literal["action","finalize"]]:
+                """
+                Single-purpose node to solicit missing params without creating loops.
+                It appends a clear instruction for the next tool node and marks the probe as done.
+                """
+                
+                current = state.get("data_iter_counter", 0) + 1
+                if current > MAX_DATA_ITERS:
+                    logger.info("obtain_data cap reached; finalizing.")
+                    return Command(goto="finalize")
+
+                msg = AIMessage(
+                    content=(
+                        "We are missing required parameters. Call the `ask_user_for_missing_params` tool now to craft a single, "
+                        "concise question to the user that gathers ONLY the missing fields. After receiving the user's answer, "
+                        "continue with the main plan."
+                    )
+                )
+                logger.info(f"Routing to action with obtain_data instruction (iteration {current}).")
+                return Command(
+                    goto="action",
+                    update={
+                        "messages": state["messages"] + [msg],
+                        "data_iter_counter": current,
+                        "param_probe_done": True,   # prevent immediate re-entry from router
+                    },
+                )
             async def generate_final_response(state: AgentState):
-                final_message = state['messages'][-1].content
+                final_message = state['messages'][-2:] # Last message should be AI's final response
+                logger.info(f"final_message {str(state['messages'][-1])}")
                 source_to_use = source
-                logger.info(f"Final agent message before formatting: {final_message}")
+                logger.info(f"Final agent message before formatting: {str(final_message)}")
                 logger.info(f"Source channel: {source}, metadata: {state['metadata']}")
                 if source in ['scheduled','recurring'] and state.get('metadata') and state['metadata'].get('output_type'):
                     source_to_use = state['metadata']['output_type']
                 prompt = (
-                    f"Given the final response from an agent: '{final_message}', "
+                    f"the system prompt given to the agent was: '''{system_prompt}'''\n\n"
+                    f"Given the following final response from an agent: '{json.dumps(final_message,indent=3,default=str)} \n\n', "
                     f"and knowing the initial request came from the '{source_to_use}' channel, "
                     "format this into the required JSON structure. The delivery_platform must match the source channel, unless the user indicates or implies otherwise, or the command requires a different channel. Note that a scheduled/recurring/triggered command cannot have websocket as the delivery platform. If the user has specifically asked for a different delivery platform, you must comply. for example, if the user has sent an email, but requests a response on imessage, comply. Explain the choice of delivery platform in the execution_notes field, acknowledging if the user requested a particular platform or not. "
                     "IF the source channel is 'websocket', you must always respond on websocket. assume that any actions that required different platforms, such as sending an email, have already been handled. "
                     f"the user's original message in this case was {input_text}. pay attention to whether it contains a particular request for delivery platform. "
+                    " do not mention explicit tool ids in your final response. instead, focus on what the user wants to do, and how we can help them."
                     "If the response requires generating audio, video, or image, set the output_modality and generation_instructions fields accordingly.  the response should simply acknowledge the request to generate the media, and not attempt to generate it yourself. this is not a task for you. simply trust in the systems that will handle it after you. "
                 )
                 response = await self.structured_llm.ainvoke(prompt)
                 return {"final_response": response}
 
+
+            
             workflow = StateGraph(AgentState)
             workflow.add_node("agent", call_model)
+            workflow.add_node("router", should_continue_router)
+            workflow.add_node("obtain_data", obtain_data)   # NEW
             workflow.add_node("action", tool_executor)
             workflow.add_node("finalize", generate_final_response)
-            
+
             workflow.set_entry_point("agent")
-            
-            workflow.add_conditional_edges(
-                "agent",
-                should_continue,
-                {"continue": "action", "end": "finalize"}
-            )
-            workflow.add_edge('action', 'agent')
-            workflow.add_edge('finalize', END)
-            
+            workflow.add_edge("agent", "router")
+            workflow.add_edge("obtain_data", "action")  # obtain_data always drives a single tool turn
+            workflow.add_edge("action", "agent")
+            workflow.add_edge("finalize", END)
+
+
+                        
             app = workflow.compile()
 
             initial_state: AgentState = {
@@ -955,7 +369,8 @@ class LangGraphAgentRunner:
                 initial_state,
                 {
                     "recursion_limit": 100,
-                    "callbacks": [tool_monitor]
+                    "callbacks": [tool_monitor],
+                    "tool_iter_counter": 0
                 }
             )
 
@@ -980,7 +395,7 @@ class LangGraphAgentRunner:
                         )
                     elif isinstance(msg, ToolMessage):
                         # Persist tool results
-                        content = str(msg.content)[:1000]  # Truncate long results
+                        content = str(msg.content)
                         await self.conversation_manager.add_assistant_message(
                             user_context.user_id,
                             conversation_id,
@@ -997,7 +412,7 @@ class LangGraphAgentRunner:
             output_blobs = []
             await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, final_response.response)
             logger.info(f"Final response generated for execution {execution_id}: {final_response.model_dump_json(indent=2)}")
-            final_response = await self.process_media_output(final_response, user_context, source, conversation_id)
+            final_response = await process_media_output(conversation_manager=self.conversation_manager, final_response=final_response, user_context=user_context, source=source, conversation_id=conversation_id)
             execution_record["status"] = "completed"
             try:
                 messages_dictified = [msg.dict() for msg in final_state['messages']]

@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Dict, Any, List
-from src.services.user_service import user_service
-from src.services.integration_service import integration_service
+
 
 @dataclass
 class UserContext:
@@ -17,6 +16,8 @@ async def create_user_context(user_id: str) -> UserContext:
     This is a critical step that gathers all necessary user data, credentials,
     and authenticated API clients before an agent execution begins.
     """
+    from src.services.user_service import user_service
+    from src.services.integration_service import integration_service
     user_record = user_service.get_user_by_id(user_id) # Assuming phone number is the user_id for now
     if not user_record:
         return None

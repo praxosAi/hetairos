@@ -1,3 +1,5 @@
+
+### NOTE: WE ARE NOT USING THIS IN THIS FORM, INSTEAD USING A CACHED TOOL. THIS IMPROVES LATENCY. NOTE THAT EDITTING THIS DOES EXACTLY NOTHING, but you may cache it for yourself and change the cache name in the adjacent caches.py file. 
 """
 Granular tooling capabilities with specific function IDs and descriptions.
 Used by the granular planning agent to select precise tools needed for each task.

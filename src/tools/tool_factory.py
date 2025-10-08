@@ -97,8 +97,8 @@ class AgentToolsFactory:
             except Exception as e:
                 logger.error(f"Error creating scheduling tools: {e}", exc_info=True)
 
-        # Basic tools
-        if needs_category(['get_current_time', 'get_current_task_plan_and_step']):
+        # Basic tools, always include
+        if True:
             try:
                 tools.extend(create_basic_tools(user_time_zone))
             except Exception as e:
@@ -228,7 +228,7 @@ class AgentToolsFactory:
             idx, gcal_integration = integration_map['gcal']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_calendar_tools(gcal_integration))
+                    tools.extend(create_calendar_tools(gcal_integration,user_time_zone))
                     have_calendar_tool = True
                     logger.info("Google Calendar tools loaded")
                 except Exception as e:

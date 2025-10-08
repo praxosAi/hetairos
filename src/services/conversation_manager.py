@@ -2,7 +2,9 @@
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional,Union
 from src.utils.database import *
+from src.utils.logging.base_logger import setup_logger
 from src.services.integration_service import IntegrationService
+logger = setup_logger(__name__)
 class ConversationManager:
     """Manages conversation lifecycle, context, and search attempts"""
     
@@ -13,16 +15,16 @@ class ConversationManager:
     ### TODO: This should be smarter. just randomly finding and consolidating conversations is not the best idea. it should be using praxos memory to find relevant conversations, me thinks.
     async def get_or_create_conversation(self, user_id: str, platform: str,payload) -> str:
         """Get existing active conversation or create new one"""
-        
+        logger.info(f"Getting or creating conversation for user {user_id} on platform {platform}")
         conversation_id = await self.db.get_active_conversation(user_id)
         conversation_info = await self.db.get_conversation_info(conversation_id)
-        
+        logger.info(f"Existing conversation info: {conversation_info}")
         if conversation_id:
             if await self.is_conversation_active(conversation_id,payload) and conversation_info.get('platform') == platform:
                 return conversation_id
             else:
                 await self.db.mark_conversation_for_consolidation(conversation_id)
-        
+                return await self.db.create_conversation(user_id, platform)
         return await self.db.create_conversation(user_id, platform)
 
     async def is_conversation_active(self, conversation_id: str, payload: dict = None) -> bool:
@@ -69,7 +71,7 @@ class ConversationManager:
             'search_history': search_history,
             'available_sources': available_sources,
             'message_count': len(messages),
-            'is_active': await self.is_conversation_active(conversation_id)
+            
         }
         
         return context

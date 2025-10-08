@@ -9,9 +9,8 @@ from src.utils.logging import setup_logger
 from src.utils.file_msg_utils import build_payload_entry_from_inserted_id
 from langchain.chat_models import init_chat_model
 from src.services.ai_service.ai_service_models import *
-from src.services.ai_service.prompts.tooling_capabilities import TOOLING_CAPABILITIES_PROMPT
-from src.services.ai_service.prompts.granular_tooling_capabilities import GRANULAR_TOOLING_CAPABILITIES
 from src.services.ai_service.prompts.caches import update_cache_ttl, PLANNING_CACHE_NAME
+from typing import Tuple
 import asyncio
 logger = setup_logger(__name__)
 class AIService:
@@ -52,7 +51,7 @@ class AIService:
 
 
 
-    async def granular_planning(self, context: list[BaseMessage]) -> GranularPlanningResponse:
+    async def granular_planning(self, context: list[BaseMessage]) -> Tuple[GranularPlanningResponse, Optional[list[str]], Optional[str]]:
         planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0, cached_content=PLANNING_CACHE_NAME)
 
         """
@@ -79,15 +78,34 @@ class AIService:
         ## now, we must cast it
         for tool in response_raw.tool_calls:
             if tool['name'] == 'Create_Granular_Planning_Response':
-                response = GranularPlanningResponse(**tool['args'])
+                planning = GranularPlanningResponse(**tool['args'])
                 break
-        logger.info(f"Granular planning response: {response}")
-        logger.info(f"Required tools: {[tool.value for tool in response.required_tools]}")
+        logger.info(f"Granular planning response: {planning}")
+        logger.info(f"Required tools: {[tool.value for tool in planning.required_tools]}")
+        ### this is fire and forget, we don't want to await it
         try:
             asyncio.create_task(update_cache_ttl())
         except Exception as e:
             logger.error(f"Error updating cache TTL: {e}")
-        return response
+        plan = None
+        required_tool_ids = None
+
+        if planning:
+            # Extract required tool IDs from enum to string list
+            required_tool_ids = [tool.value for tool in planning.required_tools] if planning.required_tools else []
+            logger.info('required tool ids are: ' + str(required_tool_ids))
+            # Build plan string if plan/steps are provided
+            plan_str = ""
+            if planning.plan:
+                plan_str += f"the plan is as follows: {planning.plan}. \n"
+            if planning.steps:
+                plan_str += f"the steps are as follows: {'\n'.join(planning.steps)}. "
+            if plan_str:
+                plan_str = """the following initial plan has been suggested by the system. take the plan into account when generating the response, but do not feel bound by it. you can deviate from the plan if you think it's necessary.
+                    In either case, make sure to use the appropriate tools that are provided to you for performing this task. Do not respond that you are doing a task, without actually doing it. instead, do the task, then send the user indication that you have done it, with any necessary result data.  \n\n""" + plan_str
+                plan = planning
+                logger.info(f"Added planning context to history: {plan_str}")
+        return plan, required_tool_ids, plan_str
 
     async def multi_modal_by_doc_id(self, prompt: str, doc_id: str):
         logger.info(f"Fetching payload for doc_id: {doc_id}")

@@ -6,7 +6,7 @@ from typing import Dict, Tuple, Optional
 from src.config.settings import settings
 from src.utils.logging import setup_logger
 from src.utils.blob_utils import get_blob_sas_url
-
+import json
 
 
 class IMessageClient:
@@ -52,7 +52,17 @@ class IMessageClient:
             'media_url': 'https://mypraxospublic.blob.core.windows.net/static/praxos.vcf'
         }
         return await self._make_request("POST", f"{self.base_url}/send-message", payload)
-    async def send_media(self, to_number: str, file_obj: str):
+    async def send_media(self, to_number: str, file_obj):
+        if not isinstance(file_obj, dict):
+            if isinstance(file_obj, str):
+                file_obj = json.loads(file_obj)
+            else:
+                try:
+                    file_obj = file_obj.dict()
+                except:
+                    self.logger.error(f"Invalid media_obj format: {file_obj}")
+                    return None
+
         """Send media message via Sendblue iMessage API"""
         url = file_obj.get("url")
         cdn_url = await self.upload_media(url)

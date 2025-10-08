@@ -1,141 +1,170 @@
+import asyncio
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Any
 from io import BytesIO
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
+from typing import Any, Dict, List, Optional, Tuple
+
 import requests
-from src.utils.logging.base_logger import setup_logger
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 from src.integrations.base_integration import BaseIntegration
 from src.services.integration_service import integration_service
+from src.utils.logging.base_logger import setup_logger
 
 logger = setup_logger('gdrive_client')
 
 class GoogleDriveIntegration(BaseIntegration):
 
-    
     def __init__(self, user_id: str):
         super().__init__(user_id)
-        self.service = None
-        self.credentials = None
-        self.user_info = None
+        # Manages multiple service instances, one per connected account
+        self.services: Dict[str, Any] = {}
+        self.credentials: Dict[str, Any] = {}
+        self.connected_accounts: List[str] = []
 
     async def authenticate(self) -> bool:
-        """Authenticate with Google Drive API using user-specific tokens."""
-        try:
-            self.credentials = await integration_service.create_google_credentials(self.user_id, 'google_drive')
-            if not self.credentials:
-                logger.error(f"Failed to create Google Drive credentials for user {self.user_id}")
-                return False
-            
-            self.service = build('drive', 'v3', credentials=self.credentials)
-            return True
-        except Exception as e:
-            logger.error(f"Google Drive authentication failed for user {self.user_id}: {e}")
+        """Authenticates all connected Google Drive accounts for the user."""
+        logger.info(f"Authenticating all Google Drive accounts for user {self.user_id}")
+        integration_records = await integration_service.get_all_integrations_for_user_by_name(self.user_id, 'google_drive')
+
+        if not integration_records:
+            logger.warning(f"No Google Drive integrations found for user {self.user_id}")
             return False
 
-    async def fetch_recent_data(self, since: Optional[datetime] = None) -> List[Dict]:
-        """Fetch recently modified files from Google Drive."""
-        if not self.service:
-            return []
+        auth_tasks = [
+            self._authenticate_one_account(record)
+            for record in integration_records if record
+        ]
+        results = await asyncio.gather(*auth_tasks)
+        return any(results)
+
+    async def _authenticate_one_account(self, integration_record: Dict[str, Any]) -> bool:
+        """Authenticates a single account using its unique integration ID."""
+        account_email = integration_record.get('connected_account')
+        integration_id = integration_record.get('_id')
+
+        if not account_email or not integration_id:
+            logger.warning(f"Drive integration record for {self.user_id} is missing '_id' or 'connected_account'.")
+            return False
+
+        creds = await integration_service.create_google_credentials(self.user_id, 'google_drive', str(integration_id))
+        
+        if not creds:
+            logger.error(f"Failed to create credentials for Drive account {account_email}")
+            return False
+
+        try:
+            service = build('drive', 'v3', credentials=creds)
+            self.services[account_email] = service
+            self.credentials[account_email] = creds
+            if account_email not in self.connected_accounts:
+                self.connected_accounts.append(account_email)
+            logger.info(f"Successfully authenticated Drive for {account_email}")
+            return True
+        except Exception as e:
+            logger.error(f"Error building service for Drive account {account_email}: {e}")
+            return False
+            
+    def get_connected_accounts(self) -> List[str]:
+        return self.connected_accounts
+
+    def _get_service_for_account(self, account: Optional[str] = None) -> Tuple[Any, str]:
+        """Retrieves the correct service instance and resolved account email."""
+        if account:
+            service = self.services.get(account)
+            if not service:
+                raise ValueError(f"Account '{account}' is not authenticated or does not exist.")
+            return service, account
+        if len(self.connected_accounts) == 1:
+            default_account = self.connected_accounts[0]
+            return self.services[default_account], default_account
+        if len(self.connected_accounts) == 0:
+            raise Exception("No authenticated Google Drive accounts found.")
+        raise ValueError(f"Multiple accounts exist. Specify one with the 'account' parameter: {self.connected_accounts}")
+
+    async def fetch_recent_data(self, *, account: Optional[str] = None, since: Optional[datetime] = None) -> List[Dict]:
+        """Fetch recently modified files from a specific Google Drive account."""
+        service, resolved_account = self._get_service_for_account(account)
         
         if since is None:
             since = datetime.utcnow() - timedelta(days=7)
-        
         since_str = since.isoformat() + 'Z'
         
         try:
-            results = self.service.files().list(
-                q=f"modifiedTime > '{since_str}'",
+            results = service.files().list(
+                q=f"modifiedTime > '{since_str}' and trashed=false",
                 pageSize=100,
-                fields="nextPageToken, files(id, name, mimeType, modifiedTime, size)"
+                fields="files(id, name, mimeType, modifiedTime, size)"
             ).execute()
-            
-            files = results.get('files', [])
-            return files
+            return results.get('files', [])
         except Exception as e:
-            logger.error(f"Error fetching Google Drive files for user {self.user_id}: {e}")
+            logger.error(f"Error fetching files for {resolved_account}: {e}")
             return []
 
-    def get_user_info(self) -> Dict:
-        """Gets the authenticated user's Google Drive account information."""
-        if self.user_info:
-            return self.user_info
-
-        if not self.service:
-            raise Exception("Google Drive service not initialized. Call authenticate() first.")
+    def get_user_info(self, *, account: Optional[str] = None) -> Dict:
+        """Gets a specific authenticated user's Google Drive account information."""
+        service, resolved_account = self._get_service_for_account(account)
         
         try:
-            about = self.service.about().get(fields="user,storageQuota").execute()
+            about = service.about().get(fields="user,storageQuota").execute()
             user = about.get('user', {})
             storage = about.get('storageQuota', {})
             
-            self.user_info = {
+            return {
                 'display_name': user.get('displayName', ''),
                 'email': user.get('emailAddress', ''),
                 'photo_link': user.get('photoLink', ''),
                 'storage_limit': storage.get('limit', ''),
                 'storage_usage': storage.get('usage', ''),
-                'storage_usage_in_drive': storage.get('usageInDrive', '')
             }
-            return self.user_info
         except Exception as e:
-            logger.error(f"Error fetching user info: {e}")
-            raise Exception(f"Failed to get user info: {e}")
+            logger.error(f"Error fetching user info for {resolved_account}: {e}")
+            raise Exception(f"Failed to get user info for {resolved_account}: {e}")
 
-    async def download_file(self, file_id: str) -> Optional[bytes]:
-        """Download a file from Google Drive."""
-        if not self.service:
-            return None
+    async def download_file(self, file_id: str, *, account: Optional[str] = None) -> Optional[bytes]:
+        """Download a file from a specific Google Drive account."""
+        service, resolved_account = self._get_service_for_account(account)
         
         try:
-            request = self.service.files().get_media(fileId=file_id)
+            request = service.files().get_media(fileId=file_id)
             fh = BytesIO()
             downloader = MediaIoBaseDownload(fh, request)
             done = False
-            while done is False:
-                status, done = downloader.next_chunk()
+            while not done:
+                _, done = downloader.next_chunk()
             
             fh.seek(0)
             return fh.read()
         except Exception as e:
-            logger.error(f"Error downloading file {file_id} from Google Drive: {e}")
+            logger.error(f"Error downloading file {file_id} from {resolved_account}: {e}")
             return None
 
-    async def save_file_to_drive(self, file_url: str, file_name: str, drive_folder_id: Optional[str] = None) -> str:
-        """Downloads a file from a URL and saves it to Google Drive."""
-        if not self.service:
-            raise Exception("Google Drive service not initialized. Call authenticate() first.")
+    async def save_file_to_drive(self, file_url: str, file_name: str, *, drive_folder_id: Optional[str] = None, account: Optional[str] = None) -> str:
+        """Downloads a file from a URL and saves it to a specific Google Drive account."""
+        service, resolved_account = self._get_service_for_account(account)
         
         try:
             response = requests.get(file_url, stream=True)
             response.raise_for_status()
             
-            file_content = BytesIO(response.content)
-            content_type = response.headers.get('content-type', 'application/octet-stream')
-
             file_metadata = {'name': file_name}
             if drive_folder_id:
                 file_metadata['parents'] = [drive_folder_id]
 
-            media = MediaIoBaseUpload(file_content, mimetype=content_type, resumable=True)
+            media = MediaIoBaseUpload(BytesIO(response.content), mimetype=response.headers.get('content-type'), resumable=True)
             
-            uploaded_file = self.service.files().create(
-                body=file_metadata,
-                media_body=media,
-                fields='id, webViewLink'
+            uploaded_file = service.files().create(
+                body=file_metadata, media_body=media, fields='id, webViewLink'
             ).execute()
 
-            return f"File '{file_name}' uploaded successfully. View it here: {uploaded_file.get('webViewLink')}"
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"Error downloading the file: {e}")
+            return f"File '{file_name}' uploaded to {resolved_account}. Link: {uploaded_file.get('webViewLink')}"
         except Exception as e:
-            raise Exception(f"Error uploading file to Google Drive: {e}")
+            raise Exception(f"Error uploading file to {resolved_account}: {e}")
 
-    async def create_text_file(self, filename: str, content: str, drive_folder_id: Optional[str] = None) -> Dict:
-        """Creates a new text file in Google Drive."""
-        if not self.service:
-            raise Exception("Google Drive service not initialized. Call authenticate() first.")
+    async def create_text_file(self, filename: str, content: str, *, drive_folder_id: Optional[str] = None, account: Optional[str] = None) -> Dict:
+        """Creates a new text file in a specific Google Drive account."""
+        service, resolved_account = self._get_service_for_account(account)
         
         file_metadata = {'name': filename, 'mimeType': 'text/plain'}
         if drive_folder_id:
@@ -143,93 +172,69 @@ class GoogleDriveIntegration(BaseIntegration):
         
         media = MediaIoBaseUpload(BytesIO(content.encode()), mimetype='text/plain', resumable=True)
         
-        file = self.service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
+        file = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
+        logger.info(f"Created text file '{filename}' in {resolved_account}")
         return file
 
-    async def read_file_content_by_id(self, file_id: str) -> str:
-        """Reads the content of a file from Google Drive using its file ID."""
-        if not self.service:
-            raise Exception("Google Drive service not initialized. Call authenticate() first.")
+    async def read_file_content_by_id(self, file_id: str, *, account: Optional[str] = None) -> str:
+        """Reads the content of a file from a specific Google Drive account."""
+        service, resolved_account = self._get_service_for_account(account)
 
         try:
-            # Get file metadata to check if it exists and get MIME type
-            file_metadata = self.service.files().get(fileId=file_id, fields="id, name, mimeType").execute()
+            file_metadata = service.files().get(fileId=file_id, fields="mimeType").execute()
             mime_type = file_metadata.get('mimeType', '')
 
-            # Handle different file types
             if mime_type.startswith('text/') or mime_type in ['application/json', 'application/xml']:
-                # Download text-based files directly
-                content = await self.download_file(file_id)
+                # Pass the account context to the internal download call
+                content = await self.download_file(file_id, account=resolved_account)
                 return content.decode('utf-8')
-            elif mime_type in ['application/vnd.google-apps.document', 'application/vnd.google-apps.spreadsheet']:
-                # Export Google Docs/Sheets as text
-                if 'document' in mime_type:
-                    export_mime_type = 'text/plain'
-                else:
+            elif 'google-apps' in mime_type:
+                export_mime_type = 'text/plain'
+                if 'spreadsheet' in mime_type:
                     export_mime_type = 'text/csv'
+                elif 'presentation' in mime_type:
+                     # Exporting presentations as text can be noisy, but it's an option
+                    export_mime_type = 'text/plain'
 
-                request = self.service.files().export_media(fileId=file_id, mimeType=export_mime_type)
+                request = service.files().export_media(fileId=file_id, mimeType=export_mime_type)
                 fh = BytesIO()
                 downloader = MediaIoBaseDownload(fh, request)
                 done = False
-                while done is False:
-                    status, done = downloader.next_chunk()
-
+                while not done:
+                    _, done = downloader.next_chunk()
                 fh.seek(0)
                 return fh.read().decode('utf-8')
             else:
-                raise Exception(f"Unsupported file type: {mime_type}. Only text-based files and Google Docs/Sheets are supported.")
+                return f"Cannot read content: unsupported file type ({mime_type})."
 
         except Exception as e:
-            if "File not found" in str(e):
-                raise Exception(f"File with ID '{file_id}' not found or you don't have permission to access it.")
-            else:
-                raise Exception(f"Error reading file content: {e}")
+            raise Exception(f"Error reading file content from {resolved_account}: {e}")
 
-    async def list_files(self, query: Optional[str] = None, max_results: int = 50, folder_id: Optional[str] = None) -> List[Dict]:
-        """Lists files in Google Drive with optional search query and folder filtering."""
-        if not self.service:
-            raise Exception("Google Drive service not initialized. Call authenticate() first.")
+    async def list_files(self, *, query: Optional[str] = None, max_results: int = 50, folder_id: Optional[str] = None, account: Optional[str] = None) -> List[Dict]:
+        """Lists files in a specific Google Drive account."""
+        service, resolved_account = self._get_service_for_account(account)
 
         try:
-            # Build the query string
-            q_parts = []
-
+            q_parts = ["trashed=false"]
             if folder_id:
                 q_parts.append(f"'{folder_id}' in parents")
-
             if query:
                 q_parts.append(f"name contains '{query}'")
-
-            # Exclude trashed files
-            q_parts.append("trashed=false")
-
             q_string = " and ".join(q_parts)
 
-            results = self.service.files().list(
+            results = service.files().list(
                 q=q_string,
-                pageSize=min(max_results, 1000),  # Google Drive API max is 1000
-                fields="nextPageToken, files(id, name, mimeType, modifiedTime, size, webViewLink, parents)"
+                pageSize=min(max_results, 1000),
+                fields="files(id, name, mimeType, modifiedTime, size, webViewLink)"
             ).execute()
 
-            files = results.get('files', [])
-
-            # Format the response for better readability
-            formatted_files = []
-            for file in files:
-                formatted_file = {
-                    'id': file.get('id'),
-                    'name': file.get('name'),
-                    'type': file.get('mimeType', '').split('/')[-1] if file.get('mimeType') else 'unknown',
-                    'modified': file.get('modifiedTime'),
-                    'size': file.get('size', 'N/A'),
-                    'link': file.get('webViewLink'),
-                    'parents': file.get('parents', [])
-                }
-                formatted_files.append(formatted_file)
-
-            return formatted_files
-
+            return [{
+                'id': f.get('id'),
+                'name': f.get('name'),
+                'type': f.get('mimeType', 'unknown'),
+                'modified': f.get('modifiedTime'),
+                'size_bytes': f.get('size'),
+                'link': f.get('webViewLink')
+            } for f in results.get('files', [])]
         except Exception as e:
-            logger.error(f"Error listing Google Drive files for user {self.user_id}: {e}")
-            raise Exception(f"Failed to list files: {e}")
+            raise Exception(f"Failed to list files for {resolved_account}: {e}")

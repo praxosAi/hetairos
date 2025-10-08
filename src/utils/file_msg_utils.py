@@ -115,8 +115,9 @@ async def generate_user_messages(
             
             # Then immediately add the files for this same message
             messages = await generate_file_messages(
-                files_content,
-                messages,
+                conversation_manager=conversation_manager,
+                input_files=files_content,
+                messages=messages,
                 conversation_id=conversation_id,
                 message_prefix=message_prefix,
                 max_concurrency=8
@@ -140,8 +141,9 @@ async def generate_user_messages(
         elif files_content:
             # Files-only message
             messages = await generate_file_messages(
-                files_content,
-                messages,
+                conversation_manager=conversation_manager,
+                input_files=files_content,
+                messages=messages,
                 conversation_id=conversation_id,
                 message_prefix=message_prefix,
                 max_concurrency=8
@@ -444,7 +446,7 @@ async def get_conversation_history(
             continue
         msg_obj = HumanMessage(content=[payload]) if role == "user" else AIMessage(content=[payload])
         history_slots[i] = msg_obj
-
+    logger.info(f"Fetched and reconstructed {len(fetch_tasks)} media messages")
     # Return in original order, skipping any None (e.g., malformed entries)
     return [m for m in history_slots if m is not None],has_media
 

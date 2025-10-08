@@ -145,7 +145,7 @@ class LangGraphAgentRunner:
                     history = await generate_file_messages(
                         conversation_manager=self.conversation_manager,
                         input_files=input_files, 
-                        history=history, 
+                        messages=history, 
                         conversation_id=conversation_id,
                         message_prefix=message_prefix
                     )

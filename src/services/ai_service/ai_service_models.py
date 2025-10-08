@@ -20,7 +20,7 @@ class ToolFunctionID(str, Enum):
     # Basic tools
     GET_CURRENT_TIME = "get_current_time"
     GET_CURRENT_TASK_PLAN_AND_STEP = "get_current_task_plan_and_step"
-
+    ASK_USER_FOR_MISSING_PARAMS = "ask_user_for_missing_params"
     # Preference tools
     ADD_USER_PREFERENCE_ANNOTATION = "add_user_preference_annotation"
     SET_ASSISTANT_NAME = "set_assistant_name"

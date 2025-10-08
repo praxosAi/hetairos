@@ -1,13 +1,10 @@
 import asyncio
 import base64
 import mimetypes
-import os
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from datetime import datetime, timedelta
-from typing import Any, List, Dict, Optional,Tuple
+from typing import Any, List, Dict, Optional, Tuple
 from email.message import EmailMessage
 from src.utils.blob_utils import upload_to_blob_storage,upload_bytes_to_blob_storage
 from src.utils.logging.base_logger import setup_logger
@@ -22,122 +19,147 @@ from bson import ObjectId
 import quopri
 from html import unescape
 import re
+from src.services.integration_service import integration_service
 
 logger = setup_logger(__name__)
 
 class GmailIntegration(BaseIntegration):
     
+
     def __init__(self, user_id: str):
         super().__init__(user_id)
-        self.service = None
-        self.people_service = None
-        self.credentials = None
+        self.services: Dict[str, Any] = {}
+        self.people_services: Dict[str, Any] = {}
+        self.credentials: Dict[str, Any] = {}
+        self.connected_accounts: List[str] = []
         self.gmail_user_id = 'me'
-        self.gmail_address = None
-    
+
     async def authenticate(self) -> bool:
-        """Authenticate with Gmail API with circuit breaker protection"""
-        try:
-            return await gmail_auth_breaker.call(self._authenticate_internal)
-        except Exception as e:
-            logger.error(f"Gmail authentication failed: {e}")
-            return False
-    
-    async def _authenticate_internal(self) -> bool:
-        """Internal authentication method"""
-        if not all([settings.GOOGLE_CLIENT_ID, settings.GOOGLE_CLIENT_SECRET]):
-            logger.error("Gmail credentials not configured")
-            return False
+        """
+        Authenticates all connected Gmail accounts for the user and builds
+        a service object for each one.
+        """
         
-        logger.info(f"Creating Google credentials for user {self.user_id}")
-        self.credentials = await integration_service.create_google_credentials(self.user_id, 'gmail')
-        integration_record = await integration_service.get_integration_record_for_user_and_name(self.user_id, 'gmail')
-        if integration_record:
-            self.gmail_address = integration_record.get('connected_account')
-            
-        if not self.credentials:
-            logger.error("Failed to create Google credentials")
+        logger.info(f"Authenticating all Gmail accounts for user {self.user_id}")
+        integration_records = await integration_service.get_all_integrations_for_user_by_name(self.user_id, 'gmail')
+
+        if not integration_records:
+            logger.warning(f"No Gmail integrations found for user {self.user_id}")
             return False
-        logger.info(f"obtained google credentials for user {self.user_id}")
-        # Build Gmail service
-        self.service = build('gmail', 'v1', credentials=self.credentials)
-        self.people_service = build('people', 'v1', credentials=self.credentials)
-        logger.info(f"built gmail and people services for user {self.user_id}")
-        return True
-    
-    async def fetch_recent_data(self, since: Optional[datetime] = None) -> List[Dict]:
-        """Fetch recent emails since last sync"""
-        if not self.service:
-            return []
+
+        auth_tasks = []
+        for record in integration_records:
+            if record:
+                auth_tasks.append(self._authenticate_one_account(record))
         
+        results = await asyncio.gather(*auth_tasks)
+        
+        # Returns True if at least one account was successfully authenticated.
+        return any(results)
+
+    async def _authenticate_one_account(self, integration_record: str) -> bool:
+        account_email = integration_record.get('connected_account')
+        integration_id = integration_record.get('_id')
+        """Internal method to authenticate a single account and store its services."""
+        creds = await integration_service.create_google_credentials(self.user_id, 'gmail', integration_id)
+        if not creds:
+            logger.error(f"Failed to create credentials for {account_email} for user {self.user_id}")
+            return False
+
         try:
-            # Check rate limits
-            is_allowed, remaining = rate_limiter.check_limit(self.user_id, "emails")
-            if not is_allowed:
-                logger.error(f"Email rate limit exceeded for user {self.user_id}")
-                return []
+            gmail_service = build('gmail', 'v1', credentials=creds)
+            people_service = build('people', 'v1', credentials=creds)
+
+            # Store the authenticated services and details in our dictionaries
+            self.services[account_email] = gmail_service
+            self.people_services[account_email] = people_service
+            self.credentials[account_email] = creds
+            if account_email not in self.connected_accounts:
+                self.connected_accounts.append(account_email)
             
-            # Default to emails from 7 days ago if no since timestamp
-            if since is None:
-                since = datetime.utcnow() - timedelta(days=7)
-            
-            # Convert datetime to Gmail query format
-            since_str = since.strftime('%Y/%m/%d')
-            query = f'after:{since_str}'
-            
-            # List messages
-            result = self.service.users().messages().list(
-                userId=self.gmail_user_id,
-                q=query,
-                maxResults=min(settings.MAX_EMAILS, remaining)  # Respect rate limits
-            ).execute()
-            
-            messages = result.get('messages', [])
-            
-            # Fetch detailed information for each message
-            detailed_messages = []
-            processed_count = 0
-            attachment_count = 0
-            
-            for message in messages:
-                if processed_count >= settings.MAX_EMAILS:
-                    break
-                
-                # Check if we can process more attachments
-                if attachment_count >= settings.MAX_EMAIL_ATTACHMENTS:
-                    # Skip messages with attachments if we've hit the limit
-                    continue
-                
-                try:
-                    msg_detail = self.service.users().messages().get(
-                        userId=self.gmail_user_id,
-                        id=message['id'],
-                        format='full'
-                    ).execute()
-                    
-                    formatted_message = await self._format_message(msg_detail)
-                    
-                    # Count attachments
-                    message_attachment_count = len(formatted_message.get('attachments', []))
-                    if attachment_count + message_attachment_count <= settings.MAX_EMAIL_ATTACHMENTS:
-                        detailed_messages.append(formatted_message)
-                        attachment_count += message_attachment_count
-                        processed_count += 1
-                        
-                        # Update rate limiter
-                        rate_limiter.increment_usage(self.user_id, "emails", 1)
-                        if message_attachment_count > 0:
-                            rate_limiter.increment_usage(self.user_id, "email_attachments", message_attachment_count)
-                    
-                except HttpError as e:
-                    logger.error(f"Error fetching message {message['id']}: {e}")
-                    continue
-            
-            return detailed_messages
-            
+            logger.info(f"Successfully authenticated and built services for {account_email}")
+            return True
         except Exception as e:
-            logger.error(f"Error fetching Gmail messages: {e}")
+            logger.error(f"Error building services for {account_email}: {e}")
+            return False
+
+    def get_connected_accounts(self) -> List[str]:
+        """Returns a list of successfully authenticated email accounts."""
+        return self.connected_accounts
+    def _get_services_for_account(self, account: Optional[str] = None) -> Tuple[Any, Any, str]:
+        """
+        Retrieves the Gmail service, People service, and resolved account email.
+        Handles default logic for single-account users and ambiguity for multi-account users.
+        """
+        if account:
+            gmail_service = self.services.get(account)
+            if not gmail_service:
+                raise ValueError(f"Account '{account}' is not authenticated or does not exist for this user.")
+            people_service = self.people_services.get(account)
+            return gmail_service, people_service, account
+
+        if len(self.connected_accounts) == 1:
+            default_account = self.connected_accounts[0]
+            gmail_service = self.services[default_account]
+            people_service = self.people_services[default_account]
+            return gmail_service, people_service, default_account
+        
+        if len(self.connected_accounts) == 0:
+            raise Exception("No authenticated Gmail accounts found for this user.")
+        
+        raise ValueError(
+            "This user has multiple connected accounts. Please specify which account to use "
+            f"with the 'account' parameter. Available accounts: {self.connected_accounts}"
+        )
+    async def send_email(self, recipient: str, subject: str, body: str, *, from_account: Optional[str] = None) -> Dict:
+        """Sends an email, defaulting to the single account if available."""
+        gmail_service, people_service, resolved_account = self._get_services_for_account(from_account)
+
+        message = EmailMessage()
+        if '<' in body and '>' in body:
+            html_body = body.replace('\n', '<br>')
+            message.add_alternative(html_body, subtype='html')
+        else:
+            message.set_content(body)
+        
+        message['To'] = recipient
+        message['From'] = resolved_account # Use the resolved account
+        message['Subject'] = subject
+        
+        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        create_message_request = {'raw': encoded_message}
+        
+        sent_message = gmail_service.users().messages().send(
+            userId='me',
+            body=create_message_request
+        ).execute()
+        
+        return {"email_id": sent_message['id']}
+
+    async def get_emails_from_sender(self, sender_email: str, *, account: Optional[str] = None, max_results: int = 10) -> List[Dict]:
+        """Fetches emails from a sender, defaulting to the single account if available."""
+        gmail_service, people_service, resolved_account = self._get_services_for_account(account)
+
+        query = f"from:{sender_email}"
+        results = gmail_service.users().messages().list(userId='me', q=query, maxResults=max_results).execute()
+        messages = results.get('messages', [])
+        
+        if not messages:
             return []
+
+        email_list = []
+        for msg in messages:
+            try:
+                msg_data = gmail_service.users().messages().get(userId='me', id=msg['id']).execute()
+                headers = {h['name']: h['value'] for h in msg_data['payload']['headers']}
+                email_list.append({
+                    "subject": headers.get('Subject', 'No Subject'),
+                    "snippet": msg_data.get('snippet', '')
+                })
+            except HttpError as e:
+                logger.error(f"Error fetching message {msg['id']} for account {resolved_account}: {e}")
+                continue
+        return email_list
 
     async def _format_message(self, message: Dict) -> Dict:
         """Format Gmail message into standardized format"""
@@ -159,92 +181,11 @@ class GmailIntegration(BaseIntegration):
         }
         
         return formatted_message
-    
-    async def _extract_body(self, payload: Dict) -> str:
-        """Extract email body from message payload"""
-        body = ""
-        if 'parts' in payload:
-            for part in payload['parts']:
-                if part['mimeType'] == 'text/plain':
-                    if 'data' in part['body']:
-                        body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
-                        break
-                elif part['mimeType'] == 'text/html' and not body:
-                    if 'data' in part['body']:
-                        body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
-        elif 'data' in payload['body']:
-            body = base64.urlsafe_b64decode(payload['body']['data']).decode('utf-8')
-        return body
+    async def search_emails(self, query: str, *, account: Optional[str] = None, max_results: int = 10) -> List[Dict]:
+        """Searches emails, defaulting to the single account if available."""
+        gmail_service, people_service, resolved_account = self._get_services_for_account(account)
 
-    async def _extract_attachments(self, message: Dict) -> List[Dict]:
-        """Extract attachment information from message"""
-        attachments = []
-        if 'parts' in message['payload']:
-            for part in message['payload']['parts']:
-                if part.get('filename'):
-                    attachments.append({
-                        "id": part['body'].get('attachmentId'),
-                        "filename": part['filename'],
-                        "mimetype": part['mimeType'],
-                        "size": part['body'].get('size', 0),
-                        "message_id": message['id']
-                    })
-        return attachments
-
-    async def send_email(self, recipient: str, subject: str, body: str) -> Dict:
-        """Sends an email using Gmail API."""
-        if not self.service:
-            raise Exception("Gmail service not initialized. Call authenticate() first.")
-        
-        message = EmailMessage()
-        # Check if body contains HTML tags, if so send as HTML
-        if '<' in body and '>' in body:
-            # Convert newlines to HTML line breaks for HTML emails
-            html_body = body.replace('\n', '<br>')
-            message.add_alternative(html_body, subtype='html')
-        else:
-            message.set_content(body)
-        message['To'] = recipient
-        message['Subject'] = subject
-        
-        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        create_message_request = {'raw': encoded_message}
-        
-        sent_message = self.service.users().messages().send(
-            userId='me',
-            body=create_message_request
-        ).execute()
-        
-        return {"email_id": sent_message['id']}
-
-    async def get_emails_from_sender(self, sender_email: str, max_results: int = 10) -> List[Dict]:
-        """Fetches the most recent emails from a specific sender."""
-        if not self.service:
-            raise Exception("Gmail service not initialized. Call authenticate() first.")
-
-        query = f"from:{sender_email}"
-        results = self.service.users().messages().list(userId='me', q=query, maxResults=max_results).execute()
-        messages = results.get('messages', [])
-        
-        if not messages:
-            return []
-
-        email_list = []
-        for msg in messages:
-            msg_data = self.service.users().messages().get(userId='me', id=msg['id']).execute()
-            headers = {h['name']: h['value'] for h in msg_data['payload']['headers']}
-            email_list.append({
-                "subject": headers.get('Subject', 'No Subject'),
-                "snippet": msg_data.get('snippet', '')
-            })
-        return email_list
-
-    async def search_emails(self, query: str, max_results: int = 10) -> List[Dict]:
-        """Searches for emails using a generic query string."""
-        if not self.service:
-            raise Exception("Gmail service not initialized. Call authenticate() first.")
-
-        results = self.service.users().messages().list(userId='me', q=query, maxResults=max_results).execute()
+        results = gmail_service.users().messages().list(userId='me', q=query, maxResults=max_results).execute()
         messages = results.get('messages', [])
         
         if not messages:
@@ -253,7 +194,7 @@ class GmailIntegration(BaseIntegration):
         email_list = []
         for msg in messages:
             try:
-                msg_data = self.service.users().messages().get(userId='me', id=msg['id'], format='metadata').execute()
+                msg_data = gmail_service.users().messages().get(userId='me', id=msg['id'], format='metadata').execute()
                 headers = {h['name']: h['value'] for h in msg_data['payload']['headers']}
                 email_list.append({
                     "id": msg_data['id'],
@@ -261,111 +202,102 @@ class GmailIntegration(BaseIntegration):
                     "snippet": msg_data.get('snippet', '')
                 })
             except HttpError as e:
-                logger.error(f"Error fetching metadata for message {msg['id']}: {e}")
+                logger.error(f"Error fetching metadata for message {msg['id']} for account {resolved_account}: {e}")
                 continue
         return email_list
 
-    def get_user_email_address(self) -> str:
-        """Gets the authenticated user's Gmail email address."""
-        if self.gmail_address:
-            return self.gmail_address
+    async def find_contact_email(self, name: str, *, account: Optional[str] = None) -> List[Dict]:
+        """
+        Searches a specific Google Contacts account for a person's email address by name.
+        Defaults to the single connected account if available.
+        """
+        _, people_service, resolved_account = self._get_services_for_account(account)
 
-        if not self.service:
-            raise Exception("Gmail service not initialized. Call authenticate() first.")
-        
+        if not people_service:
+            # This case is rare due to the check in the helper, but it's good defensive programming.
+            raise Exception(f"Google People API service not initialized for account {resolved_account}.")
+
+        logger.info(f"Searching for contact '{name}' in account {resolved_account} for user {self.user_id}")
         try:
-            profile = self.service.users().getProfile(userId=self.gmail_user_id).execute()
-            self.gmail_address = profile.get('emailAddress', '')
-            return self.gmail_address
-        except Exception as e:
-            logger.error(f"Error fetching user email address: {e}")
-            raise Exception(f"Failed to get user email address: {e}")
-
-    async def find_contact_email(self, name: str) -> List[Dict]:
-        """Searches the user's Google Contacts for a person's email address by their name."""
-        if not self.people_service:
-            logger.error("Google People API service not initialized. Call authenticate() first.")
-            raise Exception("Google People API service not initialized. Call authenticate() first.")
-        logger.info(f"searching for contact {name} for user {self.user_id}")
-        results = self.people_service.people().searchContacts(
-            query=name,
-            readMask="names,emailAddresses,nicknames"
-        ).execute()
-        logger.info(f"search results for contact {name} for user {self.user_id}: {results}")
-        contacts = results.get('results', [])
-        if not contacts:
-            ### if no contacts found, we should search for other contacts.
-            results = self.people_service.otherContacts().search(
-            query=f"{name}*",
-            readMask="names,emailAddresses,nicknames"
+            results = people_service.people().searchContacts(
+                query=name,
+                readMask="names,emailAddresses,nicknames"
             ).execute()
-            logger.info(f"search results for other contacts for user {self.user_id}: {results}")
             contacts = results.get('results', [])
+
             if not contacts:
-                logger.info(f"no other contacts found for user {self.user_id}")
+                logger.info(f"No primary contacts found for '{name}'. Searching other contacts for account {resolved_account}.")
+                results = people_service.otherContacts().search(
+                    query=f"{name}*",
+                    readMask="names,emailAddresses,nicknames"
+                ).execute()
+                contacts = results.get('results', [])
+
+            if not contacts:
+                logger.info(f"No contacts found for '{name}' in account {resolved_account}.")
                 return []
-        logger.info(f"contacts found for user {self.user_id}: {contacts}")
 
-        contact_list = []
-        for person_result in contacts:
-            person = person_result.get('person', {})
-            names = person.get('names', [{}])
-            emails = person.get('emailAddresses', [{}])
-            contact_list.append({
-                "name": names[0].get('displayName', 'N/A'),
-                "email": emails[0].get('value', 'N/A')
-            })
-        return contact_list
+            contact_list = []
+            for person_result in contacts:
+                person = person_result.get('person', {})
+                names = person.get('names', [{}])
+                emails = person.get('emailAddresses', [{}])
+                contact_list.append({
+                    "name": names[0].get('displayName', 'N/A'),
+                    "email": emails[0].get('value', 'N/A')
+                })
+            return contact_list
+        except HttpError as e:
+            logger.error(f"Failed to search contacts for account {resolved_account}: {e}")
+            return []
 
-    # --- Gmail Push Notification Methods ---
-
-    async def setup_push_notifications(self, topic_name: str) -> Optional[Dict]:
-        """Sets up Gmail push notifications to a Google Cloud Pub/Sub topic."""
-        if not self.service:
-            raise Exception("Gmail service not initialized.")
+    async def setup_push_notifications(self, topic_name: str, *, account: Optional[str] = None) -> Optional[Dict]:
+        """Sets up Gmail push notifications for a specific account."""
+        service, _, resolved_account = self._get_services_for_account(account)
         
         request = {
             'labelIds': ['INBOX'],
             'topicName': topic_name
         }
         try:
-            result = self.service.users().watch(userId='me', body=request).execute()
-            logger.info(f"Gmail push notifications setup for user {self.user_id}. History ID: {result.get('historyId')}")
+            result = service.users().watch(userId='me', body=request).execute()
+            logger.info(f"Gmail push notifications setup for account {resolved_account}. History ID: {result.get('historyId')}")
             return result
         except Exception as e:
-            logger.error(f"Failed to setup Gmail push notifications for user {self.user_id}: {e}")
+            logger.error(f"Failed to setup Gmail push notifications for account {resolved_account}: {e}")
             return None
 
-    async def stop_push_notifications(self) -> bool:
-        """Stops active Gmail push notifications."""
-        if not self.service:
-            raise Exception("Gmail service not initialized.")
+    async def stop_push_notifications(self, *, account: Optional[str] = None) -> bool:
+        """Stops active Gmail push notifications for a specific account."""
+        service, _, resolved_account = self._get_services_for_account(account)
         try:
-            self.service.users().stop(userId='me').execute()
-            logger.info(f"Gmail push notifications stopped for user {self.user_id}")
+            service.users().stop(userId='me').execute()
+            logger.info(f"Gmail push notifications stopped for account {resolved_account}")
             return True
         except Exception as e:
-            logger.error(f"Failed to stop Gmail push notifications for user {self.user_id}: {e}")
+            logger.error(f"Failed to stop Gmail push notifications for account {resolved_account}: {e}")
             return False
 
     def get_changed_message_ids_since(
         self,
         start_history_id: str,
-        user_id: str = "me",
+        *,
+        account: Optional[str] = None,
         history_types: Optional[List[str]] = None,
     ) -> Tuple[List[str], Optional[str]]:
+        """Gets new message IDs from a specific account since a given history ID."""
+        service, _, resolved_account = self._get_services_for_account(account)
         history_types = history_types or ["messageAdded"]
         msg_ids: List[str] = []
         page_token = None
         max_history_id_seen: Optional[int] = None
         try:
             while True:
-                req = self.service.users().history().list(
-                    userId=user_id,
+                req = service.users().history().list(
+                    userId=self.gmail_user_id,
                     startHistoryId=str(start_history_id),
                     pageToken=page_token,
                     historyTypes=history_types,
-                    # labelId=["INBOX"],  # only if your watch was scoped to INBOX
                 )
                 resp = req.execute()
 
@@ -380,10 +312,9 @@ class GmailIntegration(BaseIntegration):
                 if not page_token:
                     break
         except Exception as e:
-            logger.error(f"Error fetching Gmail history for user {self.user_id}: {e}")
-            return msg_ids, None
+            logger.error(f"Error fetching Gmail history for account {resolved_account}: {e}")
+            return [], None # Return empty list on error, don't update checkpoint
 
-        # de-dupe, preserve order
         seen, deduped = set(), []
         for mid in msg_ids:
             if mid not in seen:
@@ -393,60 +324,70 @@ class GmailIntegration(BaseIntegration):
         new_checkpoint = str(max_history_id_seen) if max_history_id_seen is not None else None
         return deduped, new_checkpoint
 
-    # def get_changed_message_ids_since(
-    #     self,
-    #     start_history_id: str,
-    #     user_id: str = "me",
-    #     history_types: Optional[List[str]] = ["messageAdded"],
-    # ) -> Tuple[List[str], Optional[str]]:
-    #     """
-    #     Returns (message_ids, new_checkpoint_history_id).
-    #     `new_checkpoint_history_id` should be saved and used as the next startHistoryId.
-    #     """
-    #     history_types = history_types or ["messageAdded"]  # common case
-    #     msg_ids: List[str] = []
-    #     page_token = None
-    #     max_history_id_seen: Optional[int] = None
-    #     try:
-    #         while True:
-    #             req = self.service.users().history().list(
-    #                 userId=user_id,
-    #                 startHistoryId=str(start_history_id),
-    #                 pageToken=page_token,
-    #                 historyTypes=history_types,
-    #             )
-    #             resp = req.execute()
-
-    #             for h in resp.get("history", []):
-    #                 # Track the largest history id we see
-    #                 hid = int(h.get("id"))
-    #                 if max_history_id_seen is None or hid > max_history_id_seen:
-    #                     max_history_id_seen = hid
-
-    #                 # Collect messages from messagesAdded; you can also look at messagesDeleted, labelsAdded, etc.
-    #                 for item in h.get("messagesAdded", []):
-    #                     mid = item["message"]["id"]
-    #                     msg_ids.append(mid)
-
-    #             page_token = resp.get("nextPageToken")
-    #             if not page_token:
-    #                 break
-    #     except Exception as e:
-    #         logger.error(f"Error fetching Gmail history for user {self.user_id}: {e}")
-    #         # If we get an error, we return the messages we've collected so far,
-    #         # but we don't update the checkpoint, so we'll retry from the same place next time.
-    #         return msg_ids, None
-    #     # Use the largest history id we processed as the new checkpoint
-    #     new_checkpoint = str(max_history_id_seen) if max_history_id_seen is not None else None
-    #     return msg_ids, new_checkpoint
-    
-    def get_messages_by_ids(self, message_ids: List[str], user_id: str = "me") -> List[Dict[str, Any]]:
+    def get_messages_by_ids(self, message_ids: List[str], *, account: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Gets full message details for a list of IDs from a specific account."""
+        service, _, _ = self._get_services_for_account(account)
         out = []
         for mid in message_ids:
-            msg = self.service.users().messages().get(userId=user_id, id=mid, format="full").execute()
-            out.append(msg)
+            try:
+                msg = service.users().messages().get(userId=self.gmail_user_id, id=mid, format="full").execute()
+                out.append(msg)
+            except HttpError as e:
+                logger.error(f"Could not retrieve message ID {mid}: {e}")
+                continue
         return out
 
+    async def _download_and_store_attachment(
+        self,
+        *,
+        user_record: Dict[str, Any],
+        message_id: str,
+        part: Dict[str, Any],
+        account: str, # Account is required here as it's an internal method
+    ) -> Dict[str, Any]:
+        """Downloads a single attachment to blob storage for a specific account."""
+        service, _, resolved_account = self._get_services_for_account(account)
+        body = part.get("body", {}) or {}
+        attachment_id = body.get("attachmentId")
+        if not attachment_id:
+            return {}
+
+        att = service.users().messages().attachments().get(
+            userId="me", messageId=message_id, id=attachment_id
+        ).execute()
+        data_b64 = att.get("data")
+        if not data_b64:
+            return {}
+
+        raw_bytes = base64.urlsafe_b64decode(data_b64.encode("utf-8"))
+        filename = part.get("filename") or "attachment"
+        mime_type = part.get("mimeType") or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+        # Account is now part of the blob path to prevent collisions
+        blob_name = f"{str(user_record['_id'])}/gmail/{resolved_account}/{message_id}/{filename}"
+        blob_path = await upload_bytes_to_blob_storage(raw_bytes, blob_name, content_type=mime_type)
+
+        document_entry = {
+            "user_id": ObjectId(user_record["_id"]),
+            "platform": "gmail",
+            "connected_account": resolved_account, # Store which account it came from
+            "platform_file_id": attachment_id,
+            "platform_message_id": message_id,
+            "type": "document",
+            "blob_path": blob_name,
+            "mime_type": mime_type,
+            "file_name": filename,
+        }
+        inserted_id = await db_manager.add_document(document_entry)
+
+        return {
+            "type": "document",
+            "blob_path": blob_path,
+            "mime_type": mime_type,
+            "caption": "",
+            "file_name": filename,
+            "inserted_id": str(inserted_id),
+        }
     def _headers_to_map(self, headers: List[Dict[str, str]]) -> Dict[str, str]:
         return {h["name"]: h["value"] for h in headers or []}
 
@@ -506,79 +447,21 @@ class GmailIntegration(BaseIntegration):
         plain, html = self._walk_parts_collect_bodies(payload)
         # Prefer plain text; fallback to html if needed.
         return plain or html or ""
-
-    async def _download_and_store_attachment(
-        self,
-        *,
-        user_record: Dict[str, Any],
-        message_id: str,
-        part: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """
-        Downloads a single Gmail attachment part to blob storage, inserts a 'documents' row,
-        and returns a normalized file dict for event payload.
-        """
-        body = part.get("body", {}) or {}
-        attachment_id = body.get("attachmentId")
-        if not attachment_id:
-            return {}
-
-        # 1) fetch attachment bytes
-        att = self.service.users().messages().attachments().get(
-            userId="me", messageId=message_id, id=attachment_id
-        ).execute()
-        data_b64 = att.get("data")
-        if not data_b64:
-            return {}
-
-        raw_bytes = base64.urlsafe_b64decode(data_b64.encode("utf-8"))
-        filename = part.get("filename") or "attachment"
-        mime_type = part.get("mimeType") or mimetypes.guess_type(filename)[0] or "application/octet-stream"
-
-        # 2) upload to blob
-        blob_name = f"{str(user_record['_id'])}/gmail/{message_id}/{filename}"
-        blob_path = await upload_bytes_to_blob_storage(raw_bytes, blob_name, content_type=mime_type)
-
-        # 3) insert documents row (idempotency via your upstream unique platform_message_id for the email)
-        document_entry = {
-            "user_id": ObjectId(user_record["_id"]),
-            "platform": "gmail",
-            "platform_file_id": attachment_id,
-            "platform_message_id": message_id,
-            "type": "document",
-            "blob_path": blob_name,
-            "mime_type": mime_type,
-            "file_name": filename,
-        }
-        inserted_id = await db_manager.add_document(document_entry)
-
-        # 4) normalized file record for payload
-        return {
-            "type": "document",
-            "blob_path": blob_path,
-            "mime_type": mime_type,
-            "caption": "",
-            "file_name": filename,
-            "inserted_id": str(inserted_id),
-        }
-
     async def _collect_attachments_normalized(
         self,
         *,
         user_record: Dict[str, Any],
         message: Dict[str, Any],
+        account: str, # Account is required here
     ) -> List[Dict[str, Any]]:      
-        """
-        Walks all parts and downloads any with a filename (true attachment). Inline images will also be included if they have filename + attachmentId.
-        """
         results: List[Dict[str, Any]] = []
-
-        def _parts(p: Dict[str, Any]):
+        
+        def _walk_parts(p: Dict[str, Any]):
             yield p
-            for c in p.get("parts", []) or []:
-                yield from _parts(c)
+            for child in p.get("parts", []) or []:
+                yield from _walk_parts(child)
 
-        for p in _parts(message.get("payload") or {}):
+        for p in _walk_parts(message.get("payload") or {}):
             filename = p.get("filename") or ""
             body = p.get("body", {}) or {}
             if filename and body.get("attachmentId"):
@@ -586,11 +469,11 @@ class GmailIntegration(BaseIntegration):
                     user_record=user_record,
                     message_id=message["id"],
                     part=p,
+                    account=account, # Pass the account down
                 )
                 if file_rec:
                     results.append(file_rec)
         return results
-    
     def _strip_html(self, html: str) -> str:
         # very light strip; good enough for notifications
         text = re.sub(r"<(script|style)\b[^<]*(?:(?!</\1>)<[^<]*)*</\1>", "", html, flags=re.I)
@@ -603,12 +486,13 @@ class GmailIntegration(BaseIntegration):
         *,
         user_record: Dict[str, Any],
         message: Dict[str, Any],
+        account: Optional[str] = None,
         command_prefix: str = "",
     ) -> Dict[str, Any]:
-        """
-        Returns a dict shaped like your other webhooks:
-        payload.text, payload.files[], metadata, etc.
-        """
+        """Normalizes a raw Gmail message into a standard format for a specific account."""
+        # We don't need the service objects here, just the resolved account name
+        _, _, resolved_account = self._get_services_for_account(account)
+        
         headers = self._headers_to_map(message.get("payload", {}).get("headers", []))
         plain, html = self._walk_parts_collect_bodies(message.get("payload", {}) or {})
         body_text = plain or (self._strip_html(html) if html else "")
@@ -618,6 +502,7 @@ class GmailIntegration(BaseIntegration):
         files = await self._collect_attachments_normalized(
             user_record=user_record,
             message=message,
+            account=resolved_account, # Use the resolved account
         )
 
         normalized = {
@@ -636,10 +521,71 @@ class GmailIntegration(BaseIntegration):
             },
             "metadata": {
                 "platform": "gmail",
+                "connected_account": resolved_account, # Add account for context
                 "gmail_message_id": message.get("id"),
                 "gmail_thread_id": message.get("threadId"),
-                # "headers": headers,
-                "history_id": message.get("historyId"),  # may be absent on single GET
+                "history_id": message.get("historyId"),
             },
         }
         return normalized
+    async def fetch_recent_data(self, *, account: Optional[str] = None, since: Optional[datetime] = None) -> List[Dict]:
+        """Fetches recent emails, defaulting to the single account if available."""
+        service, _, resolved_account = self._get_services_for_account(account)
+        
+        try:
+            is_allowed, remaining = rate_limiter.check_limit(self.user_id, "emails")
+            if not is_allowed:
+                logger.error(f"Email rate limit exceeded for user {self.user_id}")
+                return []
+
+            since_str = (since or (datetime.utcnow() - timedelta(days=7))).strftime('%Y/%m/%d')
+            query = f'after:{since_str}'
+            
+            result = service.users().messages().list(
+                userId=self.gmail_user_id, q=query, maxResults=min(settings.MAX_EMAILS, remaining)
+            ).execute()
+            
+            messages = result.get('messages', [])
+            detailed_messages, attachment_count = [], 0
+
+            for message in messages[:settings.MAX_EMAILS]:
+                if attachment_count >= settings.MAX_EMAIL_ATTACHMENTS:
+                    break
+                
+                try:
+                    msg_detail = service.users().messages().get(
+                        userId=self.gmail_user_id, id=message['id'], format='full'
+                    ).execute()
+                    
+                    formatted_message = await self._format_message(msg_detail)
+                    msg_attachments = len(formatted_message.get('attachments', []))
+
+                    if attachment_count + msg_attachments <= settings.MAX_EMAIL_ATTACHMENTS:
+                        detailed_messages.append(formatted_message)
+                        attachment_count += msg_attachments
+                        rate_limiter.increment_usage(self.user_id, "emails", 1)
+                        if msg_attachments > 0:
+                            rate_limiter.increment_usage(self.user_id, "email_attachments", msg_attachments)
+                except HttpError as e:
+                    logger.error(f"Error fetching message {message['id']} for {resolved_account}: {e}")
+                    continue
+            
+            return detailed_messages
+        except Exception as e:
+            logger.error(f"Error fetching Gmail messages for {resolved_account}: {e}")
+            return []
+
+    async def _extract_attachments(self, message: Dict) -> List[Dict]:
+        """Extract attachment information from message"""
+        attachments = []
+        if 'parts' in message['payload']:
+            for part in message['payload']['parts']:
+                if part.get('filename'):
+                    attachments.append({
+                        "id": part['body'].get('attachmentId'),
+                        "filename": part['filename'],
+                        "mimetype": part['mimeType'],
+                        "size": part['body'].get('size', 0),
+                        "message_id": message['id']
+                    })
+        return attachments

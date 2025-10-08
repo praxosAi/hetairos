@@ -206,6 +206,12 @@ class LangGraphAgentRunner:
                 
                 try:
                     new_state = state['messages'][len(initial_state['messages']):]
+                    last_message = state['messages'][-1]
+                    state_without_messages = {}
+                    for key in state:
+                        if key != 'messages':
+                            state_without_messages[key] = state[key]
+                    logger.info(f"Current state (excluding messages): {str(state_without_messages)}")
                     # logger.info(f"New messages since last model call: {new_state}")
                     if not minimal_tools:
                         logger.info('required_tool_ids are: ' + str(required_tool_ids))
@@ -220,6 +226,7 @@ class LangGraphAgentRunner:
                                 break 
                         if not tool_called:
                             logger.info("No tools have been called yet; which is required in this situation. continuing to tool execution. the counter is: " + str(state['tool_iter_counter']))
+                            logger.info("last message is " + str(last_message))
                             state['messages'].append(AIMessage(content=f"I need to use a tool to proceed. Let me consult the plan and use the appropriate tool. the original plan was: \n \n {plan_str}"))
                             state['tool_iter_counter'] += 1
                             if state['tool_iter_counter'] > 3:

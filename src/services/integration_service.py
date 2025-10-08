@@ -42,13 +42,16 @@ class IntegrationService:
             logger.error(f"Failed to update token for user {user_id}, provider {integration_name}: {e}")
 
 
-    async def update_integration_token_and_refresh_token(self, user_id: str, integration_name: str, new_token: str, new_expiry: datetime, new_refresh_token: str    ):
+    async def update_integration_token_and_refresh_token(self, user_id: str, integration_name: str, new_token: str, new_expiry: datetime, new_refresh_token: str, integration_id: str = None):
         """Encrypts and updates a new access token in the database."""
         try:
             encrypted_token = encrypt_token(new_token)
             encrypted_refresh_token = encrypt_token(new_refresh_token)
+            query = {"user_id": ObjectId(user_id), "integration_name": integration_name}
+            if integration_id:
+                query["integration_id"] = ObjectId(integration_id)
             await self.db_manager.db["integration_tokens"].update_one(
-                {"user_id": ObjectId(user_id), "integration_name": integration_name},
+                query,
                 {"$set": {
                     "access_token_encrypted": encrypted_token,
                     "refresh_token_encrypted": encrypted_refresh_token,
@@ -220,7 +223,7 @@ class IntegrationService:
                 logger.info(f"Token for user {user_id}, provider {name} has expired. Refreshing...")
                 creds.refresh(Request())
                 # Persist the new token
-                await self.update_integration_token_and_refresh_token(user_id, name, creds.token, creds.expiry, creds.refresh_token)
+                await self.update_integration_token_and_refresh_token(user_id, name, creds.token, creds.expiry, creds.refresh_token,integration_id)
                 logger.info(f"Token refreshed and updated successfully for user {user_id}, provider {name}.")
             # -------------------------
 

@@ -11,7 +11,8 @@ def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str
         """
         Sends an intermediate message to the user during long-running operations.
         Use this to notify users that you're working on something that will take time (browsing web, generating media, etc.)
-        DO NOT USE THIS IF SIMPLY SENDING AN OUTPUT AT THE END OF YOUR EXECUTION WILL SUFFICE. ONLY USE THIS IF THE GOAL IS TO BROWSE WEB OR GENERATE MEDIA.
+        DO NOT USE THIS IF SIMPLY SENDING AN OUTPUT AT THE END OF YOUR EXECUTION WILL SUFFICE.  USE THIS IF THE GOAL IS TO BROWSE WEB OR GENERATE MEDIA.
+        BUT IF THE GOAL IS TO SEND THE MESSAGE TO INFORM THE USER, WHILE WE CONTINUE WORKING ON THEIR REQUEST, THEN YOU MUST USE THIS INSTEAD OF THE FINAL RESPONSE.
         Args:
             message: The status update message to send
 

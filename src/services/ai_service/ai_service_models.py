@@ -125,5 +125,6 @@ class GranularPlanningResponse(BaseModel):
         default_factory=list,
         description="Specific tool function IDs required for this task. Only include tools that are ACTUALLY needed. Be precise and minimal."
     )
+    missing_data_for_tools: bool = Field(..., description="Indicates if any required data for the tools is missing.")
     plan: Optional[str] = Field(None, description="A detailed plan outlining the steps, if needed.")
     steps: Optional[List[str]] = Field(default_factory=list, description="Actionable steps for the task.")

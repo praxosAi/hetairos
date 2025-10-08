@@ -4,7 +4,7 @@ from src.config.settings import settings
 from src.utils.logging import setup_logger
 logger = setup_logger(__name__)
 from src.services.ai_service.prompts.granular_tooling_capabilities import GRANULAR_TOOLING_CAPABILITIES
-PLANNING_CACHE_NAME = 'cachedContents/q869t94o5f0776o1gfwu53ux33ff5u4tdpzpc2nr'
+PLANNING_CACHE_NAME = 'cachedContents/5annjujhmow365tqixt82cb1061boumzz1qx2oon'
 async def update_cache_ttl():
     """Updates the cache TTL in a fire-and-forget manner."""
     try:

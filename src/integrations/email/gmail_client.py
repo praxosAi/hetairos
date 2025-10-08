@@ -589,3 +589,111 @@ class GmailIntegration(BaseIntegration):
                         "message_id": message['id']
                     })
         return attachments
+    async def get_message_by_id(self, message_id: str, *, account: Optional[str] = None) -> Dict:
+        """
+        Retrieves and formats the full content of a single email by its ID.
+        """
+        service, _, resolved_account = self._get_services_for_account(account)
+        try:
+            message = service.users().messages().get(
+                userId=self.gmail_user_id, id=message_id, format='full'
+            ).execute()
+            # Reuse the existing formatting method to return a clean, structured response
+            return await self._format_message(message)
+        except HttpError as e:
+            logger.error(f"Error fetching message ID {message_id} for {resolved_account}: {e}")
+            raise Exception(f"Could not retrieve email with ID {message_id}.") from e
+
+    async def reply_to_message(self, original_message_id: str, body: str, reply_all: bool = False, *, account: Optional[str] = None) -> Dict:
+        """
+        Constructs and sends a reply to an existing email.
+        """
+        service, _, resolved_account = self._get_services_for_account(account)
+        
+        try:
+            # 1. Fetch the original message to get necessary headers
+            original_message = service.users().messages().get(
+                userId=self.gmail_user_id, id=original_message_id, format='metadata'
+            ).execute()
+            
+            headers = {h['name']: h['value'] for h in original_message['payload']['headers']}
+            
+            # 2. Construct the reply headers
+            reply_subject = headers.get('Subject', '')
+            if not reply_subject.lower().startswith('re:'):
+                reply_subject = f"Re: {reply_subject}"
+
+            reply = EmailMessage()
+            reply['Subject'] = reply_subject
+            reply['From'] = resolved_account
+            reply['In-Reply-To'] = headers.get('Message-ID')
+            reply['References'] = headers.get('References', '') + ' ' + headers.get('Message-ID')
+
+            # 3. Determine recipients
+            original_from = headers.get('From', '')
+            if reply_all:
+                original_to = headers.get('To', '')
+                original_cc = headers.get('Cc', '')
+                recipients = {original_from}
+                if original_to: recipients.update(re.split(r', *', original_to))
+                if original_cc: recipients.update(re.split(r', *', original_cc))
+                # Remove own address from the recipients
+                recipients.discard(resolved_account) 
+                reply['To'] = ", ".join(recipients)
+            else:
+                reply['To'] = original_from
+            
+            reply.set_content(body)
+
+            # 4. Encode and send the message
+            encoded_message = base64.urlsafe_b64encode(reply.as_bytes()).decode()
+            create_message_request = {
+                'raw': encoded_message,
+                'threadId': original_message['threadId'] # Ensures it stays in the same conversation
+            }
+            
+            sent_message = service.users().messages().send(
+                userId=self.gmail_user_id,
+                body=create_message_request
+            ).execute()
+            
+            return {"status": "success", "message_id": sent_message['id']}
+        except HttpError as e:
+            logger.error(f"Error replying to message {original_message_id} from {resolved_account}: {e}")
+            raise Exception("Failed to send the reply.") from e
+
+
+    async def modify_message_labels(self, message_id: str, labels_to_add: Optional[List[str]] = None, labels_to_remove: Optional[List[str]] = None, *, account: Optional[str] = None) -> Dict:
+        """
+        Adds or removes labels from a message. Used for archiving, marking as read/unread, etc.
+        """
+        service, _, resolved_account = self._get_services_for_account(account)
+        
+        body = {}
+        if labels_to_add:
+            body['addLabelIds'] = labels_to_add
+        if labels_to_remove:
+            body['removeLabelIds'] = labels_to_remove
+            
+        if not body:
+            return {"status": "no_action", "message": "No labels specified to add or remove."}
+        
+        try:
+            result = service.users().messages().modify(
+                userId=self.gmail_user_id, id=message_id, body=body
+            ).execute()
+            return {"status": "success", "id": result['id'], "labels": result['labelIds']}
+        except HttpError as e:
+            logger.error(f"Error modifying labels for message {message_id} in {resolved_account}: {e}")
+            raise Exception("Failed to modify the email's labels.") from e
+
+    async def archive_message(self, message_id: str, *, account: Optional[str] = None) -> Dict:
+        """
+        Archives a message by removing the 'INBOX' label.
+        This is a convenience wrapper around modify_message_labels.
+        """
+        return await self.modify_message_labels(
+            message_id=message_id,
+            labels_to_remove=['INBOX'],
+            account=account
+        )

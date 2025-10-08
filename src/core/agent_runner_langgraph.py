@@ -879,7 +879,7 @@ class LangGraphAgentRunner:
                             logger.info("No tools have been called yet; which is required in this situation. continuing to tool execution.")
                             state['messages'].append(AIMessage(content=f"I need to use a tool to proceed. Let me consult the plan and use the appropriate tool. the original plan was: \n \n {plan_str}"))
                             state['tool_iter_counter'] += 1
-                            if state['tool_iter_counter'] > 4:
+                            if state['tool_iter_counter'] > 3:
                                 logger.info("Too many iterations without tool usage; forcing final response.")
                                 return "end"
                             return "continue"

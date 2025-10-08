@@ -165,31 +165,13 @@ class LangGraphAgentRunner:
             # Use granular planning to determine exact tools needed
             plan = None
             required_tool_ids = None
+            plan_str = ''
             try:
-                planning = await ai_service.granular_planning(history)
-                logger.info(f"Granular planning result: query_type={planning.query_type}, tooling_need={planning.tooling_need}")
-                logger.info(f"Required tools: {[tool.value for tool in planning.required_tools]}")
-
-                if planning:
-                    # Extract required tool IDs from enum to string list
-                    required_tool_ids = [tool.value for tool in planning.required_tools] if planning.required_tools else []
-                    logger.info('required tool ids are: ' + str(required_tool_ids))
-                    # Build plan string if plan/steps are provided
-                    plan_str = ""
-                    if planning.plan:
-                        plan_str += f"the plan is as follows: {planning.plan}. \n"
-                    if planning.steps:
-                        plan_str += f"the steps are as follows: {'\n'.join(planning.steps)}. "
-                    if plan_str:
-                        plan_str = """the following initial plan has been suggested by the system. take the plan into account when generating the response, but do not feel bound by it. you can deviate from the plan if you think it's necessary.
-                         In either case, make sure to use the appropriate tools that are provided to you for performing this task. Do not respond that you are doing a task, without actually doing it. instead, do the task, then send the user indication that you have done it, with any necessary result data.  \n\n""" + plan_str
-                        plan = planning
-                        logger.info(f"Added planning context to history: {plan_str}")
+                plan, required_tool_ids, plan_str = await ai_service.granular_planning(history)
             except Exception as e:
                 logger.error(f"Error during granular planning call: {e}", exc_info=True)
                 required_tool_ids = None  # Fallback to loading all tools
 
-            # Create tools based on granular planning results
             tools = await self.tools_factory.create_tools(
                 user_context,
                 metadata,

@@ -20,7 +20,7 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
         Searches for files in the user's Google Drive using advanced query syntax.
         
         Args:
-            query: Search query. Can include file names, content, or Google Drive search operators like:
+            query: Search query. Can include file names, content, etc. Must always be using Google Drive search operators like:
                    - "name contains 'report'" (search by name)
                    - "fullText contains 'keyword'" (search file contents)
                    - "mimeType='application/vnd.google-apps.document'" (search by file type)
@@ -32,6 +32,7 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
             results = await gdrive_integration.list_files(query=query, max_results=max_results, account=account)
             return ToolExecutionResponse(status="success", result=results)
         except Exception as e:
+            logger.error(f"Error searching Google Drive files: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e), user_message="An error occurred while searching Google Drive.")
 
     @tool
@@ -49,6 +50,7 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
             )
             return ToolExecutionResponse(status="success", result=result)
         except Exception as e:
+            logger.error(f"Error saving file to Google Drive: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e), user_message="Could not save the file to Google Drive.")
 
     @tool
@@ -66,6 +68,7 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
             )
             return ToolExecutionResponse(status="success", result=f"File '{filename}' created. Link: {file_metadata.get('webViewLink')}")
         except Exception as e:
+            logger.error(f"Error creating text file in Google Drive: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e), user_message="Could not create the text file in Google Drive.")
 
     @tool
@@ -79,6 +82,7 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
             content = await gdrive_integration.read_file_content_by_id(file_id, account=account)
             return ToolExecutionResponse(status="success", result=content)
         except Exception as e:
+            logger.error(f"Error reading file content from Google Drive: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e), user_message=f"Could not read file with ID '{file_id}'.")
 
     # This tool is now functionally covered by search_google_drive_files, but we keep it
@@ -95,6 +99,7 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
             files = await gdrive_integration.list_files(folder_id=folder_id, max_results=max_results, account=account)
             return ToolExecutionResponse(status="success", result=files)
         except Exception as e:
+            logger.error(f"Error listing files from Google Drive: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e), user_message="Could not list files from Google Drive.")
     
     # 3. New logic to dynamically update descriptions for single vs. multiple accounts

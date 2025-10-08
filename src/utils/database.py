@@ -1,5 +1,5 @@
 
-import logging
+
 from src.config.settings import settings
 import motor.motor_asyncio
 import json
@@ -223,16 +223,32 @@ class ConversationDatabase:
     async def is_conversation_expired(self, conversation_id: str, timeout_minutes:int,payload:dict) -> bool:
         """Check if a conversation has exceeded the inactivity timeout."""
         conversation = await self.get_conversation_info(conversation_id)
-
+        self.logger.info(f"Checking if conversation {conversation_id} is expired. Last activity: {conversation['last_activity'] if conversation else 'N/A'}")
         if not conversation:
             return True
         
         last_activity = conversation['last_activity']
         timeout_delta = timedelta(minutes=timeout_minutes)
         messages = await self.get_conversation_messages(conversation_id,6)
+        input_text = ''
+        if isinstance(payload, list):
+            ### this is not really the best way to do it, but for now, we'll just concatenate all text parts.
+            input_text = " ".join([item.get("text", "") for item in payload if item.get("text")])
+        elif isinstance(payload, dict):
+            input_text = payload.get("text")
+        else:
+            return True
+        if '/START_NEW' in input_text:
+            ## @TODO: we should then remove this tag from the message content.
+            self.logger.info("Detected /START_NEW tag in the message, starting a new conversation.")
+            return True
+        if '/CONTINUE_LAST' in input_text:
+            return False
         if (datetime.utcnow() - last_activity) > timeout_delta:
             if not payload:
                 return True
+
+            self.logger.info(f"Input text for timeout check: {input_text}")
             ## here, we will add further intelligence.
             prompt = f"User has been inactive for {timeout_minutes} minutes."
             if messages:
@@ -240,14 +256,10 @@ class ConversationDatabase:
                 for msg in messages:
                     prompt += f"{msg['role']}: {msg['content']}\n"
             prompt += f" New incoming message: {json.dumps(payload,default=str)}."
-
+            
             prompt += " Based on the recent conversation context, determine if this new message is a continuation of the previous conversation or a new topic. If it's a continuation, return False. If it's a new topic, return True."
             prompt += "Consider the time, as well as the relation between the recent previous messages and the new message."
-            if '/START_NEW' in prompt:
-                ## @TODO: we should then remove this tag from the message content.
-                return True
-            if '/CONTINUE_LAST' in prompt:
-                return False
+
             response = await ai_service.boolean_call(prompt, False)
             return response
             

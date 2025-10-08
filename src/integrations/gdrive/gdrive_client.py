@@ -218,9 +218,15 @@ class GoogleDriveIntegration(BaseIntegration):
             q_parts = ["trashed=false"]
             if folder_id:
                 q_parts.append(f"'{folder_id}' in parents")
+            
+            # --- CORRECTED LOGIC ---
+            # Treat the 'query' as a complete clause from the tool, do not wrap it.
+            # Wrapping in parentheses ensures it combines correctly with other 'and' clauses.
             if query:
-                q_parts.append(f"name contains '{query}'")
+                q_parts.append(f"({query})")
+
             q_string = " and ".join(q_parts)
+            logger.info(f"Executing Drive search with query: '{q_string}' for account {resolved_account}")
 
             results = service.files().list(
                 q=q_string,

@@ -5,6 +5,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,ToolMes
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
 import json
+from src.tools.tool_types import ToolExecutionResponse
 from langgraph.prebuilt import ToolNode
 from langgraph.types import Command
 from src.config.settings import settings
@@ -214,7 +215,21 @@ class LangGraphAgentRunner:
                 try:
                     new_state = state['messages'][len(initial_state['messages']):]
                     last_message = state['messages'][-1] if state['messages'] else None
-
+                    try:
+                        if last_message and isinstance(last_message, ToolMessage):
+                            if  isinstance(last_message.content,ToolExecutionResponse):
+                                if last_message.content.status == "error" and state.get("tool_iter_counter", 0) < MAX_TOOL_ITERS:
+                                    next_count = state.get("tool_iter_counter", 0) + 1
+                                    appended = AIMessage(
+                                        content="The last tool execution resulted in an error. I will retry, trying to analyze what failed and adjusting my approach. "
+                                    )
+                                    return Command(
+                                        goto="action",
+                                        update={"messages": state["messages"] + [appended], "tool_iter_counter": next_count},
+                                    )
+                    except Exception as e:
+                        logger.error(f"Error checking last message type: {e}", exc_info=True)
+                        #
                     # 1) Missing-params path → obtain_data (only if not already probed too many times)
                     if not minimal_tools and 'ask_user_for_missing_params' in required_tool_ids:
                         if state.get("param_probe_done", False):
@@ -376,7 +391,7 @@ class LangGraphAgentRunner:
                         )
                     elif isinstance(msg, ToolMessage):
                         # Persist tool results
-                        content = str(msg.content)[:1000]  # Truncate long results
+                        content = str(msg.content)
                         await self.conversation_manager.add_assistant_message(
                             user_context.user_id,
                             conversation_id,

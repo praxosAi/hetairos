@@ -27,6 +27,13 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
         try:
             signed_body = (body or "") + '\n\nEmail directive handled by <a href="https://app.mypraxos.com">My Praxos</a>'
             result = await gmail_integration.send_email(recipient, subject, signed_body, from_account=from_account)
+            from src.utils.constant import NO_WATERMARK_USER_IDS
+
+            singed_body = (body if body else "")
+            if gmail_integration.user_id not in NO_WATERMARK_USER_IDS:
+                singed_body += '\n\nEmail directive handled by <a href="https://app.mypraxos.com/log-in">My Praxos</a>'
+            
+            result = await gmail_integration.send_email(recipient, subject, singed_body)
             return ToolExecutionResponse(status="success", result=result)
         except Exception as e:
             logger.error(f"Error sending email: {e}", exc_info=True)

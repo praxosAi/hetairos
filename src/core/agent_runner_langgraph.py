@@ -219,7 +219,7 @@ class LangGraphAgentRunner:
                                 tool_called = True
                                 break 
                         if not tool_called:
-                            logger.info("No tools have been called yet; which is required in this situation. continuing to tool execution.")
+                            logger.info("No tools have been called yet; which is required in this situation. continuing to tool execution. the counter is: " + str(state['tool_iter_counter']))
                             state['messages'].append(AIMessage(content=f"I need to use a tool to proceed. Let me consult the plan and use the appropriate tool. the original plan was: \n \n {plan_str}"))
                             state['tool_iter_counter'] += 1
                             if state['tool_iter_counter'] > 3:

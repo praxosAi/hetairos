@@ -23,4 +23,4 @@ class AgentState(MessagesState):
     user_context: UserContext
     metadata: Optional[Dict[str, Any]]
     final_response: Optional[AgentFinalResponse] # To hold the structured output
-    tool_iter_counter: int = 0  # Counter for tool iterations
+    tool_iter_counter: int

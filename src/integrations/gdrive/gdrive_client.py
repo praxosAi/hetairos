@@ -9,11 +9,10 @@ from src.utils.logging.base_logger import setup_logger
 from src.integrations.base_integration import BaseIntegration
 from src.services.integration_service import integration_service
 
-logger = setup_logger(__name__)
+logger = setup_logger('gdrive_client')
 
 class GoogleDriveIntegration(BaseIntegration):
-    SCOPES = ['https://www.googleapis.com/auth/drive.file',
-              'https://www.googleapis.com/auth/drive.readonly']
+
     
     def __init__(self, user_id: str):
         super().__init__(user_id)

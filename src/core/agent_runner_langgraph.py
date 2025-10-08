@@ -64,11 +64,11 @@ class ToolMonitorCallback(AsyncCallbackHandler):
         logger.info(f"[TOOL START] {tool_name} | User: {self.user_id} | Execution: {self.execution_id}")
         logger.debug(f"[TOOL INPUT] {tool_name}: {input_str[:200]}")
 
-        # Track milestone in MongoDB
+        # Track milestone in MongoDB - fire and forget (non-blocking)
         try:
-            await self._track_tool_milestone(tool_name)
+            asyncio.create_task(self._track_tool_milestone(tool_name))
         except Exception as e:
-            logger.error(f"Error tracking tool milestone for {tool_name}: {e}", exc_info=True)
+            logger.error(f"Error creating milestone tracking task for {tool_name}: {e}", exc_info=True)
 
     async def on_tool_end(self, output: str, **kwargs) -> None:
         """Called when a tool completes successfully."""
@@ -83,13 +83,10 @@ class ToolMonitorCallback(AsyncCallbackHandler):
 
     async def _track_tool_milestone(self, tool_name: str) -> None:
         """Track user tool usage milestone in MongoDB."""
-        collection = db_manager.db["user_tool_milestones"]
+
 
         # Check if this is the first time user has called this tool
-        existing = await collection.find_one({
-            "user_id": ObjectId(self.user_id),
-            "tool_name": tool_name
-        })
+        existing = await db_manager.get_existing_tool_milestone(self.user_id, tool_name)
 
         now = datetime.utcnow()
 
@@ -103,21 +100,15 @@ class ToolMonitorCallback(AsyncCallbackHandler):
                 "call_count": 1,
                 "execution_ids": [self.execution_id]
             }
-            await collection.insert_one(milestone_doc)
+            await db_manager.insert_tool_milestone(milestone_doc)
             logger.info(f"[MILESTONE] User {self.user_id} first time using tool: {tool_name}")
         else:
             # Update existing milestone
-            await collection.update_one(
-                {
-                    "user_id": ObjectId(self.user_id),
-                    "tool_name": tool_name
-                },
-                {
+            await db_manager.update_tool_milestone(self.user_id, tool_name,                {
                     "$set": {"last_called_at": now},
                     "$inc": {"call_count": 1},
                     "$addToSet": {"execution_ids": self.execution_id}
-                }
-            )
+                })
 
 # --- 1. Define the Structured Output and State ---
 class FileLink(BaseModel):

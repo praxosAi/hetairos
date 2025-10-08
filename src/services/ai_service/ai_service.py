@@ -11,13 +11,15 @@ from langchain.chat_models import init_chat_model
 from src.services.ai_service.ai_service_models import *
 from src.services.ai_service.prompts.tooling_capabilities import TOOLING_CAPABILITIES_PROMPT
 from src.services.ai_service.prompts.granular_tooling_capabilities import GRANULAR_TOOLING_CAPABILITIES
-from src.services.ai_service.prompts.caches import PLANNING_PROMPT_CACHE
+from src.services.ai_service.prompts.caches import update_cache_ttl, PLANNING_CACHE_NAME
+import asyncio
 logger = setup_logger(__name__)
 class AIService:
     def __init__(self, model_name: str = "gemini-2.5-pro"):
         self.model_gemini_pro = ChatGoogleGenerativeAI(model=model_name, google_api_key=settings.GEMINI_API_KEY)
         llm = init_chat_model("gpt-4o", model_provider="openai")
         from src.utils.portkey_headers_isolation import create_port_key_headers
+        
         portkey_headers , portkey_gateway_url = create_port_key_headers(trace_id='internal_call')
         self.model_gpt_mini = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
         self.model_gemini_flash = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY)
@@ -49,7 +51,7 @@ class AIService:
     
 
     async def planning_call(self, context: list[BaseMessage]) -> PlanningResponse:
-        planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0, cached_content=PLANNING_PROMPT_CACHE)
+        planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0, cached_content=PLANNING_CACHE_NAME)
         
         planning_prompt = f"""You are an expert planner. The goal is to determine:
         1- Is the user simply sending a basic conversational query without a specific intent, such as a side effect, a tool use, or a task to be done? If so, respond with "simple_conversation", set tooling_needed to false, and leave the steps and plan empty.
@@ -57,7 +59,7 @@ class AIService:
 
         Consider both the context of the conversation and the user's latest message to determine their intent. If previous messages required a task which was already done, do not assume the new message also requires a task. Our goal is to determine whether AT THIS moment, for this message, a task is needed or not.
 
-        {TOOLING_CAPABILITIES_PROMPT}
+        The capabilities are explained in the system prompt. Use them to decide which tools, if any, are needed to accomplish the user's request, and plan accordingly.
         """
         from src.utils.file_msg_utils import replace_media_with_placeholders
 
@@ -70,41 +72,57 @@ class AIService:
         structured_llm = planning_llm.with_structured_output(PlanningResponse)
         response = await structured_llm.ainvoke(messages)
         logger.info(f"Planning call response: {response}")
+        try:
+            asyncio.create_task(update_cache_ttl())
+        except Exception as e:
+            logger.error(f"Error updating cache TTL: {e}")
         return response
 
     async def granular_planning(self, context: list[BaseMessage]) -> GranularPlanningResponse:
+        planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0, cached_content=PLANNING_CACHE_NAME)
+
         """
         Enhanced planning call that returns specific tool function IDs needed for the task.
         This enables precise tool loading instead of all-or-nothing approach.
         """
-        planning_prompt = f"""You are an expert task planner with deep knowledge of available tools.
+        # planning_prompt = f"""You are an expert task planner with deep knowledge of available tools.
 
-            **Your goal:** Analyze the user's request and determine:
-            1. **Query Type**: Is this a 'command' (task to execute) or 'conversational' (no action needed)?
-            2. **Tooling Need**: Does this require any tools, or can it be answered conversationally?
-            3. **Required Tools**: If tools are needed, specify EXACTLY which tool function IDs are required. Be precise and minimal.
+        #     **Your goal:** Analyze the user's request and determine:
+        #     1. **Query Type**: Is this a 'command' (task to execute) or 'conversational' (no action needed)?
+        #     2. **Tooling Need**: Does this require any tools, or can it be answered conversationally?
+        #     3. **Required Tools**: If tools are needed, specify EXACTLY which tool function IDs are required. Be precise and minimal.
 
-            **CRITICAL**: Only include tools that are ACTUALLY needed for THIS specific task. Don't include tools "just in case."
+        #     **CRITICAL**: Only include tools that are ACTUALLY needed for THIS specific task. Don't include tools "just in case." However, consider tools that need to be used in tandem to accomplish the task.
 
-            {GRANULAR_TOOLING_CAPABILITIES}
+        #     **IMPORTANT**: If multiple tools are needed, list them all and explain how they work together to complete the task.
 
-            Consider the conversation context. If a task was just completed, the user might be responding conversationally.
-            """
+        #     the tooling capabilities are detailed in the system prompt.
+        #     Consider the conversation context. If a task was just completed, the user might be responding conversationally.
+        #     """
 
         from src.utils.file_msg_utils import replace_media_with_placeholders
 
         # Replace media with placeholders
         msgs_with_placeholders = replace_media_with_placeholders(context)
-        sys_message = SystemMessage(content=planning_prompt)
-        messages = [sys_message] + msgs_with_placeholders
-
+        # sys_message = SystemMessage(content=planning_prompt)
+        # messages = [sys_message] + msgs_with_placeholders
+        messages = msgs_with_placeholders
         logger.info('Calling granular_planning for precise tool selection')
 
-        structured_llm = self.model_gemini_flash_no_thinking.with_structured_output(GranularPlanningResponse)
-        response = await structured_llm.ainvoke(messages)
+        # structured_llm = planning_llm.with_structured_output(GranularPlanningResponse)
+        response_raw = await planning_llm.ainvoke(messages)
+
+        ## now, we must cast it
+        for tool in response_raw.tool_calls:
+            if tool['name'] == 'Create_Granular_Planning_Response':
+                response = GranularPlanningResponse(**tool['args'])
+                break
         logger.info(f"Granular planning response: {response}")
         logger.info(f"Required tools: {[tool.value for tool in response.required_tools]}")
-
+        try:
+            asyncio.create_task(update_cache_ttl())
+        except Exception as e:
+            logger.error(f"Error updating cache TTL: {e}")
         return response
 
     async def multi_modal_by_doc_id(self, prompt: str, doc_id: str):

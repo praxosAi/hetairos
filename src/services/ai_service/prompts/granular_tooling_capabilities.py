@@ -342,10 +342,20 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 
 ### Web & Search Tools
 
+
+**browse_website_with_ai**
+- AI-powered browser for interactive/JavaScript-heavy websites (30-60 seconds)
+- Args: task, max_steps (optional, default 30)
+- Use when: Need to interact with dynamic websites, fill forms, click buttons, search for extensive information, create filters, etc.
+- Examples: "Find pricing on this website", "Navigate to contact page and get email", "Find me hotels on a specific site".
+- IMPORTANT: Always use send_intermediate_message first to notify user this will take time
+- Best for: Modern web apps, e-commerce sites, complex navigation
+
+
 **google_search**
 - Searches Google for information
 - Args: query
-- Use when: Need current information, facts, news, or web content
+- Use when: Need current information, facts, news, or web content. Use this only for more basic searches, not for searching within a specific website or complex searches. use browse website for these tasks.
 - Returns: Top search results with titles, snippets, URLs
 - Examples: "Latest news about X", "What's the weather in Y?", "Who is Z?"
 
@@ -362,13 +372,6 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 - Best for: News articles, blogs, documentation
 - NOT for: JavaScript-heavy sites (use browse_website_with_ai instead)
 
-**browse_website_with_ai**
-- AI-powered browser for interactive/JavaScript-heavy websites (30-60 seconds)
-- Args: task, max_steps (optional, default 30)
-- Use when: Need to interact with dynamic websites, fill forms, click buttons
-- Examples: "Find pricing on this website", "Navigate to contact page and get email"
-- IMPORTANT: Always use send_intermediate_message first to notify user this will take time
-- Best for: Modern web apps, e-commerce sites, complex navigation
 
 ---
 

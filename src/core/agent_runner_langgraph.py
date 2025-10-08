@@ -865,10 +865,15 @@ class LangGraphAgentRunner:
                 return {"messages": state['messages'] + [response]}
             
             def should_continue(state: AgentState):
+                
                 try:
                     new_state = state['messages'][len(initial_state['messages']):]
                     # logger.info(f"New messages since last model call: {new_state}")
                     if not minimal_tools:
+                        logger.info('required_tool_ids are: ' + str(required_tool_ids))
+                        if 'ask_user_for_missing_params' in required_tool_ids:
+                            logger.info("ask_user_for_missing_params is in required tools; forcing end of execution.")
+                            return "end"
                         ### if no tool has been called yet, we should continue.
                         tool_called = False
                         for msg in new_state:

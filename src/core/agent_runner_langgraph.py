@@ -140,6 +140,10 @@ class LangGraphAgentRunner:
                 # Single message - existing logic
                 message_prefix = f'message sent on date {current_time_user} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
                 if input_text:
+                    ### filter out flags, empty text, etc.
+                    input_text = input_text.replace('/START_NEW','').replace('/start_new','').strip()
+                    if not input_text:
+                        input_text = "The user sent a message with no text. if there are also no files, indicate that the user sent an empty message."
                     await self.conversation_manager.add_user_message(user_context.user_id, conversation_id, message_prefix + input_text, metadata)
                     history.append(HumanMessage(content=message_prefix + input_text))
                 

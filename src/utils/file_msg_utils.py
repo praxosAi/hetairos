@@ -131,7 +131,12 @@ async def generate_user_messages_parallel(
         
         # Add text message
         if text_content:
+            text_content = text_content.strip().replace('/START_NEW','').replace('/start_new','').strip()
+            if not text_content:
+                text_content = "The user sent a message with no text. if there are also no files, indicate that the user sent an empty message."
             full_message = message_prefix + text_content
+    
+                
             await conversation_manager.add_user_message(user_context.user_id, conversation_id, full_message, metadata)
             messages.append(HumanMessage(content=full_message))
             logger.info(f"Added text for message {i+1}/{len(input_messages)}")

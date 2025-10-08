@@ -217,7 +217,8 @@ class LangGraphAgentRunner:
                         logger.info('required_tool_ids are: ' + str(required_tool_ids))
                         if 'ask_user_for_missing_params' in required_tool_ids:
                             logger.info("ask_user_for_missing_params is in required tools; forcing end of execution.")
-                            return "end"
+                            state['messages'].append(AIMessage(content="I need to ask the user for missing parameters before proceeding. Let's formulate a question to the user, by calling `ask_user_for_missing_params` tool."))
+                            return "continue"
                         ### if no tool has been called yet, we should continue.
                         tool_called = False
                         for msg in new_state:

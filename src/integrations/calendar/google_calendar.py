@@ -98,8 +98,9 @@ class GoogleCalendarIntegration(BaseIntegration):
     async def _authenticate_one_account(self, integration_record: Dict[str, Any]) -> bool:
         """Authenticates a single account and stores its service instance."""
         account_email = integration_record.get('connected_account')
-        creds = await integration_service.create_google_credentials(self.user_id, 'google_calendar', account_email)
-        
+        integration_id = integration_record.get('_id')
+        creds = await integration_service.create_google_credentials(self.user_id, 'google_calendar', integration_id=integration_id)
+
         if not creds:
             logger.error(f"Failed to create credentials for calendar account {account_email}")
             return False
@@ -152,6 +153,7 @@ class GoogleCalendarIntegration(BaseIntegration):
     async def get_calendar_events(self, time_min: str, time_max: str, *, max_results: int = 10, calendar_id: str = 'primary', account: Optional[str] = None) -> List[Dict]:
         """Fetches events from a specific Google Calendar account."""
         service, resolved_account = self._get_service_for_account(account)
+        logger.info(f"Fetching events from calendar '{calendar_id}' for account '{resolved_account}' between {time_min} and {time_max}")
         
         try:
             events_result = service.events().list(

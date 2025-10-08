@@ -1,25 +1,29 @@
+from datetime import datetime
 from typing import List, Optional
 from langchain_core.tools import tool
 from src.integrations.calendar.google_calendar import GoogleCalendarIntegration
 from src.tools.tool_types import ToolExecutionResponse
 from src.utils.logging import setup_logger
-
+from src.utils.timezone_utils import nyc_to_utc
 logger = setup_logger(__name__)
 
-def create_calendar_tools(gcal_integration: GoogleCalendarIntegration) -> List:
+def create_calendar_tools(gcal_integration: GoogleCalendarIntegration,user_time_zone:str) -> List:
     """Creates calendar-related tools that are dynamically configured for single or multiple user accounts."""
 
     @tool
     async def get_calendar_events(
-        time_min: str,
-        time_max: str,
+        time_min: datetime,
+        time_max: datetime,
         max_results: int = 10,
         calendar_id: str = 'primary',
         account: Optional[str] = None  # Add optional account parameter
     ) -> ToolExecutionResponse:
         """Fetches events from the user's Google Calendar within a specified time window."""
         try:
+            ### now, we must cast the timezones to the user's timezone
             # Pass the account parameter to the integration method
+            time_max = nyc_to_utc(time_max,user_time_zone)
+            time_min = nyc_to_utc(time_min,user_time_zone)
             events = await gcal_integration.get_calendar_events(
                 time_min=time_min,
                 time_max=time_max,
@@ -37,8 +41,8 @@ def create_calendar_tools(gcal_integration: GoogleCalendarIntegration) -> List:
     @tool
     async def create_calendar_event(
         title: str,
-        start_time: str, 
-        end_time: str,
+        start_time: datetime, 
+        end_time: datetime,
         attendees: List[str] = [],
         description: str = "",
         location: str = "",
@@ -47,7 +51,13 @@ def create_calendar_tools(gcal_integration: GoogleCalendarIntegration) -> List:
     ) -> ToolExecutionResponse:
         """Creates a new event on the user's Google Calendar."""
         try:
-            signed_description = (description or "") + '\n\nSchedule directive created by <a href="https://app.mypraxos.com">My Praxos</a>'
+            start_time = nyc_to_utc(start_time,user_time_zone)
+            end_time = nyc_to_utc(end_time,user_time_zone)
+
+            from src.utils.constant import NO_WATERMARK_USER_IDS
+            signed_description = (description or "")
+            if gcal_integration.user_id not in NO_WATERMARK_USER_IDS:
+                signed_description += '\n\nSchedule directive created by <a href="https://app.mypraxos.com">My Praxos</a>'
             # Pass the account parameter to the integration method
             created_event = await gcal_integration.create_calendar_event(
                 title=title,

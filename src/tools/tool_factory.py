@@ -228,7 +228,7 @@ class AgentToolsFactory:
             idx, gcal_integration = integration_map['gcal']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_calendar_tools(gcal_integration))
+                    tools.extend(create_calendar_tools(gcal_integration,user_time_zone))
                     have_calendar_tool = True
                     logger.info("Google Calendar tools loaded")
                 except Exception as e:

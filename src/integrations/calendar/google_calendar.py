@@ -136,15 +136,10 @@ class GoogleCalendarIntegration(BaseIntegration):
         raise ValueError(f"Multiple accounts exist. Specify one with the 'account' parameter: {self.connected_accounts}")
 
     async def _get_calendar_timezone(self, service: Any, calendar_id: str) -> str:
-        """Helper to get and cache the timezone for a given calendar."""
-        cache_key = f"{service.credentials.token}:{calendar_id}"
-        if cache_key in self._timezone_cache:
-            return self._timezone_cache[cache_key]
-        
         try:
             calendar = service.calendars().get(calendarId=calendar_id).execute()
             timezone = calendar.get('timeZone', 'UTC')
-            self._timezone_cache[cache_key] = timezone
+
             return timezone
         except HttpError:
             logger.warning(f"Could not fetch timezone for calendar '{calendar_id}'. Defaulting to UTC.")

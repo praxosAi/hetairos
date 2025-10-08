@@ -24,3 +24,5 @@ class AgentState(MessagesState):
     metadata: Optional[Dict[str, Any]]
     final_response: Optional[AgentFinalResponse] # To hold the structured output
     tool_iter_counter: int
+    data_iter_counter: int
+    param_probe_done: bool  # has obtain_data been executed?

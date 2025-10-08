@@ -37,7 +37,8 @@ class FileUploadRequest(BaseModel):
 
 class IngestionRequest(BaseModel):
     user_id: str
-    integration_type: str
+    integration_id: str
+
 
 
 
@@ -343,9 +344,9 @@ async def trigger_ingestion(request: IngestionRequest):
         "source": "ingestion", # A new source type for our worker to identify
         "logging_context": {'user_id':user_id_var.get(), 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
         "payload": {
-            "integration_type": request.integration_type
+            "integration_id": request.integration_id
         },
         "metadata": {}
     }
     await event_queue.publish(event)
-    return {"status": "success", "message": f"Initial ingestion for {request.integration_type} has been queued for user {request.user_id}."}
+    return {"status": "success", "message": f"Initial ingestion for {request.integration_id} has been queued for user {request.user_id}."}

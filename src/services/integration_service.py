@@ -229,7 +229,7 @@ class IntegrationService:
 
             return creds
         except Exception as e:
-            logger.error(f"Failed to create or refresh Google credentials for user {user_id}: {e}")
+            logger.error(f"Failed to create or refresh Google credentials for user {user_id}: {e}", exc_info=True)
             return None
     # async def create_microsoft_credentials(self, user_id: str) -> Optional[Dict[str, Any]]:
     #     """Get the Microsoft credentials for a user."""

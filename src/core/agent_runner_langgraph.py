@@ -1,10 +1,12 @@
 import pytz
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Tuple,Literal
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,ToolMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
+import json
 from langgraph.prebuilt import ToolNode
+from langgraph.types import Command
 from src.config.settings import settings
 from src.core.context import UserContext
 from src.tools.tool_factory import AgentToolsFactory
@@ -194,6 +196,8 @@ class LangGraphAgentRunner:
                     continue
             system_prompt = create_system_prompt(user_context, source, metadata, tool_descriptions, plan)
 
+            MAX_TOOL_ITERS = 3
+            MAX_DATA_ITERS = 2  # guard against loops in obtain_data
 
 
             # --- Graph Definition ---
@@ -202,60 +206,101 @@ class LangGraphAgentRunner:
                 response = await llm_with_tools.ainvoke([("system", system_prompt)] + messages)
                 return {"messages": state['messages'] + [response]}
             
-            def should_continue(state: AgentState):
-                
+            def should_continue_router(state: AgentState) -> Command[Literal["obtain_data","action","finalize"]]:
+                """
+                Router that can jump to obtain_data (missing params), action (tool execution), or finalize.
+                It also mutates state via Command.update to avoid conditional-edge state-loss.
+                """
                 try:
                     new_state = state['messages'][len(initial_state['messages']):]
-                    last_message = state['messages'][-1]
-                    state_without_messages = {}
-                    for key in state:
-                        if key != 'messages':
-                            state_without_messages[key] = state[key]
-                    logger.info(f"Current state (excluding messages): {str(state_without_messages)}")
-                    # logger.info(f"New messages since last model call: {new_state}")
+                    last_message = state['messages'][-1] if state['messages'] else None
+
+                    # 1) Missing-params path → obtain_data (only if not already probed too many times)
+                    if not minimal_tools and 'ask_user_for_missing_params' in required_tool_ids:
+                        if state.get("param_probe_done", False):
+                            ### now we finalize. 
+                            logger.info("Param probe already done; proceeding to finalize.")
+                            return Command(goto="finalize")
+                        if state.get("data_iter_counter", 0) >= MAX_DATA_ITERS:
+                            logger.info("Missing-param probe reached cap; finalizing.")
+                            return Command(goto="finalize")
+                        if not state.get("param_probe_done", False):
+                            logger.info("Missing params required; routing to obtain_data node.")
+                            return Command(goto="obtain_data")
+
+                    # 2) Tools required but none called yet → push toward action
                     if not minimal_tools:
-                        logger.info('required_tool_ids are: ' + str(required_tool_ids))
-                        if 'ask_user_for_missing_params' in required_tool_ids:
-                            logger.info("ask_user_for_missing_params is in required tools; forcing end of execution.")
-                            state['messages'].append(AIMessage(content="I need to ask the user for missing parameters before proceeding. Let's formulate a question to the user, by calling `ask_user_for_missing_params` tool."))
-                            return "continue"
-                        ### if no tool has been called yet, we should continue.
-                        tool_called = False
-                        for msg in new_state:
-                            if isinstance(msg, AIMessage) and msg.tool_calls:
-                                tool_called = True
-                                break 
+                        tool_called = any(isinstance(m, AIMessage) and getattr(m, "tool_calls", None) for m in new_state)
                         if not tool_called:
-                            logger.info("No tools have been called yet; which is required in this situation. continuing to tool execution. the counter is: " + str(state['tool_iter_counter']))
-                            logger.info("last message is " + str(last_message))
-                            state['messages'].append(AIMessage(content=f"I need to use a tool to proceed. Let me consult the plan and use the appropriate tool. the original plan was: \n \n {plan_str}"))
-                            state['tool_iter_counter'] += 1
-                            if state['tool_iter_counter'] > 3:
-                                logger.info("Too many iterations without tool usage; forcing final response.")
-                                return "end"
-                            return "continue"
+                            next_count = state.get("tool_iter_counter", 0) + 1
+                            appended = AIMessage(
+                                content=(
+                                    "I need to use a tool to proceed. Let me consult the plan and use the appropriate tool. "
+                                    f"The original plan was:\n\n{plan_str}"
+                                )
+                            )
+                            if next_count > MAX_TOOL_ITERS:
+                                logger.info("Too many iterations without tool usage; finalizing.")
+                                return Command(
+                                    goto="finalize",
+                                    update={"messages": state["messages"] + [appended], "tool_iter_counter": next_count},
+                                )
+                            return Command(
+                                goto="action",
+                                update={"messages": state["messages"] + [appended], "tool_iter_counter": next_count},
+                            )
                 except Exception as e:
-                    logger.error(f"Error in should_continue evaluation: {e}", exc_info=True)
-                    pass
+                    logger.error(f"Error in router evaluation: {e}", exc_info=True)
+                    # fall through
+
+                # 3) Default: if last AI message has tool_calls → action; else → finalize
                 try:
-                    last_message = state['messages'][-1]
-                    if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
-                        logger.info("No tool calls in the last message; proceeding to final response generation.")
-                        return "end"
-                    else:
-                        return "continue"
+                    last_message = state['messages'][-1] if state['messages'] else None
+                    if not isinstance(last_message, AIMessage) or not getattr(last_message, "tool_calls", None):
+                        logger.info("No tool calls in the last message; proceeding to finalize.")
+                        return Command(goto="finalize")
+                    return Command(goto="action")
                 except Exception as e:
-                    logger.error(f"Error in should_continue evaluation: {e}", exc_info=True)
-                    return "end"
+                    logger.error(f"Error in router default evaluation: {e}", exc_info=True)
+                    return Command(goto="finalize")
+
+            async def obtain_data(state: AgentState) -> Command[Literal["action","finalize"]]:
+                """
+                Single-purpose node to solicit missing params without creating loops.
+                It appends a clear instruction for the next tool node and marks the probe as done.
+                """
+                
+                current = state.get("data_iter_counter", 0) + 1
+                if current > MAX_DATA_ITERS:
+                    logger.info("obtain_data cap reached; finalizing.")
+                    return Command(goto="finalize")
+
+                msg = AIMessage(
+                    content=(
+                        "We are missing required parameters. Call the `ask_user_for_missing_params` tool now to craft a single, "
+                        "concise question to the user that gathers ONLY the missing fields. After receiving the user's answer, "
+                        "continue with the main plan."
+                    )
+                )
+                logger.info(f"Routing to action with obtain_data instruction (iteration {current}).")
+                return Command(
+                    goto="action",
+                    update={
+                        "messages": state["messages"] + [msg],
+                        "data_iter_counter": current,
+                        "param_probe_done": True,   # prevent immediate re-entry from router
+                    },
+                )
             async def generate_final_response(state: AgentState):
-                final_message = state['messages'][-1].content
+                final_message = state['messages'][-2:] # Last message should be AI's final response
+                logger.info(f"final_message {str(state['messages'][-1])}")
                 source_to_use = source
-                logger.info(f"Final agent message before formatting: {final_message}")
+                logger.info(f"Final agent message before formatting: {str(final_message)}")
                 logger.info(f"Source channel: {source}, metadata: {state['metadata']}")
                 if source in ['scheduled','recurring'] and state.get('metadata') and state['metadata'].get('output_type'):
                     source_to_use = state['metadata']['output_type']
                 prompt = (
-                    f"Given the final response from an agent: '{final_message}', "
+                    f"Given the final response from an agent: '{json.dumps(final_message,indent=3,default=str)} \n\n', "
                     f"and knowing the initial request came from the '{source_to_use}' channel, "
                     "format this into the required JSON structure. The delivery_platform must match the source channel, unless the user indicates or implies otherwise, or the command requires a different channel. Note that a scheduled/recurring/triggered command cannot have websocket as the delivery platform. If the user has specifically asked for a different delivery platform, you must comply. for example, if the user has sent an email, but requests a response on imessage, comply. Explain the choice of delivery platform in the execution_notes field, acknowledging if the user requested a particular platform or not. "
                     "IF the source channel is 'websocket', you must always respond on websocket. assume that any actions that required different platforms, such as sending an email, have already been handled. "
@@ -265,21 +310,23 @@ class LangGraphAgentRunner:
                 response = await self.structured_llm.ainvoke(prompt)
                 return {"final_response": response}
 
+
+            
             workflow = StateGraph(AgentState)
             workflow.add_node("agent", call_model)
+            workflow.add_node("router", should_continue_router)
+            workflow.add_node("obtain_data", obtain_data)   # NEW
             workflow.add_node("action", tool_executor)
             workflow.add_node("finalize", generate_final_response)
-            
+
             workflow.set_entry_point("agent")
-            
-            workflow.add_conditional_edges(
-                "agent",
-                should_continue,
-                {"continue": "action", "end": "finalize"}
-            )
-            workflow.add_edge('action', 'agent')
-            workflow.add_edge('finalize', END)
-            
+            workflow.add_edge("agent", "router")
+            workflow.add_edge("obtain_data", "action")  # obtain_data always drives a single tool turn
+            workflow.add_edge("action", "agent")
+            workflow.add_edge("finalize", END)
+
+
+                        
             app = workflow.compile()
 
             initial_state: AgentState = {
@@ -301,7 +348,8 @@ class LangGraphAgentRunner:
                 initial_state,
                 {
                     "recursion_limit": 100,
-                    "callbacks": [tool_monitor]
+                    "callbacks": [tool_monitor],
+                    "tool_iter_counter": 0
                 }
             )
 

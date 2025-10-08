@@ -4,7 +4,7 @@ from langchain_core.tools import tool
 from src.integrations.calendar.google_calendar import GoogleCalendarIntegration
 from src.tools.tool_types import ToolExecutionResponse
 from src.utils.logging import setup_logger
-from src.utils.timezone_utils import nyc_to_utc
+from src.utils.timezone_utils import nyc_to_utc,to_rfc3339
 logger = setup_logger(__name__)
 
 def create_calendar_tools(gcal_integration: GoogleCalendarIntegration,user_time_zone:str) -> List:
@@ -21,9 +21,10 @@ def create_calendar_tools(gcal_integration: GoogleCalendarIntegration,user_time_
         """Fetches events from the user's Google Calendar within a specified time window."""
         try:
             ### now, we must cast the timezones to the user's timezone
+
             # Pass the account parameter to the integration method
-            time_max = nyc_to_utc(time_max,user_time_zone)
-            time_min = nyc_to_utc(time_min,user_time_zone)
+            time_max = to_rfc3339(nyc_to_utc(time_max,user_time_zone))
+            time_min = to_rfc3339(nyc_to_utc(time_min,user_time_zone))
             events = await gcal_integration.get_calendar_events(
                 time_min=time_min,
                 time_max=time_max,
@@ -51,8 +52,8 @@ def create_calendar_tools(gcal_integration: GoogleCalendarIntegration,user_time_
     ) -> ToolExecutionResponse:
         """Creates a new event on the user's Google Calendar."""
         try:
-            start_time = nyc_to_utc(start_time,user_time_zone)
-            end_time = nyc_to_utc(end_time,user_time_zone)
+            start_time = to_rfc3339(nyc_to_utc(start_time,user_time_zone))
+            end_time = to_rfc3339(nyc_to_utc(end_time,user_time_zone))
 
             from src.utils.constant import NO_WATERMARK_USER_IDS
             signed_description = (description or "")

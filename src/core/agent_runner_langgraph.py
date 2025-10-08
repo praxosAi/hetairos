@@ -119,7 +119,7 @@ class LangGraphAgentRunner:
             
 
 
-            ### TODO: use user timezone from preferences object.        
+                  
             user_preferences = user_service.get_user_preferences(user_context.user_id)    
             timezone_name = user_preferences.get('timezone', 'America/New_York') if user_preferences else 'America/New_York'
             user_tz = pytz.timezone(timezone_name)
@@ -210,7 +210,7 @@ class LangGraphAgentRunner:
                 messages = state['messages']
                 response = await llm_with_tools.ainvoke([("system", system_prompt)] + messages)
                 return {"messages": state['messages'] + [response]}
-            
+            ### /// for a true good should continue graph, we should have much more extensive error handling.
             def should_continue_router(state: AgentState) -> Command[Literal["obtain_data","action","finalize"]]:
                 """
                 Router that can jump to obtain_data (missing params), action (tool execution), or finalize.

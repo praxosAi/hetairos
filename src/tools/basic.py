@@ -29,7 +29,7 @@ def create_basic_tools(user_time_zone) -> list:
             )
     @tool
     def ask_user_for_missing_params(params: str, question: str) -> str:
-        """Ask the user for missing parameters."""
+        """Ask the user for missing parameters. this is a record keeping tool. you should call it if this is the case, as it will allow you to continue and ask the user. otherwise, you will get stuck."""
 
 
         return ToolExecutionResponse(

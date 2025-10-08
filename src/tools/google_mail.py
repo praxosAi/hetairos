@@ -25,7 +25,10 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
     ) -> ToolExecutionResponse:
         """Sends an email using the user's Gmail account."""
         try:
-            signed_body = (body or "") + '\n\nEmail directive handled by <a href="https://app.mypraxos.com">My Praxos</a>'
+            from src.utils.constant import NO_WATERMARK_USER_IDS
+            signed_body = (body if body else "")
+            if gmail_integration.user_id not in NO_WATERMARK_USER_IDS:
+                signed_body += '\n\nEmail directive handled by <a href="https://app.mypraxos.com/log-in">My Praxos</a>'            
             result = await gmail_integration.send_email(recipient, subject, signed_body, from_account=from_account)
             from src.utils.constant import NO_WATERMARK_USER_IDS
 

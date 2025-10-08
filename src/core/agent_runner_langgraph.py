@@ -24,7 +24,7 @@ from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64
 from src.services.user_service import user_service
 from src.services.ai_service.ai_service import ai_service
 from src.core.callbacks.ToolMonitorCallback import ToolMonitorCallback
-from src.utils.file_msg_utils import generate_file_messages,get_conversation_history,process_media_output,generate_user_messages, generate_user_messages_parallel
+from src.utils.file_msg_utils import generate_file_messages,get_conversation_history,process_media_output, generate_user_messages_parallel
 logger = setup_logger(__name__)
 
 

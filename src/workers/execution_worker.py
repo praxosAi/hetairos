@@ -139,7 +139,7 @@ class ExecutionWorker:
             if source == "ingestion":
                 await self.ingestion_coordinator.perform_initial_ingestion(
                     user_id=event["user_id"],
-                    integration_type=event["payload"]["integration_type"]
+                    integration_id=event["payload"]["integration_id"]
                 )
                 # Ingestion tasks typically don't have a direct response to the user.
                 # We could potentially send a notification via the egress service if needed.

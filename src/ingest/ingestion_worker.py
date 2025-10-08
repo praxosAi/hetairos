@@ -15,7 +15,7 @@ class InitialIngestionCoordinator:
         self.ingest_worker = IngestWorker()
         self.logger = setup_logger("ingestion_coordinator")
 
-    async def perform_initial_ingestion(self, user_id: str, integration_type: str) -> Dict:
+    async def perform_initial_ingestion(self, user_id: str, integration_id: str) -> Dict:
         """
         Performs the initial data ingestion for a newly added integration. ingestion is not working until we fix the integration id
         """

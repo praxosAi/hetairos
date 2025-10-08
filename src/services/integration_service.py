@@ -101,7 +101,7 @@ class IntegrationService:
             return new_integration_record
         else:
             return None
-    async def get_integration_token(self, user_id: str, name: str) -> Optional[Dict[str, Any]]:
+    async def get_integration_token(self, user_id: str, name: str,integration_id:str = None) -> Optional[Dict[str, Any]]:
         """Get the decrypted token for a specific user and provider."""
         if settings.OPERATING_MODE == "local":
             logger.info(f"Operating in local mode. Fetching token for {name} from settings.")
@@ -122,11 +122,14 @@ class IntegrationService:
             # Add other integrations here as needed
             logger.warning(f"No local token configuration for provider {name}")
             return None
-
-        token_doc = await self.db_manager.db["integration_tokens"].find_one({
+        query = {
             "user_id": ObjectId(user_id),
             "integration_name": name
-        })
+        }
+        if integration_id:
+            query["integration_id"] = ObjectId(integration_id)
+        token_doc = await self.db_manager.db["integration_tokens"].find_one(query)
+
         # logger.info(f"token_doc: {json.dumps(token_doc,indent=4,default=str)}")
         if not token_doc:
             logger.warning(f"No token found for user {user_id} and provider {name}")
@@ -195,9 +198,9 @@ class IntegrationService:
 
 
         return False,None
-    async def create_google_credentials(self, user_id: str, name: str) -> Optional[Credentials]:
+    async def create_google_credentials(self, user_id: str, name: str, integration_id:str=None) -> Optional[Credentials]:
         """Creates a Google Credentials object from a user's stored token."""
-        token_doc = await self.get_integration_token(user_id, name)
+        token_doc = await self.get_integration_token(user_id, name,integration_id)
         if not token_doc:
             return None
 
@@ -288,7 +291,10 @@ class IntegrationService:
             upsert=False,
         )
 
-
+    async def get_all_integrations_for_user_by_name(self, user_id: str, name: str) -> List[Dict[str, Any]]:
+        """Get all integrations for a user by name."""
+        integrations = await self.db_manager.db["integrations"].find({"user_id": ObjectId(user_id), "name": name}).to_list(length=100)
+        return integrations
     async def get_user_by_integration(self, type: str, connected_account:str) -> Optional[List[str]]:
         """Get the user id by the integration type and connected account."""
 

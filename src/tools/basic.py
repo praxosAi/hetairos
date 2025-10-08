@@ -27,5 +27,13 @@ def create_basic_tools(user_time_zone) -> list:
             status="success",
             result=plan
             )
+    @tool
+    def ask_user_for_missing_params(params: str, question: str) -> str:
+        """Ask the user for missing parameters. this is a record keeping tool. you should call it if this is the case, as it will allow you to continue and ask the user. otherwise, you will get stuck."""
 
-    return [get_current_time,get_current_task_plan_and_step]
+
+        return ToolExecutionResponse(
+            status="need_user_input",
+            result=f"To proceed, please provide the following missing parameters: {params}. Here is a question to ask the user to help you gather this information: {question}"
+            )
+    return [get_current_time,get_current_task_plan_and_step, ask_user_for_missing_params]

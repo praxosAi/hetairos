@@ -57,13 +57,13 @@ async def handle_gmail_webhook(request: Request):
         checkpoint = await integration_service.get_gmail_checkpoint(user_id, user_email)
         if not checkpoint:
             # Seed once: store current mailbox historyId and exit (no backfill)
-            prof = gmail_integration.service.users().getProfile(userId="me").execute()
+            prof = gmail_integration.services[user_email].users().getProfile(userId="me").execute()
             await integration_service.set_gmail_checkpoint(user_id, user_email, str(prof["historyId"]))
             logger.info(f"Seeded mailbox checkpoint for {user_email} at {prof['historyId']}")
             return {"status": "seeded"}
         message_ids, new_checkpoint = gmail_integration.get_changed_message_ids_since(
                 start_history_id=checkpoint,
-                user_id="me",
+                account=user_email,
                 history_types=["messageAdded"],  # add "labelAdded" if INBOX transitions matter
             )
         new_messages = []
@@ -117,6 +117,7 @@ async def handle_gmail_webhook(request: Request):
                     normalized = await gmail_integration.normalize_gmail_message_for_ingestion(
                                 user_record=user_record,
                                 message=message,
+                                account=user_email,
                                 command_prefix=COMMAND,
                             )
                     ingestion_event = {

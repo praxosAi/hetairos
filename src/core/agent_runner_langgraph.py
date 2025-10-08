@@ -865,10 +865,15 @@ class LangGraphAgentRunner:
                 return {"messages": state['messages'] + [response]}
             
             def should_continue(state: AgentState):
+                
                 try:
                     new_state = state['messages'][len(initial_state['messages']):]
                     # logger.info(f"New messages since last model call: {new_state}")
                     if not minimal_tools:
+                        logger.info('required_tool_ids are: ' + str(required_tool_ids))
+                        if 'ask_user_for_missing_params' in required_tool_ids:
+                            logger.info("ask_user_for_missing_params is in required tools; forcing end of execution.")
+                            return "end"
                         ### if no tool has been called yet, we should continue.
                         tool_called = False
                         for msg in new_state:
@@ -879,7 +884,7 @@ class LangGraphAgentRunner:
                             logger.info("No tools have been called yet; which is required in this situation. continuing to tool execution.")
                             state['messages'].append(AIMessage(content=f"I need to use a tool to proceed. Let me consult the plan and use the appropriate tool. the original plan was: \n \n {plan_str}"))
                             state['tool_iter_counter'] += 1
-                            if state['tool_iter_counter'] > 4:
+                            if state['tool_iter_counter'] > 3:
                                 logger.info("Too many iterations without tool usage; forcing final response.")
                                 return "end"
                             return "continue"

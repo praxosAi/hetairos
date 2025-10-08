@@ -20,7 +20,7 @@ class ToolFunctionID(str, Enum):
     # Basic tools
     GET_CURRENT_TIME = "get_current_time"
     GET_CURRENT_TASK_PLAN_AND_STEP = "get_current_task_plan_and_step"
-
+    ASK_USER_FOR_MISSING_PARAMS = "ask_user_for_missing_params"
     # Preference tools
     ADD_USER_PREFERENCE_ANNOTATION = "add_user_preference_annotation"
     SET_ASSISTANT_NAME = "set_assistant_name"
@@ -120,10 +120,11 @@ class GranularPlanningResponse(BaseModel):
     """Enhanced planning response with specific tool function IDs."""
     reason: str = Field(..., description="A short reason for the planning decision.")
     query_type: str = Field(..., description="The type of query: 'command' or 'conversational'.", enum=['command', 'conversational'])
-    tooling_need: bool = Field(..., description="Indicates whether external tools are needed.")
+    tooling_need: bool = Field(False, description="Indicates whether external tools are needed.")
     required_tools: List[ToolFunctionID] = Field(
         default_factory=list,
         description="Specific tool function IDs required for this task. Only include tools that are ACTUALLY needed. Be precise and minimal."
     )
+    missing_data_for_tools: Optional[bool] = Field(False, description="Indicates if any required data for the tools is missing.")
     plan: Optional[str] = Field(None, description="A detailed plan outlining the steps, if needed.")
     steps: Optional[List[str]] = Field(default_factory=list, description="Actionable steps for the task.")

@@ -50,33 +50,7 @@ class AIService:
     
     
 
-    async def planning_call(self, context: list[BaseMessage]) -> PlanningResponse:
-        planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0, cached_content=PLANNING_CACHE_NAME)
-        
-        planning_prompt = f"""You are an expert planner. The goal is to determine:
-        1- Is the user simply sending a basic conversational query without a specific intent, such as a side effect, a tool use, or a task to be done? If so, respond with "simple_conversation", set tooling_needed to false, and leave the steps and plan empty.
-        2- Is the user requesting a specific task to be done? If so, respond with "task_execution", set tooling_needed to true, and provide a detailed plan with steps to accomplish the task.
 
-        Consider both the context of the conversation and the user's latest message to determine their intent. If previous messages required a task which was already done, do not assume the new message also requires a task. Our goal is to determine whether AT THIS moment, for this message, a task is needed or not.
-
-        The capabilities are explained in the system prompt. Use them to decide which tools, if any, are needed to accomplish the user's request, and plan accordingly.
-        """
-        from src.utils.file_msg_utils import replace_media_with_placeholders
-
-        # Replace media content with text placeholders for planning call
-        msgs_with_placeholders = replace_media_with_placeholders(context)
-        sys_message = SystemMessage(content=planning_prompt)
-        messages = [sys_message] + msgs_with_placeholders  
-        logger.info('calling for planning')
-
-        structured_llm = planning_llm.with_structured_output(PlanningResponse)
-        response = await structured_llm.ainvoke(messages)
-        logger.info(f"Planning call response: {response}")
-        try:
-            asyncio.create_task(update_cache_ttl())
-        except Exception as e:
-            logger.error(f"Error updating cache TTL: {e}")
-        return response
 
     async def granular_planning(self, context: list[BaseMessage]) -> GranularPlanningResponse:
         planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0, cached_content=PLANNING_CACHE_NAME)

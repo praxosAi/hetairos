@@ -290,6 +290,7 @@ class DatabaseManager:
         self.agent_schedules = self.db["agent_schedules"]
         self.documents = self.db["documents"]
         self.agent_triggers = self.db["agent_triggers"]
+        self.tool_monitor_collection = self.db["user_tool_monitor"]
     async def _create_index_if_not_exists(self, collection, keys, **kwargs):
         """Helper to create an index and ignore NamespaceExists error."""
         try:
@@ -621,5 +622,20 @@ class DatabaseManager:
         if trigger:
             return trigger
         return None
+    async def get_existing_tool_milestone(self, user_id: str, tool_name: str) -> Optional[Dict]:
+        """Get existing tool milestone for a user and tool."""
+        return await self.tool_monitor_collection.find_one({
+            "user_id": ObjectId(user_id),
+            "tool_name": tool_name
+        })
+    async def insert_tool_milestone(self, milestone_doc: Dict):
+        """Insert a new tool milestone document."""
+        await self.tool_monitor_collection.insert_one(milestone_doc)
+    async def update_tool_milestone(self, user_id: str, tool_name: str, update_fields: Dict):
+        """Update an existing tool milestone document."""
+        await self.tool_monitor_collection.update_one(
+            {"user_id": ObjectId(user_id), "tool_name": tool_name},
+            update_fields
+        )
 # Global database instance
 db_manager = DatabaseManager()

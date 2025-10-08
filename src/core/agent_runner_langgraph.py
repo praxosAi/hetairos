@@ -25,6 +25,7 @@ from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64
 from src.utils.audio import convert_ogg_b64_to_wav_b64
 from src.services.user_service import user_service
 from src.services.ai_service.ai_service import ai_service
+from langchain.callbacks.base import AsyncCallbackHandler
 logger = setup_logger(__name__)
 
 LANGUAGE_MAP = {
@@ -47,6 +48,68 @@ async def _gather_bounded(coros: List[Any], limit: int = 8):
 
     # Order of results matches order of coros
     return await asyncio.gather(*(_run(c) for c in coros), return_exceptions=True)
+
+# --- Tool Monitoring Callback ---
+class ToolMonitorCallback(AsyncCallbackHandler):
+    """Callback handler for monitoring tool usage and tracking milestones."""
+
+    def __init__(self, user_id: str, execution_id: str):
+        super().__init__()
+        self.user_id = user_id
+        self.execution_id = execution_id
+
+    async def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs) -> None:
+        """Called when a tool starts execution."""
+        tool_name = serialized.get('name', 'unknown_tool')
+        logger.info(f"[TOOL START] {tool_name} | User: {self.user_id} | Execution: {self.execution_id}")
+        logger.debug(f"[TOOL INPUT] {tool_name}: {input_str[:200]}")
+
+        # Track milestone in MongoDB - fire and forget (non-blocking)
+        try:
+            asyncio.create_task(self._track_tool_milestone(tool_name))
+        except Exception as e:
+            logger.error(f"Error creating milestone tracking task for {tool_name}: {e}", exc_info=True)
+
+    async def on_tool_end(self, output: str, **kwargs) -> None:
+        """Called when a tool completes successfully."""
+        tool_name = kwargs.get('name', 'unknown_tool')
+        output_preview = str(output)[:200] if output else "No output"
+        logger.info(f"[TOOL END] {tool_name} | Output: {output_preview}")
+
+    async def on_tool_error(self, error: Exception, **kwargs) -> None:
+        """Called when a tool encounters an error."""
+        tool_name = kwargs.get('name', 'unknown_tool')
+        logger.error(f"[TOOL ERROR] {tool_name} | Error: {error}", exc_info=True)
+
+    async def _track_tool_milestone(self, tool_name: str) -> None:
+        """Track user tool usage milestone in MongoDB."""
+
+
+        # Check if this is the first time user has called this tool
+        existing = await db_manager.get_existing_tool_milestone(self.user_id, tool_name)
+
+        now = datetime.utcnow()
+
+        if not existing:
+            # First time using this tool - create milestone
+            milestone_doc = {
+                "user_id": ObjectId(self.user_id),
+                "tool_name": tool_name,
+                "first_called_at": now,
+                "last_called_at": now,
+                "call_count": 1,
+                "execution_ids": [self.execution_id]
+            }
+            await db_manager.insert_tool_milestone(milestone_doc)
+            logger.info(f"[MILESTONE] User {self.user_id} first time using tool: {tool_name}")
+        else:
+            # Update existing milestone
+            await db_manager.update_tool_milestone(self.user_id, tool_name,                {
+                    "$set": {"last_called_at": now},
+                    "$inc": {"call_count": 1},
+                    "$addToSet": {"execution_ids": self.execution_id}
+                })
+
 # --- 1. Define the Structured Output and State ---
 class FileLink(BaseModel):
     url: str = Field(description="URL to the file.")
@@ -90,13 +153,19 @@ class LangGraphAgentRunner:
             temperature=0.2,
             )
         
+        self.fast_llm = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash",
+            api_key=settings.GEMINI_API_KEY,
+            temperature=0.2,
+            thinking_budget=0
+            )
         self.llm = self.media_llm
         
         # else:
         #     logger.info("Using GPT-5 Mini for admin user logging")
         if has_media:
             self.llm = self.media_llm   
-        self.structured_llm = self.llm.with_structured_output(AgentFinalResponse)
+        self.structured_llm = self.fast_llm.with_structured_output(AgentFinalResponse)
 
 
 
@@ -130,7 +199,7 @@ class LangGraphAgentRunner:
             "If the user's request requires you to do an action in the future or in a recurring manner, or to set a trigger on an event, use the appropriate scheduling, recurring scheduled, or trigger setup tool. "
             "do not confirm the scheduling with the user, just do it, unless the user specifically asks you to confirm it with them."
             "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
-            "\n\nIMPORTANT - Long-running operations: For operations that take significant time (30+ seconds), such as browsing websites with AI, generating media, or complex research, you MUST:"
+            "\n\n IMPORTANT - Long-running operations: For operations that take significant time (30+ seconds), such as browsing websites with AI, generating media, or complex research, you MUST:"
             "\n1. FIRST use send_intermediate_message to notify the user you're starting the task (e.g., 'I'm browsing that website now, this will take about 30 seconds...')"
             "\n2. THEN execute the long-running tool"
             "\n3. The final response will be delivered automatically after completion"
@@ -164,8 +233,6 @@ class LangGraphAgentRunner:
             "there might be a property called 'user_message' which contains an error message. This message must be relayed to the user EXACTLY as it is. "
             "Do not add any other text to the user's message in these cases. If the preferd language has been set up to something different than English, you must translate the 'user_message' message to prefered language in the unsuccessful cases."
         )
-
-
         side_effect_explanation_prompt = """ note that there is a difference between the final output delivery modality, and using tools to send a response. the tool usage for communication is to be used when the act of sending a communication is a side effect, and not the final output or goal. """
         
         
@@ -723,31 +790,46 @@ class LangGraphAgentRunner:
             if all_forwarded:
                 logger.info("All input messages are forwarded; verify with the user before taking actions.")
                 return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_platform=source, execution_notes="All input messages were marked as forwarded.", output_modality="text", file_links=[], generation_instructions=None)
-            minimal_tools = False
+
+            # Use granular planning to determine exact tools needed
             plan = None
+            required_tool_ids = None
             try:
-                planning = await ai_service.planning_call(history)
+                planning = await ai_service.granular_planning(history)
+                logger.info(f"Granular planning result: query_type={planning.query_type}, tooling_need={planning.tooling_need}")
+                logger.info(f"Required tools: {[tool.value for tool in planning.required_tools]}")
+
                 if planning:
-                    if (not planning.tooling_need ) and planning.query_type == "conversational": 
-                        minimal_tools = True
-                    else:
-                        plan_str = ""
-                        if planning.plan:
-                            plan_str += f"the plan is as follows: {planning.plan}. \n"
-                        if planning.steps:
-                            plan_str += f"the steps are as follows: {'\n'.join(planning.steps)}. "
-                        if plan_str:
-                            plan_str = """the following initial plan has been suggested by the system. take the plan into account when generating the response, but do not feel bound by it. you can deviate from the plan if you think it's necessary. 
-                             In either case, make sure to use the appropriate tools that are provided to you for performing this task. Do not respond that you are doing a task, without actually doing it. instead, do the task, then send the user indication that you have done it, with any necessary result data.  \n\n""" + plan_str
-                            
-                            plan = planning
-                            logger.info(f"Added planning context to history: {plan_str}")
+                    # Extract required tool IDs from enum to string list
+                    required_tool_ids = [tool.value for tool in planning.required_tools] if planning.required_tools else []
+                    logger.info('required tool ids are: ' + str(required_tool_ids))
+                    # Build plan string if plan/steps are provided
+                    plan_str = ""
+                    if planning.plan:
+                        plan_str += f"the plan is as follows: {planning.plan}. \n"
+                    if planning.steps:
+                        plan_str += f"the steps are as follows: {'\n'.join(planning.steps)}. "
+                    if plan_str:
+                        plan_str = """the following initial plan has been suggested by the system. take the plan into account when generating the response, but do not feel bound by it. you can deviate from the plan if you think it's necessary.
+                         In either case, make sure to use the appropriate tools that are provided to you for performing this task. Do not respond that you are doing a task, without actually doing it. instead, do the task, then send the user indication that you have done it, with any necessary result data.  \n\n""" + plan_str
+                        plan = planning
+                        logger.info(f"Added planning context to history: {plan_str}")
             except Exception as e:
-                logger.error(f"Error during planning call: {e}", exc_info=True)
+                logger.error(f"Error during granular planning call: {e}", exc_info=True)
+                required_tool_ids = None  # Fallback to loading all tools
+
+            # Create tools based on granular planning results
+            tools = await self.tools_factory.create_tools(
+                user_context,
+                metadata,
+                timezone_name,
+                request_id=self.trace_id,
+                required_tool_ids=required_tool_ids
+            )
+            logger.info(f"Loaded {len(tools)} tools based on planning")
+            minimal_tools = True
+            if required_tool_ids is not None and len(required_tool_ids) > 0:
                 minimal_tools = False
-            tools = await self.tools_factory.create_tools(user_context, metadata, timezone_name, request_id=self.trace_id,minimal_tools=minimal_tools)
-
-
             tool_executor = ToolNode(tools)
             llm_with_tools = self.llm.bind_tools(tools)
             tool_descriptions = ""
@@ -776,16 +858,16 @@ class LangGraphAgentRunner:
             #     logger.error(f"Error fetching long-term memory: {e}", exc_info=True)
 
 
-
-
-
+            global counter
+            counter = 0
             # --- Graph Definition ---
             async def call_model(state: AgentState):
                 messages = state['messages']
                 response = await llm_with_tools.ainvoke([("system", system_prompt)] + messages)
                 return {"messages": state['messages'] + [response]}
-
+            
             def should_continue(state: AgentState):
+                
                 new_state = state['messages'][len(initial_state['messages']):]
                 # logger.info(f"New messages since last model call: {new_state}")
                 if not minimal_tools:
@@ -798,6 +880,10 @@ class LangGraphAgentRunner:
                     if not tool_called:
                         logger.info("No tools have been called yet; which is required in this situation. continuing to tool execution.")
                         state['messages'].append(AIMessage(content=f"I need to use a tool to proceed. Let me consult the plan and use the appropriate tool. the original plan was: \n \n {plan_str}"))
+                        counter += 1
+                        if counter > 4:
+                            logger.info("Too many iterations without tool usage; forcing final response.")
+                            return "end"
                         return "continue"
                 
                 last_message = state['messages'][-1]
@@ -849,7 +935,20 @@ class LangGraphAgentRunner:
                 "final_response": None
             }
             # --- END Graph Definition ---
-            final_state = await app.ainvoke(initial_state,{"recursion_limit": 100})
+
+            # Create tool monitoring callback
+            tool_monitor = ToolMonitorCallback(
+                user_id=user_context.user_id,
+                execution_id=execution_id
+            )
+
+            final_state = await app.ainvoke(
+                initial_state,
+                {
+                    "recursion_limit": 100,
+                    "callbacks": [tool_monitor]
+                }
+            )
 
             # Persist only NEW intermediate messages from this execution
             new_messages = final_state['messages'][len(initial_state['messages']):]

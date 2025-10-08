@@ -25,30 +25,41 @@ class IntegrationService:
             "google_calendar": ["read_events", "create_events", "update_events"],
         }
 
-    async def update_integration_token(self, user_id: str, integration_name: str, new_token: str, new_expiry: datetime):
+    async def update_integration_token(self, user_id: str, integration_name: str, new_token: str, new_expiry: datetime, connected_account: Optional[str] = None):
         """Encrypts and updates a new access token in the database."""
         try:
             encrypted_token = encrypt_token(new_token)
+            query = {"user_id": ObjectId(user_id), "integration_name": integration_name}
+            if connected_account:
+                query["connected_account"] = connected_account
+
             await self.db_manager.db["integration_tokens"].update_one(
-                {"user_id": ObjectId(user_id), "integration_name": integration_name},
+                query,
                 {"$set": {
                     "access_token_encrypted": encrypted_token,
                     "token_expiry": new_expiry,
                     "updated_at": datetime.now(timezone.utc)
                 }}
             )
-            logger.info(f"Successfully updated and encrypted token for user {user_id}, provider {integration_name}.")
+            account_info = f" for account {connected_account}" if connected_account else ""
+            logger.info(f"Successfully updated and encrypted token for user {user_id}, provider {integration_name}{account_info}.")
         except Exception as e:
             logger.error(f"Failed to update token for user {user_id}, provider {integration_name}: {e}")
 
-
-    async def update_integration_token_and_refresh_token(self, user_id: str, integration_name: str, new_token: str, new_expiry: datetime, new_refresh_token: str    ):
+    async def get_all_integrations_for_user_by_name(self, user_id: str, name: str) -> List[Dict[str, Any]]:
+        """Get all of a user's configured integrations by name."""
+        return await self.db_manager.db["integrations"].find({"user_id": ObjectId(user_id), "name": name}).to_list(length=100)
+    async def update_integration_token_and_refresh_token(self, user_id: str, integration_name: str, new_token: str, new_expiry: datetime, new_refresh_token: str, connected_account: Optional[str] = None):
         """Encrypts and updates a new access token in the database."""
         try:
             encrypted_token = encrypt_token(new_token)
             encrypted_refresh_token = encrypt_token(new_refresh_token)
+            query = {"user_id": ObjectId(user_id), "integration_name": integration_name}
+            if connected_account:
+                query["connected_account"] = connected_account
+
             await self.db_manager.db["integration_tokens"].update_one(
-                {"user_id": ObjectId(user_id), "integration_name": integration_name},
+                query,
                 {"$set": {
                     "access_token_encrypted": encrypted_token,
                     "refresh_token_encrypted": encrypted_refresh_token,
@@ -56,7 +67,8 @@ class IntegrationService:
                     "updated_at": datetime.now(timezone.utc)
                 }}
             )
-            logger.info(f"Successfully updated and encrypted token for user {user_id}, provider {integration_name}.")
+            account_info = f" for account {connected_account}" if connected_account else ""
+            logger.info(f"Successfully updated and encrypted token for user {user_id}, provider {integration_name}{account_info}.")
         except Exception as e:
             logger.error(f"Failed to update token for user {user_id}, provider {integration_name}: {e}")
     async def get_user_integrations(self, user_id: str) -> List[Dict[str, Any]]:
@@ -101,8 +113,8 @@ class IntegrationService:
             return new_integration_record
         else:
             return None
-    async def get_integration_token(self, user_id: str, name: str) -> Optional[Dict[str, Any]]:
-        """Get the decrypted token for a specific user and provider."""
+    async def get_integration_token(self, user_id: str, name: str, connected_account: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get the decrypted token for a specific user and provider, optionally for a specific connected account."""
         if settings.OPERATING_MODE == "local":
             logger.info(f"Operating in local mode. Fetching token for {name} from settings.")
             if name == "google_calendar" or name == "gmail":
@@ -123,13 +135,19 @@ class IntegrationService:
             logger.warning(f"No local token configuration for provider {name}")
             return None
 
-        token_doc = await self.db_manager.db["integration_tokens"].find_one({
+        # Build query with optional connected_account filter
+        query = {
             "user_id": ObjectId(user_id),
             "integration_name": name
-        })
+        }
+        if connected_account:
+            query["connected_account"] = connected_account
+
+        token_doc = await self.db_manager.db["integration_tokens"].find_one(query)
         # logger.info(f"token_doc: {json.dumps(token_doc,indent=4,default=str)}")
         if not token_doc:
-            logger.warning(f"No token found for user {user_id} and provider {name}")
+            account_info = f" and account {connected_account}" if connected_account else ""
+            logger.warning(f"No token found for user {user_id} and provider {name}{account_info}")
             return None
 
         try:
@@ -195,9 +213,9 @@ class IntegrationService:
 
 
         return False,None
-    async def create_google_credentials(self, user_id: str, name: str) -> Optional[Credentials]:
-        """Creates a Google Credentials object from a user's stored token."""
-        token_doc = await self.get_integration_token(user_id, name)
+    async def create_google_credentials(self, user_id: str, name: str, connected_account: Optional[str] = None) -> Optional[Credentials]:
+        """Creates a Google Credentials object from a user's stored token, optionally for a specific connected account."""
+        token_doc = await self.get_integration_token(user_id, name, connected_account)
         if not token_doc:
             return None
 
@@ -214,11 +232,12 @@ class IntegrationService:
 
             # --- TOKEN REFRESH LOGIC ---
             if creds and creds.expired and creds.refresh_token:
-                logger.info(f"Token for user {user_id}, provider {name} has expired. Refreshing...")
+                account_info = f" for account {connected_account}" if connected_account else ""
+                logger.info(f"Token for user {user_id}, provider {name}{account_info} has expired. Refreshing...")
                 creds.refresh(Request())
                 # Persist the new token
-                await self.update_integration_token_and_refresh_token(user_id, name, creds.token, creds.expiry, creds.refresh_token)
-                logger.info(f"Token refreshed and updated successfully for user {user_id}, provider {name}.")
+                await self.update_integration_token_and_refresh_token(user_id, name, creds.token, creds.expiry, creds.refresh_token, connected_account)
+                logger.info(f"Token refreshed and updated successfully for user {user_id}, provider {name}{account_info}.")
             # -------------------------
 
             return creds

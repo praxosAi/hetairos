@@ -132,7 +132,7 @@ class AgentState(MessagesState):
     user_context: UserContext
     metadata: Optional[Dict[str, Any]]
     final_response: Optional[AgentFinalResponse] # To hold the structured output
-
+    tool_iter_counter: int = 0  # Counter for tool iterations
 # --- 2. Define the Agent Runner Class ---
 class LangGraphAgentRunner:
     def __init__(self,trace_id: str, has_media: bool = False,override_user_id: Optional[str] = None):
@@ -858,8 +858,6 @@ class LangGraphAgentRunner:
             #     logger.error(f"Error fetching long-term memory: {e}", exc_info=True)
 
 
-            global counter
-            counter = 0
             # --- Graph Definition ---
             async def call_model(state: AgentState):
                 messages = state['messages']
@@ -867,32 +865,37 @@ class LangGraphAgentRunner:
                 return {"messages": state['messages'] + [response]}
             
             def should_continue(state: AgentState):
-                
-                new_state = state['messages'][len(initial_state['messages']):]
-                # logger.info(f"New messages since last model call: {new_state}")
-                if not minimal_tools:
-                    ### if no tool has been called yet, we should continue.
-                    tool_called = False
-                    for msg in new_state:
-                        if isinstance(msg, AIMessage) and msg.tool_calls:
-                            tool_called = True
-                            break 
-                    if not tool_called:
-                        logger.info("No tools have been called yet; which is required in this situation. continuing to tool execution.")
-                        state['messages'].append(AIMessage(content=f"I need to use a tool to proceed. Let me consult the plan and use the appropriate tool. the original plan was: \n \n {plan_str}"))
-                        counter += 1
-                        if counter > 4:
-                            logger.info("Too many iterations without tool usage; forcing final response.")
-                            return "end"
+                try:
+                    new_state = state['messages'][len(initial_state['messages']):]
+                    # logger.info(f"New messages since last model call: {new_state}")
+                    if not minimal_tools:
+                        ### if no tool has been called yet, we should continue.
+                        tool_called = False
+                        for msg in new_state:
+                            if isinstance(msg, AIMessage) and msg.tool_calls:
+                                tool_called = True
+                                break 
+                        if not tool_called:
+                            logger.info("No tools have been called yet; which is required in this situation. continuing to tool execution.")
+                            state['messages'].append(AIMessage(content=f"I need to use a tool to proceed. Let me consult the plan and use the appropriate tool. the original plan was: \n \n {plan_str}"))
+                            state['tool_iter_counter'] += 1
+                            if state['tool_iter_counter'] > 4:
+                                logger.info("Too many iterations without tool usage; forcing final response.")
+                                return "end"
+                            return "continue"
+                except Exception as e:
+                    logger.error(f"Error in should_continue evaluation: {e}", exc_info=True)
+                    pass
+                try:
+                    last_message = state['messages'][-1]
+                    if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
+                        logger.info("No tool calls in the last message; proceeding to final response generation.")
+                        return "end"
+                    else:
                         return "continue"
-                
-                last_message = state['messages'][-1]
-                if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
-                    logger.info("No tool calls in the last message; proceeding to final response generation.")
+                except Exception as e:
+                    logger.error(f"Error in should_continue evaluation: {e}", exc_info=True)
                     return "end"
-                else:
-                    return "continue"
-
             async def generate_final_response(state: AgentState):
                 final_message = state['messages'][-1].content
                 source_to_use = source
@@ -932,7 +935,8 @@ class LangGraphAgentRunner:
                 "messages": history,
                 "user_context": user_context,
                 "metadata": metadata,
-                "final_response": None
+                "final_response": None,
+                "tool_iter_counter": 0
             }
             # --- END Graph Definition ---
 

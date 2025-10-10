@@ -9,6 +9,13 @@ from src.ingress.webhook_handlers import telegram_handler
 from src.ingress.webhook_handlers import notion_handler
 from src.ingress.webhook_handlers import outlook_handler
 from src.ingress.webhook_handlers import imessage_handler
+from src.ingress.webhook_handlers import google_calendar_handler
+from src.ingress.webhook_handlers import google_drive_handler
+from src.ingress.webhook_handlers import microsoft_calendar_handler
+from src.ingress.webhook_handlers import onedrive_handler
+from src.ingress.webhook_handlers import trello_handler
+from src.ingress.webhook_handlers import dropbox_handler
+from src.ingress.webhook_handlers import slack_handler
 from src.core import suspended_event_queue
 from src.utils.logging.base_logger import request_id_var, user_id_var, modality_var
 from src.utils.redis_client import subscribe_to_channel
@@ -44,13 +51,33 @@ async def logging_middleware(request: Request, call_next):
     return response
 
 # Mount the webhook handlers
+# Messaging
 app.include_router(whatsapp_handler.router, prefix="/webhooks")
-app.include_router(http_handler.router, prefix="/ingress")
-app.include_router(gmail_handler.router, prefix="/webhooks")
 app.include_router(telegram_handler.router, prefix="/webhooks")
-app.include_router(notion_handler.router, prefix="/webhooks")
-app.include_router(outlook_handler.router, prefix="/webhooks")
+app.include_router(slack_handler.router, prefix="/webhooks")
 app.include_router(imessage_handler.router, prefix="/webhooks")
+
+# Email
+app.include_router(gmail_handler.router, prefix="/webhooks")
+app.include_router(outlook_handler.router, prefix="/webhooks")
+
+# Calendar
+app.include_router(google_calendar_handler.router, prefix="/webhooks")
+app.include_router(microsoft_calendar_handler.router, prefix="/webhooks")
+
+# Storage/Drive
+app.include_router(google_drive_handler.router, prefix="/webhooks")
+app.include_router(onedrive_handler.router, prefix="/webhooks")
+app.include_router(dropbox_handler.router, prefix="/webhooks")
+
+# Productivity
+app.include_router(notion_handler.router, prefix="/webhooks")
+app.include_router(trello_handler.router, prefix="/webhooks")
+
+# General HTTP ingress
+app.include_router(http_handler.router, prefix="/ingress")
+
+# Admin
 app.include_router(suspended_event_queue.router, prefix="/admin/suspended-events")
 
 @app.get("/")

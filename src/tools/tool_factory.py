@@ -169,7 +169,7 @@ class AgentToolsFactory:
         needs_gdrive = needs_category(['search_google_drive_files', 'save_file_to_drive', 'create_text_file_in_drive', 'read_file_content_by_id', 'list_drive_files'])
         needs_outlook = needs_category(['send_outlook_email', 'fetch_outlook_calendar_events', 'get_outlook_emails_from_sender', 'find_outlook_contact_email'])
         needs_notion = needs_category(['list_databases', 'list_notion_pages', 'query_notion_database', 'get_all_workspace_entries', 'search_notion_pages_by_keyword', 'create_notion_page', 'create_notion_database_entry', 'create_notion_database', 'append_to_notion_page', 'update_notion_page_properties', 'get_notion_page_content'])
-        needs_dropbox = needs_category(['save_file_to_dropbox', 'read_file_from_dropbox'])
+        needs_dropbox = needs_category(['save_file_to_dropbox', 'read_file_from_dropbox','list_dropbox_files','search_dropbox_files'])
         needs_trello = needs_category(['list_trello_organizations', 'list_trello_boards', 'get_trello_board_details', 'list_trello_cards', 'create_trello_card', 'update_trello_card'])
 
         # If no specific tools requested, authenticate all (backward compatibility)

@@ -174,10 +174,10 @@ class GoogleCalendarIntegration(BaseIntegration):
     async def create_calendar_event(self, title: str, start_time: str, end_time: str, *, attendees: List[str] = [], description: str = "", location: str = "", calendar_id: str = 'primary', account: Optional[str] = None) -> Dict:
         """Creates a new event on a specific Google Calendar account."""
         service, resolved_account = self._get_service_for_account(account)
-        
+
         # Dynamically get the calendar's timezone for accurate event creation
         timezone = await self._get_calendar_timezone(service, calendar_id)
-        
+
         event_body = {
             'summary': title,
             'location': location,
@@ -187,7 +187,7 @@ class GoogleCalendarIntegration(BaseIntegration):
             'attendees': [{'email': email} for email in attendees],
             'reminders': {'useDefault': True},
         }
-        
+
         try:
             created_event = service.events().insert(
                 calendarId=calendar_id,
@@ -198,3 +198,55 @@ class GoogleCalendarIntegration(BaseIntegration):
         except HttpError as e:
             logger.error(f"Error creating event for {resolved_account}: {e}", exc_info=True)
             raise Exception("An error occurred while creating the calendar event.") from e
+
+    async def get_changed_events_since(self, sync_token: Optional[str], *, account: Optional[str] = None) -> Tuple[List[Dict], Optional[str]]:
+        """
+        Get changed events since sync token using incremental sync.
+
+        This method implements Google Calendar's incremental sync API:
+        https://developers.google.com/calendar/api/guides/sync
+
+        Args:
+            sync_token: The sync token from previous sync, or None for initial sync
+            account: The calendar account to sync (defaults to single connected account)
+
+        Returns:
+            Tuple of (list of changed events, new sync token)
+        """
+        service, resolved_account = self._get_service_for_account(account)
+
+        try:
+            if sync_token:
+                # Incremental sync using sync token
+                logger.info(f"Performing incremental sync for {resolved_account} with sync token")
+                events_result = service.events().list(
+                    calendarId='primary',
+                    syncToken=sync_token
+                ).execute()
+            else:
+                # Initial sync - get recent events from last 7 days
+                time_min = (datetime.utcnow() - timedelta(days=7)).isoformat() + 'Z'
+                logger.info(f"Performing initial sync for {resolved_account} from {time_min}")
+                events_result = service.events().list(
+                    calendarId='primary',
+                    timeMin=time_min,
+                    singleEvents=True,
+                    orderBy='startTime'
+                ).execute()
+
+            events = events_result.get('items', [])
+            new_sync_token = events_result.get('nextSyncToken')
+
+            logger.info(f"Fetched {len(events)} events for {resolved_account}, new sync token: {new_sync_token[:20] if new_sync_token else None}...")
+            return events, new_sync_token
+
+        except HttpError as e:
+            logger.error(f"Error fetching calendar changes for {resolved_account}: {e}")
+            # If sync token is invalid (410 Gone), return empty list to trigger re-sync
+            if e.resp.status == 410:
+                logger.warning(f"Sync token expired for {resolved_account}, need to re-sync")
+                return [], None
+            return [], None
+        except Exception as e:
+            logger.error(f"Unexpected error fetching calendar changes for {resolved_account}: {e}")
+            return [], None

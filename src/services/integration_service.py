@@ -294,6 +294,177 @@ class IntegrationService:
             upsert=False,
         )
 
+    # Google Calendar checkpoint methods
+    async def get_calendar_sync_token(self, user_id: str, connected_account: str) -> Optional[str]:
+        """Get the sync token for Google Calendar incremental sync."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"user_id": ObjectId(user_id), "name": "google_calendar", "connected_account": connected_account},
+            projection={"calendar_sync_token": 1}
+        )
+        return (integ or {}).get("calendar_sync_token")
+
+    async def set_calendar_sync_token(self, user_id: str, connected_account: str, sync_token: str) -> None:
+        """Set the sync token for Google Calendar incremental sync."""
+        await self.db_manager.db["integrations"].update_one(
+            {"user_id": ObjectId(user_id), "name": "google_calendar", "connected_account": connected_account},
+            {"$set": {
+                "calendar_sync_token": str(sync_token),
+                "updated_at": datetime.now(timezone.utc),
+            }},
+            upsert=False,
+        )
+
+    # Google Drive checkpoint methods
+    async def get_drive_page_token(self, user_id: str, connected_account: str) -> Optional[str]:
+        """Get the page token for Google Drive changes API."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"user_id": ObjectId(user_id), "name": "google_drive", "connected_account": connected_account},
+            projection={"drive_page_token": 1}
+        )
+        return (integ or {}).get("drive_page_token")
+
+    async def set_drive_page_token(self, user_id: str, connected_account: str, page_token: str) -> None:
+        """Set the page token for Google Drive changes API."""
+        await self.db_manager.db["integrations"].update_one(
+            {"user_id": ObjectId(user_id), "name": "google_drive", "connected_account": connected_account},
+            {"$set": {
+                "drive_page_token": str(page_token),
+                "updated_at": datetime.now(timezone.utc),
+            }},
+            upsert=False,
+        )
+
+    # Microsoft Calendar/OneDrive delta link methods
+    async def get_outlook_calendar_delta_link(self, user_id: str, connected_account: str) -> Optional[str]:
+        """Get the delta link for Outlook Calendar incremental sync."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"user_id": ObjectId(user_id), "name": "outlook_calendar", "connected_account": connected_account},
+            projection={"calendar_delta_link": 1}
+        )
+        return (integ or {}).get("calendar_delta_link")
+
+    async def set_outlook_calendar_delta_link(self, user_id: str, connected_account: str, delta_link: str) -> None:
+        """Set the delta link for Outlook Calendar incremental sync."""
+        await self.db_manager.db["integrations"].update_one(
+            {"user_id": ObjectId(user_id), "name": "outlook_calendar", "connected_account": connected_account},
+            {"$set": {
+                "calendar_delta_link": str(delta_link),
+                "updated_at": datetime.now(timezone.utc),
+            }},
+            upsert=False,
+        )
+
+    async def get_onedrive_delta_link(self, user_id: str, connected_account: str) -> Optional[str]:
+        """Get the delta link for OneDrive incremental sync."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"user_id": ObjectId(user_id), "name": "onedrive", "connected_account": connected_account},
+            projection={"onedrive_delta_link": 1}
+        )
+        return (integ or {}).get("onedrive_delta_link")
+
+    async def set_onedrive_delta_link(self, user_id: str, connected_account: str, delta_link: str) -> None:
+        """Set the delta link for OneDrive incremental sync."""
+        await self.db_manager.db["integrations"].update_one(
+            {"user_id": ObjectId(user_id), "name": "onedrive", "connected_account": connected_account},
+            {"$set": {
+                "onedrive_delta_link": str(delta_link),
+                "updated_at": datetime.now(timezone.utc),
+            }},
+            upsert=False,
+        )
+
+    # Dropbox cursor methods
+    async def get_dropbox_cursor(self, user_id: str, connected_account: str) -> Optional[str]:
+        """Get the cursor for Dropbox incremental sync."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"user_id": ObjectId(user_id), "name": "dropbox", "connected_account": connected_account},
+            projection={"dropbox_cursor": 1}
+        )
+        return (integ or {}).get("dropbox_cursor")
+
+    async def set_dropbox_cursor(self, user_id: str, connected_account: str, cursor: str) -> None:
+        """Set the cursor for Dropbox incremental sync."""
+        await self.db_manager.db["integrations"].update_one(
+            {"user_id": ObjectId(user_id), "name": "dropbox", "connected_account": connected_account},
+            {"$set": {
+                "dropbox_cursor": str(cursor),
+                "updated_at": datetime.now(timezone.utc),
+            }},
+            upsert=False,
+        )
+
+    # Webhook lookup methods (find user by webhook identifiers)
+    async def get_user_by_webhook_resource_id(self, resource_id: str, integration_name: str) -> Optional[str]:
+        """Find user by Google webhook resource_id (Calendar/Drive)."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"name": integration_name, "webhook_info.webhook_resource_id": resource_id},
+            projection={"user_id": 1}
+        )
+        return str(integ["user_id"]) if integ else None
+
+    async def get_user_and_account_by_webhook_resource_id(self, resource_id: str, integration_name: str) -> Optional[tuple[str, str]]:
+        """Find user_id and connected_account by Google webhook resource_id (Calendar/Drive)."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"name": integration_name, "webhook_info.webhook_resource_id": resource_id},
+            projection={"user_id": 1, "connected_account": 1}
+        )
+        if integ:
+            return str(integ["user_id"]), integ.get("connected_account")
+        return None
+
+    async def get_user_by_subscription_id(self, subscription_id: str, integration_name: str) -> Optional[str]:
+        """Find user by Microsoft Graph subscription_id (Outlook/Calendar/OneDrive)."""
+        # Check different metadata fields based on integration type
+        metadata_fields = [
+            f"metadata.{integration_name}_webhook_subscription_id",
+            "metadata.outlook_webhook_subscription_id",
+            "metadata.calendar_webhook_subscription_id",
+            "metadata.onedrive_webhook_subscription_id"
+        ]
+
+        for field in metadata_fields:
+            integ = await self.db_manager.db["integrations"].find_one(
+                {field: subscription_id},
+                projection={"user_id": 1}
+            )
+            if integ:
+                return str(integ["user_id"])
+        return None
+
+    async def get_user_by_trello_board_id(self, board_id: str) -> Optional[str]:
+        """Find user by Trello board_id."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"name": "trello", "metadata.webhook_info.webhooks.board_id": board_id},
+            projection={"user_id": 1}
+        )
+        return str(integ["user_id"]) if integ else None
+
+    async def get_user_by_dropbox_account_id(self, account_id: str) -> Optional[tuple[str, str]]:
+        """Find user by Dropbox account_id. Returns (user_id, connected_account) tuple."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"name": "dropbox", "metadata.webhook_info.account_id": account_id},
+            projection={"user_id": 1, "connected_account": 1}
+        )
+        if integ:
+            return (str(integ["user_id"]), integ.get("connected_account"))
+        return None
+
+    async def get_user_by_notion_bot_id(self, bot_id: str) -> Optional[str]:
+        """Find user by Notion bot_id."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"name": "notion", "metadata.webhook_info.bot_id": bot_id},
+            projection={"user_id": 1}
+        )
+        return str(integ["user_id"]) if integ else None
+
+    async def get_user_by_slack_team_id(self, team_id: str) -> Optional[str]:
+        """Find user by Slack team_id."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"name": "slack", "metadata.webhook_info.team_id": team_id},
+            projection={"user_id": 1}
+        )
+        return str(integ["user_id"]) if integ else None
+
     async def get_all_integrations_for_user_by_name(self, user_id: str, name: str) -> List[Dict[str, Any]]:
         """Get all integrations for a user by name."""
         integrations = await self.db_manager.db["integrations"].find({"user_id": ObjectId(user_id), "name": name}).to_list(length=100)

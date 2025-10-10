@@ -74,7 +74,8 @@ class ToolFunctionID(str, Enum):
     # Dropbox tools
     SAVE_FILE_TO_DROPBOX = "save_file_to_dropbox"
     READ_FILE_FROM_DROPBOX = "read_file_from_dropbox"
-
+    LIST_DROPBOX_FILES = "list_dropbox_files"
+    SEARCH_DROPBOX_FILES = "search_dropbox_files"
     # Trello tools
     LIST_TRELLO_ORGANIZATIONS = "list_trello_organizations"
     LIST_TRELLO_BOARDS = "list_trello_boards"

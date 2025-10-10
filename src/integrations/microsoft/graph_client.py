@@ -248,6 +248,24 @@ class MicrosoftGraphIntegration(BaseIntegration):
             logger.error(f"Error fetching Outlook Calendar events: {e}")
             return []
 
+    async def get_event_by_id(self, event_id: str) -> Optional[Dict]:
+        """Fetch a single calendar event by ID."""
+        if not self.access_token:
+            logger.error("Not authenticated to fetch event")
+            return None
+
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.graph_endpoint}/me/events/{event_id}", headers=headers) as response:
+                    response.raise_for_status()
+                    event = await response.json()
+            return self._format_event(event)
+        except Exception as e:
+            logger.error(f"Error fetching event {event_id}: {e}", exc_info=True)
+            return None
+
     async def create_calendar_event(self, title: str, start_time: str, end_time: str, attendees: Optional[List[str]] = None, description: str = "", location: str = "") -> Dict:
         """Creates a new event on the user's primary calendar."""
         if not self.access_token:

@@ -218,7 +218,7 @@ class GoogleDriveIntegration(BaseIntegration):
             q_parts = ["trashed=false"]
             if folder_id:
                 q_parts.append(f"'{folder_id}' in parents")
-            
+
             # --- CORRECTED LOGIC ---
             # Treat the 'query' as a complete clause from the tool, do not wrap it.
             # Wrapping in parentheses ensures it combines correctly with other 'and' clauses.
@@ -244,3 +244,73 @@ class GoogleDriveIntegration(BaseIntegration):
             } for f in results.get('files', [])]
         except Exception as e:
             raise Exception(f"Failed to list files for {resolved_account}: {e}")
+
+    async def get_changed_files_since(self, page_token: Optional[str], *, account: Optional[str] = None) -> Tuple[List[Dict], Optional[str]]:
+        """
+        Get changed files since page token using Changes API.
+
+        Args:
+            page_token: The starting page token (from previous sync or getStartPageToken)
+            account: The Google Drive account email
+
+        Returns:
+            Tuple of (list of changed files, new page token)
+        """
+        service, resolved_account = self._get_service_for_account(account)
+
+        try:
+            if not page_token:
+                # Get initial page token
+                response = service.changes().getStartPageToken().execute()
+                return [], response.get('startPageToken')
+
+            changed_files = []
+            next_page_token = page_token
+
+            # Fetch all changes using pagination
+            while True:
+                response = service.changes().list(
+                    pageToken=next_page_token,
+                    spaces='drive',
+                    fields='nextPageToken, newStartPageToken, changes(fileId, file(id, name, mimeType, modifiedTime, size, webViewLink, trashed), removed)',
+                    pageSize=1000
+                ).execute()
+
+                changes = response.get('changes', [])
+
+                for change in changes:
+                    # Skip removed files and trashed files
+                    if change.get('removed') or (change.get('file') and change.get('file', {}).get('trashed')):
+                        continue
+
+                    file_data = change.get('file')
+                    if file_data:
+                        changed_files.append({
+                            'id': file_data.get('id'),
+                            'name': file_data.get('name'),
+                            'mimeType': file_data.get('mimeType'),
+                            'modifiedTime': file_data.get('modifiedTime'),
+                            'size': file_data.get('size'),
+                            'webViewLink': file_data.get('webViewLink')
+                        })
+
+                # Check if there are more pages
+                if 'nextPageToken' in response:
+                    next_page_token = response['nextPageToken']
+                else:
+                    # Use newStartPageToken if available, otherwise use the last nextPageToken
+                    final_token = response.get('newStartPageToken', next_page_token)
+                    logger.info(f"Fetched {len(changed_files)} changed files for {resolved_account}, new page token: {final_token}")
+                    return changed_files, final_token
+
+        except HttpError as e:
+            if e.resp.status == 404:
+                # Page token expired, get a fresh start token
+                logger.warning(f"Page token expired for {resolved_account}, getting fresh start token")
+                response = service.changes().getStartPageToken().execute()
+                return [], response.get('startPageToken')
+            logger.error(f"Error fetching changed files for {resolved_account}: {e}")
+            raise Exception(f"Failed to fetch changed files for {resolved_account}: {e}")
+        except Exception as e:
+            logger.error(f"Error fetching changed files for {resolved_account}: {e}")
+            raise Exception(f"Failed to fetch changed files for {resolved_account}: {e}")

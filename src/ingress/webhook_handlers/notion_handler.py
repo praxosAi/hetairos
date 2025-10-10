@@ -3,6 +3,9 @@ from src.core.event_queue import event_queue
 from src.services.integration_service import integration_service
 from src.services.user_service import user_service
 from src.utils.logging.base_logger import setup_logger, user_id_var, modality_var, request_id_var
+from src.core.praxos_client import PraxosClient
+from src.utils.database import db_manager
+from datetime import datetime, timezone
 import json
 import hmac
 import hashlib
@@ -128,6 +131,74 @@ async def handle_notion_webhook(request: Request):
         page_id = data.get("page_id")
         database_id = data.get("database_id")
         data_source_id = data.get("data_source_id")
+
+        # Create PraxosClient for trigger evaluation
+        praxos_api_key = user_record.get("praxos_api_key")
+        praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
+
+        # Evaluate triggers using the full event data
+        logger.info(f"Evaluating triggers for Notion event {event_type}")
+        event_eval_result = await praxos_client.eval_event(data, 'notion_event')
+
+        if event_eval_result.get('trigger'):
+            # Trigger fired - publish triggered event
+            for rule_id, action_data_list in event_eval_result.get('fired_rule_actions_details', {}).items():
+                if isinstance(action_data_list, str):
+                    action_data_list = json.loads(action_data_list)
+
+                rule_details = await db_manager.get_trigger_by_rule_id(rule_id)
+                if not rule_details:
+                    logger.error(f"No trigger details found in DB for rule_id {rule_id}. Trigger may be inactive, deleted, or flawed.")
+                    continue
+
+                # Build COMMAND for triggered event
+                COMMAND = ""
+                COMMAND += f"Previously, on {rule_details.get('created_at')}, the user set up the following trigger: {rule_details.get('trigger_text')}. \n\n "
+                COMMAND += f"Now, upon receiving a Notion page/database change at {datetime.now(timezone.utc)}, we believe that the trigger has been activated. \n\n "
+                for action_item in action_data_list:
+                    COMMAND += "The following action was marked as a triggering candidate: " + action_item.get('simple_sentence', '') + ". \n"
+                    COMMAND += "The action has the following details, as parsed by the Praxos system: " + json.dumps(action_item, default=str) + ". \n\n"
+                COMMAND += "Based on the above, please proceed to execute the action(s) specified in the trigger, if they are valid, match the user request, and are safe to perform. If you are unsure about any action, please ask the user for confirmation before proceeding. \n\n The event (Notion change, in this case) that triggered this action is as follows: "
+
+                # Build triggered event with COMMAND prefix
+                triggered_event = {
+                    "user_id": str(user_id),
+                    "source": "triggered",
+                    "payload": {
+                        "text": COMMAND + json.dumps({
+                            "event_type": event_type,
+                            "workspace_id": workspace_id,
+                            "bot_id": bot_id,
+                            "page_id": page_id,
+                            "database_id": database_id,
+                            "data_source_id": data_source_id,
+                            "full_data": data
+                        }, default=str)
+                    },
+                    "logging_context": {
+                        "user_id": user_id_var.get(),
+                        "request_id": str(request_id_var.get()),
+                        "modality": "triggered",
+                    },
+                    "metadata": {
+                        'ingest_type': 'notion_webhook_triggered',
+                        'source': 'notion',
+                        'webhook_event': True,
+                        'event_type': event_type,
+                        'workspace_id': workspace_id,
+                        'page_id': page_id,
+                        'database_id': database_id,
+                        'conversation_id': rule_details.get('conversation_id'),
+                    }
+                }
+
+                if not triggered_event["metadata"].get("conversation_id"):
+                    triggered_event['metadata'].pop('conversation_id', None)
+
+                await event_queue.publish(triggered_event)
+                logger.info(f"Published triggered event for Notion event {event_type} based on rule {rule_id}")
+        else:
+            logger.info(f"Evaluation found no trigger for Notion event {event_type}. Proceeding with normal ingestion.")
 
         # Notion includes full page/database data in webhook (unlike OneDrive)
         event = {

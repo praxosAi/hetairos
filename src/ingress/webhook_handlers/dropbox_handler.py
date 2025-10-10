@@ -2,7 +2,10 @@ from fastapi import APIRouter, Request, HTTPException, Response
 from src.core.event_queue import event_queue
 from src.services.integration_service import integration_service
 from src.services.user_service import user_service
+from src.core.praxos_client import PraxosClient
 from src.utils.logging.base_logger import setup_logger, user_id_var, modality_var, request_id_var
+from src.utils.database import db_manager
+from datetime import datetime, timezone
 import json
 import hmac
 import hashlib
@@ -117,49 +120,194 @@ async def handle_dropbox_webhook(request: Request):
 
         logger.info(f"Dropbox changes for {len(accounts)} account(s): {accounts}")
 
+        # Track processing stats
+        processed_accounts = 0
+        total_files_fetched = 0
+        total_files_inserted = 0
+
         # Process each account
         for account_id in accounts:
-            # Find user by Dropbox account ID
-            # Account ID is stored in integration.metadata.webhook_info.account_id
-            user_id = await integration_service.get_user_by_dropbox_account_id(account_id)
+            try:
+                # Find user by Dropbox account ID
+                # Account ID is stored in integration.metadata.webhook_info.account_id
+                result = await integration_service.get_user_by_dropbox_account_id(account_id)
 
-            if not user_id:
-                logger.warning(f"No user found for Dropbox account ID: {account_id}")
+                if not result:
+                    logger.warning(f"No user found for Dropbox account ID: {account_id}")
+                    continue
+
+                user_id, connected_account = result
+
+                user_record = user_service.get_user_by_id(user_id)
+                if not user_record:
+                    logger.error(f"User not found for ID {user_id}")
+                    continue
+
+                # Set logging context
+                user_id_var.set(str(user_id))
+                modality_var.set("dropbox_webhook")
+
+                logger.info(f"Processing Dropbox webhook for user {user_id}, account: {account_id}")
+
+                # Initialize Dropbox integration
+                from src.integrations.dropbox.dropbox_client import DropboxIntegration
+                dropbox_integration = DropboxIntegration(user_id)
+                if not await dropbox_integration.authenticate():
+                    logger.error(f"Failed to authenticate Dropbox for user {user_id} and account {account_id}")
+                    continue
+
+                # Get checkpoint (cursor)
+                checkpoint = await integration_service.get_dropbox_cursor(user_id, connected_account)
+
+                if not checkpoint:
+                    # Seed once: store current cursor and exit (no backfill)
+                    _, new_cursor = await dropbox_integration.get_changed_files_since(
+                        cursor=None,
+                        account=connected_account
+                    )
+                    if new_cursor:
+                        await integration_service.set_dropbox_cursor(user_id, connected_account, new_cursor)
+                        logger.info(f"Seeded Dropbox cursor for {connected_account} at {new_cursor}")
+                    continue
+
+                # Fetch changed files since cursor
+                changed_files, new_cursor = await dropbox_integration.get_changed_files_since(
+                    cursor=checkpoint,
+                    account=connected_account
+                )
+
+                # Update cursor
+                if new_cursor:
+                    await integration_service.set_dropbox_cursor(user_id, connected_account, new_cursor)
+
+                if not changed_files:
+                    logger.info(f"No new files for {connected_account} since checkpoint {checkpoint} (advanced_to={new_cursor})")
+                    continue
+
+                total_files_fetched += len(changed_files)
+
+                # Deduplicate using insert_or_reject_items
+                from src.utils.database import db_manager
+                inserted_ids = await db_manager.insert_or_reject_items(
+                    items=changed_files,
+                    user_id=user_id,
+                    platform="dropbox",
+                    id_field="id",
+                    platform_id_field="platform_file_id"
+                )
+
+                inserted = [iid for iid in inserted_ids if iid]
+                total_files_inserted += len(inserted)
+                logger.info(f"Fetched {len(changed_files)} files; inserted {len(inserted)} for {connected_account}")
+
+                # Process only those actually inserted
+                praxos_api_key = user_record.get("praxos_api_key")
+                praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
+
+                # Publish new files to event queue with trigger evaluation
+                for file, inserted_id in zip(changed_files, inserted_ids):
+                    if not inserted_id:
+                        logger.info(f"File {file.get('id')} already processed, skipping.")
+                        continue
+
+                    logger.info(f"Processing new file {file.get('id')}")
+
+                    # Evaluate triggers for this file
+                    event_eval_result = await praxos_client.eval_event(file, 'file_change')
+
+                    if event_eval_result.get('trigger'):
+                        # Process triggered actions (following Gmail pattern)
+                        for rule_id, action_data in event_eval_result.get('fired_rule_actions_details', {}).items():
+                            if isinstance(action_data, str):
+                                action_data = json.loads(action_data)
+
+                            rule_details = await db_manager.get_trigger_by_rule_id(rule_id)
+                            if not rule_details:
+                                logger.error(f"No trigger details found in DB for rule_id {rule_id}.")
+                                continue
+
+                            COMMAND = ""
+                            COMMAND += f"Previously, on {rule_details.get('created_at')}, the user set up the following trigger: {rule_details.get('trigger_text')}. \n\n "
+                            COMMAND += f"Now, upon receiving a file change in Dropbox, at {datetime.now(timezone.utc)}, we believe that the trigger has been activated. \n\n "
+                            for action in action_data:
+                                COMMAND += "The following action was marked as a triggering candidate: " + action.get('simple_sentence', '') + ". \n"
+                                COMMAND += "The action has the following details: " + json.dumps(action, default=str) + ". \n\n"
+                            COMMAND += "Based on the above, please proceed to execute the action(s) specified in the trigger. \n\n The event (Dropbox file change) that triggered this action is as follows: "
+
+                            # Format file event
+                            file_name = file.get('name', 'Unknown File')
+                            file_path = file.get('path', '')
+                            file_size = file.get('size', 0)
+
+                            normalized = {
+                                "payload": {
+                                    "text": f"{COMMAND}\n\nFile: {file_name}\nPath: {file_path}\nSize: {file_size} bytes",
+                                    "raw_file": file
+                                },
+                                "metadata": {
+                                    "file_id": file.get('id'),
+                                    "file_name": file_name,
+                                    "file_path": file_path,
+                                    "source": "dropbox"
+                                }
+                            }
+
+                            triggered_event = {
+                                "user_id": str(user_id),
+                                "source": "triggered",
+                                "payload": normalized["payload"],
+                                "logging_context": {
+                                    "user_id": user_id_var.get(),
+                                    "request_id": str(request_id_var.get()),
+                                    "modality": "triggered",
+                                },
+                                "metadata": {
+                                    **normalized["metadata"],
+                                    "conversation_id": rule_details.get('conversation_id'),
+                                },
+                            }
+                            if not triggered_event["metadata"].get("conversation_id"):
+                                triggered_event['metadata'].pop('conversation_id', None)
+
+                            await event_queue.publish(triggered_event)
+                            logger.info(f"Published triggered event for file {file.get('id')} based on rule {rule_id}")
+                    else:
+                        logger.info(f"No trigger found for file {file.get('id')}.")
+
+                    # Normal ingestion event
+                    if file.get('metadata') is None:
+                        file['metadata'] = {}
+                    file['metadata']['inserted_id'] = inserted_id
+
+                    ingestion_event = {
+                        "user_id": str(user_id),
+                        "source": "event_ingestion",
+                        "payload": file,
+                        "logging_context": {
+                            'user_id': user_id_var.get(),
+                            'request_id': str(request_id_var.get()),
+                            'modality': 'dropbox_webhook'
+                        },
+                        "metadata": {
+                            'ingest_type': 'dropbox_webhook',
+                            'source': 'dropbox',
+                            'webhook_event': True,
+                            'dropbox_file_id': file.get("id"),
+                            'inserted_id': inserted_id,
+                            'account': connected_account
+                        }
+                    }
+
+                    # Publish to event queue
+                    # await event_queue.publish(ingestion_event)
+
+                processed_accounts += 1
+
+            except Exception as e:
+                logger.error(f"Error processing Dropbox account {account_id}: {e}", exc_info=True)
                 continue
 
-            user_record = user_service.get_user_by_id(user_id)
-            if not user_record:
-                logger.error(f"User not found for ID {user_id}")
-                continue
-
-            user_id_var.set(str(user_id))
-            modality_var.set("dropbox_webhook")
-
-            # IMPORTANT: Dropbox webhook does NOT include file details
-            # You must call /files/list_folder/continue with the stored cursor
-            event = {
-                "user_id": str(user_id),
-                "source": "event_ingestion",
-                "payload": {
-                    "account_id": account_id,
-                    "note": "Dropbox webhooks don't include file details - use cursor to fetch changes"
-                },
-                "logging_context": {
-                    'user_id': user_id_var.get(),
-                    'request_id': str(request_id_var.get()),
-                    'modality': 'dropbox_webhook'
-                },
-                "metadata": {
-                    'ingest_type': 'dropbox_webhook',
-                    'source': 'dropbox',
-                    'webhook_event': True,
-                    'account_id': account_id,
-                    'requires_cursor_sync': True  # Flag to trigger list_folder/continue call
-                }
-            }
-
-            # await event_queue.publish(event)
-            logger.info(f"Processed Dropbox webhook for user {user_id}, account: {account_id}")
+        logger.info(f"Dropbox webhook processing complete: {processed_accounts} accounts, {total_files_fetched} files fetched, {total_files_inserted} inserted")
 
         return Response(status_code=200)
 

@@ -15,6 +15,7 @@ from src.ingress.webhook_handlers import microsoft_calendar_handler
 from src.ingress.webhook_handlers import onedrive_handler
 from src.ingress.webhook_handlers import trello_handler
 from src.ingress.webhook_handlers import dropbox_handler
+from src.ingress.webhook_handlers import slack_handler
 from src.core import suspended_event_queue
 from src.utils.logging.base_logger import request_id_var, user_id_var, modality_var
 from src.utils.redis_client import subscribe_to_channel
@@ -53,6 +54,7 @@ async def logging_middleware(request: Request, call_next):
 # Messaging
 app.include_router(whatsapp_handler.router, prefix="/webhooks")
 app.include_router(telegram_handler.router, prefix="/webhooks")
+app.include_router(slack_handler.router, prefix="/webhooks")
 app.include_router(imessage_handler.router, prefix="/webhooks")
 
 # Email

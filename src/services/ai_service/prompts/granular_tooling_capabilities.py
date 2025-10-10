@@ -305,6 +305,16 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 - Args: file_path
 - Use when: User wants to read a file from their Dropbox
 
+
+** list_dropbox_files**- Lists files in a Dropbox folder
+- Args: folder_path (optional), recursive (default false)
+- Use when: "Show me files in my Dropbox", "List files in Documents folder"
+
+
+**search_dropbox_files**
+- Searches for files in Dropbox by name or content
+- Args: query, max_results (default 100)
+- Use when: "Find my resume", "Search for project plan"
 ---
 
 ### Trello Tools (requires Trello integration)

@@ -194,7 +194,7 @@ async def handle_slack_events(request: Request):
             # Normal message ingestion
             ingestion_event = {
                 "user_id": str(user_id),
-                "source": "event_ingestion",
+                "source": "slack",
                 "payload": {
                     "text": message_text,
                     "raw_event": event

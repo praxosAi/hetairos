@@ -36,6 +36,7 @@ langchain_google_community
 pydantic
 croniter
 pytz
+apscheduler
 httpx
 azure-cosmos
 gunicorn

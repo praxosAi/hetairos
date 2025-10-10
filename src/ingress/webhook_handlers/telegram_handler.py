@@ -10,6 +10,31 @@ router = APIRouter()
 import mimetypes
 from bson import ObjectId
 from src.utils.database import db_manager
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+import aiohttp
+
+# Initialize scheduler for telegram webhook management
+telegram_scheduler = AsyncIOScheduler()
+
+async def set_telegram_webhook():
+    """Set Telegram webhook URL. Called periodically to ensure webhook is registered."""
+    from src.config.settings import settings
+
+    token = settings.TELEGRAM_BOT_TOKEN
+    webhook_url = "https://hooks.praxos.ai/webhooks/telegram"
+    url = f"https://api.telegram.org/bot{token}/setWebhook"
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json={"url": webhook_url}) as response:
+                result = await response.json()
+                if result.get("ok"):
+                    logger.info(f"Telegram webhook set successfully: {webhook_url}")
+                else:
+                    logger.error(f"Failed to set Telegram webhook: {result}")
+    except Exception as e:
+        logger.error(f"Error setting Telegram webhook: {e}")
 @router.post("/telegram")
 async def handle_telegram_webhook(request: Request):
     """Handles incoming Telegram updates."""

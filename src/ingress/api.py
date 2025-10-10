@@ -13,6 +13,8 @@ from src.core import suspended_event_queue
 from src.utils.logging.base_logger import request_id_var, user_id_var, modality_var
 from src.utils.redis_client import subscribe_to_channel
 from src.utils.logging import setup_logger
+from src.ingress.webhook_handlers.telegram_handler import set_telegram_webhook, telegram_scheduler
+from apscheduler.triggers.cron import CronTrigger
 
 # Check an environment variable to decide on log format
 # In your deployment (e.g., Dockerfile or Kubernetes YAML), set JSON_LOGGING="true"
@@ -56,6 +58,26 @@ app.include_router(suspended_event_queue.router, prefix="/admin/suspended-events
 @app.get("/")
 async def root():
     return {"message": "Hetairoi Agent Ingress is running."}
+
+@app.on_event("startup")
+async def start_telegram_webhook_scheduler():
+    """Start the Telegram webhook scheduler on application startup."""
+    await set_telegram_webhook()  # Set webhook immediately on startup
+
+    telegram_scheduler.add_job(
+        set_telegram_webhook,
+        CronTrigger(hour="*"),  # Every hour at minute 0
+        id="telegram_webhook",
+        replace_existing=True
+    )
+    telegram_scheduler.start()
+    logger.info("Telegram webhook scheduler started")
+
+@app.on_event("shutdown")
+async def shutdown_telegram_scheduler():
+    """Shutdown the Telegram webhook scheduler gracefully."""
+    telegram_scheduler.shutdown()
+    logger.info("Telegram webhook scheduler stopped")
 
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Cookie

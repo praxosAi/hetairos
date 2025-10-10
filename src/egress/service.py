@@ -325,6 +325,45 @@ class EgressService:
         except Exception as e:
             logger.error(f"Failed to send Slack response: {e}", exc_info=True)
 
+    async def _send_discord_response(self, event: dict, response_text: str, response_files):
+        """Send response to Discord channel or DM."""
+        user_id = event.get("user_id")
+        if not user_id:
+            logger.error(f"No user_id in event for Discord message. Event: {event}")
+            return
+
+        # Get channel from event metadata
+        channel = event.get("metadata", {}).get("channel")
+
+        if not channel:
+            logger.error(f"No channel in event metadata for Discord message. Event: {event}")
+            return
+
+        try:
+            # Initialize Discord client for this user
+            from src.integrations.discord.discord_client import DiscordIntegration
+            discord_integration = DiscordIntegration(user_id)
+
+            if not await discord_integration.authenticate():
+                logger.error(f"Failed to authenticate Discord for user {user_id}")
+                return
+
+            # Send message (will auto-select guild if user has only one)
+            if response_text:
+                await discord_integration.send_message(
+                    channel=channel,
+                    text=response_text
+                )
+
+            # Note: File attachments not implemented yet for Discord
+            if response_files:
+                logger.warning("Discord file attachments not yet implemented")
+
+            logger.info(f"Successfully sent response to Discord channel {channel}")
+
+        except Exception as e:
+            logger.error(f"Failed to send Discord response: {e}", exc_info=True)
+
     async def _send_webhook_reponse(self, event, response_text):
         logging.info('attempting to publish to websocket')
         token = event.get("metadata", {}).get("token")
@@ -353,7 +392,7 @@ class EgressService:
             return
 
         logger.info(f"Routing response for source: {source}, output_type: {event.get('output_type')}")
-        if event.get('output_type') not in ['email','websocket','telegram','whatsapp','imessage','slack'] and event.get('source') in ['scheduled','recurring']:
+        if event.get('output_type') not in ['email','websocket','telegram','whatsapp','imessage','slack','discord'] and event.get('source') in ['scheduled','recurring']:
             logger.info('incorrect output type for scheduled or recurring event')
             if event.get('metadata',{}).get('original_source', None):
                 logger.info(f"Overriding event source from {event['output_type']} to {event['metadata']['original_source']}")
@@ -375,6 +414,9 @@ class EgressService:
 
             elif final_output_type == "slack":
                 await self._send_slack_response(event, response_text, response_files)
+
+            elif final_output_type == "discord":
+                await self._send_discord_response(event, response_text, response_files)
 
             elif final_output_type == "websocket":
                 await self._send_webhook_reponse(event, response_text)

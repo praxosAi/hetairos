@@ -16,6 +16,7 @@ from src.utils.database import db_manager
 import mimetypes
 from bson import ObjectId
 from src.utils.logging.base_logger import user_id_var, modality_var, request_id_var
+from src.services.milestone_service import milestone_service
 
 router = APIRouter()
 
@@ -176,5 +177,6 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                     finally:
                                         os.unlink(file_path) # Clean up the local file
 
+                        milestone_service.user_send_message(user_record["_id"])
 
     return {"status": "ok"}

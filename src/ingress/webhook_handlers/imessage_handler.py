@@ -13,6 +13,8 @@ import mimetypes
 from bson import ObjectId
 from src.utils.database import db_manager
 import requests
+from src.services.milestone_service import milestone_service
+
 logger = setup_logger(__name__)
 router = APIRouter()
 
@@ -152,4 +154,5 @@ async def handle_imessage_webhook(request: Request):
             }
             await event_queue.publish(event)
 
+    milestone_service.user_send_message(user_id)
     return {"status": "ok"}

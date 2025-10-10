@@ -11,10 +11,12 @@ from bson import ObjectId
 from src.utils.logging.base_logger import setup_logger
 from src.utils.redis_client import redis_client
 from src.services.user_service import user_service
-logger = setup_logger(__name__)
+from src.services.milestone_service import milestone_service
 import json
 import re
 
+
+logger = setup_logger(__name__)
 class IntegrationService:
     """Manages all user integrations, including capabilities and authentication."""
 
@@ -99,7 +101,7 @@ class IntegrationService:
             new_integration_record['telegram_chat_id'] = telegram_chat_id
         
         result = await self.db_manager.db["integrations"].insert_one(new_integration_record)
-
+        milestone_service.user_setup_messaging(user_id)
         if result:
             return new_integration_record
         else:

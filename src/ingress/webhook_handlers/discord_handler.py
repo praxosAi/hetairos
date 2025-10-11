@@ -84,10 +84,10 @@ async def handle_discord_interactions(request: Request):
         if not verify_discord_signature(body, signature, timestamp):
             logger.warning("Invalid Discord signature")
             raise HTTPException(status_code=401, detail="Invalid request signature")
-
+        logger.info("Discord request signature verified")
         # Parse JSON body
         data = json.loads(body.decode('utf-8'))
-
+        logger.info(f"Received Discord interaction: {data}")
         interaction_type = data.get("type")
 
         # Type 1: PING - Discord verification request
@@ -111,11 +111,11 @@ async def handle_discord_interactions(request: Request):
 
             logger.info(f"Received Discord slash command: /{command_name} from user {user_id_discord} in guild {guild_id}")
 
-            # Find user by guild_id (or user_id for DMs)
-            user_id = await integration_service.get_user_by_discord_guild_id(guild_id) if guild_id else None
+            # Find Praxos user by Discord user ID (this is the correct lookup!)
+            user_id = await integration_service.get_user_by_discord_user_id(user_id_discord)
 
             if not user_id:
-                logger.warning(f"No user found for Discord guild ID: {guild_id}")
+                logger.warning(f"No Praxos user found for Discord user ID: {user_id_discord}")
                 # Respond with ephemeral message
                 return {
                     "type": 4,  # CHANNEL_MESSAGE_WITH_SOURCE
@@ -142,6 +142,10 @@ async def handle_discord_interactions(request: Request):
 
             logger.info(f"Processing Discord command from user {user_id_discord}: /{command_name} {command_text}")
 
+            # Extract interaction token for follow-up responses
+            interaction_token = data.get("token")
+            application_id = data.get("application_id")
+
             # Prepare command event
             command_event = {
                 "command_name": command_name,
@@ -152,68 +156,7 @@ async def handle_discord_interactions(request: Request):
                 "guild_id": guild_id
             }
 
-            # Evaluate triggers
-            praxos_api_key = user_record.get("praxos_api_key")
-            praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
-
-            event_eval_result = await praxos_client.eval_event(command_event, 'discord_command')
-
-            if event_eval_result.get('trigger'):
-                # Process triggered actions
-                for rule_id, action_data in event_eval_result.get('fired_rule_actions_details', {}).items():
-                    if isinstance(action_data, str):
-                        action_data = json.loads(action_data)
-
-                    rule_details = await db_manager.get_trigger_by_rule_id(rule_id)
-                    if not rule_details:
-                        logger.error(f"No trigger details found for rule_id {rule_id}")
-                        continue
-
-                    COMMAND = ""
-                    COMMAND += f"Previously, on {rule_details.get('created_at')}, the user set up the following trigger: {rule_details.get('trigger_text')}. \n\n "
-                    COMMAND += f"Now, upon receiving a Discord message at {datetime.now(timezone.utc)}, we believe that the trigger has been activated. \n\n "
-                    for action in action_data:
-                        COMMAND += "The following action was marked as a triggering candidate: " + action.get('simple_sentence', '') + ". \n"
-                        COMMAND += "The action has the following details: " + json.dumps(action, default=str) + ". \n\n"
-                    COMMAND += "Based on the above, please proceed to execute the action(s) specified in the trigger. \n\n The event (Discord message) that triggered this action is as follows: "
-
-                    normalized = {
-                        "payload": {
-                            "text": f"{COMMAND}\n\nCommand: /{command_name} {command_text}\nChannel: {channel_id}\nUser: {user_id_discord}",
-                            "raw_event": command_event
-                        },
-                        "metadata": {
-                            "command_name": command_name,
-                            "command_text": command_text,
-                            "channel": channel_id,
-                            "user": user_id_discord,
-                            "source": "discord"
-                        }
-                    }
-
-                    triggered_event = {
-                        "user_id": str(user_id),
-                        "source": "triggered",
-                        "payload": normalized["payload"],
-                        "logging_context": {
-                            "user_id": user_id_var.get(),
-                            "request_id": str(request_id_var.get()),
-                            "modality": "triggered",
-                        },
-                        "metadata": {
-                            **normalized["metadata"],
-                            "conversation_id": rule_details.get('conversation_id'),
-                        },
-                    }
-                    if not triggered_event["metadata"].get("conversation_id"):
-                        triggered_event['metadata'].pop('conversation_id', None)
-
-                    await event_queue.publish(triggered_event)
-                    logger.info(f"Published triggered event for Discord message based on rule {rule_id}")
-            else:
-                logger.info(f"No trigger found for Discord message.")
-
-            # Normal command ingestion
+            # IMPORTANT: Publish event to queue first (don't wait for processing)
             ingestion_event = {
                 "user_id": str(user_id),
                 "source": "discord",
@@ -234,18 +177,27 @@ async def handle_discord_interactions(request: Request):
                     'command_name': command_name,
                     'channel': channel_id,
                     'user': user_id_discord,
-                    'guild_id': guild_id
+                    'guild_id': guild_id,
+                    'interaction_token': interaction_token,
+                    'application_id': application_id
                 }
             }
 
-            # Publish to event queue
+            # Publish to queue immediately (background processing)
             await event_queue.publish(ingestion_event)
             logger.info(f"Published Discord command event for user {user_id}")
 
-            # Respond to Discord with deferred response (processing)
+            # RESPOND TO DISCORD IMMEDIATELY (within 3 seconds requirement)
             return {
-                "type": 5  # DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE
+                "type": 4,  # CHANNEL_MESSAGE_WITH_SOURCE
+                "data": {
+                    "content": "🤔 Processing your request...",
+                }
             }
+
+        # Rest of the code for trigger evaluation can be removed or run in background
+        # For now, skip trigger evaluation to ensure fast response
+
 
         # Type 3: MESSAGE_COMPONENT - Button/select interactions
         if interaction_type == 3:

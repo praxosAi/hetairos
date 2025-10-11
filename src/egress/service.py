@@ -326,21 +326,48 @@ class EgressService:
             logger.error(f"Failed to send Slack response: {e}", exc_info=True)
 
     async def _send_discord_response(self, event: dict, response_text: str, response_files):
-        """Send response to Discord channel or DM."""
+        """Send response to Discord using interaction webhook."""
+        metadata = event.get("metadata", {})
+        interaction_token = metadata.get("interaction_token")
+        application_id = metadata.get("application_id")
+
+        # If this is an interaction (slash command), use webhook follow-up
+        if interaction_token and application_id:
+            logger.info(f"Sending Discord interaction follow-up response")
+
+            try:
+                import httpx
+                import os
+
+                # Use Discord interaction webhook to edit the initial message
+                # This replaces "Processing..." with the actual response
+                async with httpx.AsyncClient() as client:
+                    response = await client.patch(
+                        f"https://discord.com/api/v10/webhooks/{application_id}/{interaction_token}/messages/@original",
+                        headers={"Content-Type": "application/json"},
+                        json={"content": response_text}
+                    )
+
+                    if response.status_code not in [200, 201]:
+                        logger.error(f"Discord follow-up failed: {response.status_code} - {response.text}")
+                        return
+
+                    logger.info("Successfully sent Discord interaction follow-up")
+                    return
+
+            except Exception as e:
+                logger.error(f"Failed to send Discord follow-up: {e}", exc_info=True)
+                return
+
+        # Fallback: regular message send (for non-interaction events)
         user_id = event.get("user_id")
-        if not user_id:
-            logger.error(f"No user_id in event for Discord message. Event: {event}")
-            return
+        channel = metadata.get("channel")
 
-        # Get channel from event metadata
-        channel = event.get("metadata", {}).get("channel")
-
-        if not channel:
-            logger.error(f"No channel in event metadata for Discord message. Event: {event}")
+        if not user_id or not channel:
+            logger.error(f"Missing user_id or channel for Discord message")
             return
 
         try:
-            # Initialize Discord client for this user
             from src.integrations.discord.discord_client import DiscordIntegration
             discord_integration = DiscordIntegration(user_id)
 
@@ -348,14 +375,12 @@ class EgressService:
                 logger.error(f"Failed to authenticate Discord for user {user_id}")
                 return
 
-            # Send message (will auto-select guild if user has only one)
             if response_text:
                 await discord_integration.send_message(
                     channel=channel,
                     text=response_text
                 )
 
-            # Note: File attachments not implemented yet for Discord
             if response_files:
                 logger.warning("Discord file attachments not yet implemented")
 

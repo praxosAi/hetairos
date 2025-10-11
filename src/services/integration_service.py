@@ -466,9 +466,18 @@ class IntegrationService:
         return str(integ["user_id"]) if integ else None
 
     async def get_user_by_discord_guild_id(self, guild_id: str) -> Optional[str]:
-        """Find user by Discord guild_id."""
+        """Find user by Discord guild_id (deprecated - use get_user_by_discord_user_id instead)."""
         integ = await self.db_manager.db["integrations"].find_one(
             {"name": "discord", "connected_account": guild_id},
+            projection={"user_id": 1}
+        )
+        return str(integ["user_id"]) if integ else None
+
+    async def get_user_by_discord_user_id(self, discord_user_id: str) -> Optional[str]:
+        """Find Praxos user by their Discord user ID."""
+        # Discord user ID is stored in metadata.webhook_info.user_id
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"name": "discord", "metadata.webhook_info.user_id": discord_user_id},
             projection={"user_id": 1}
         )
         return str(integ["user_id"]) if integ else None

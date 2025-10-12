@@ -1,17 +1,20 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from src.core.event_queue import event_queue
 from src.services.integration_service import integration_service
 from src.utils.logging.base_logger import setup_logger, user_id_var, modality_var, request_id_var
 from src.integrations.telegram.client import TelegramClient
 from src.utils.blob_utils import upload_to_blob_storage
 from src.services.engagement_service import research_user_and_engage
-logger = setup_logger(__name__)
-router = APIRouter()
 import mimetypes
 from bson import ObjectId
 from src.utils.database import db_manager
+from src.services.milestone_service import milestone_service
+
+logger = setup_logger(__name__)
+router = APIRouter()
+
 @router.post("/telegram")
-async def handle_telegram_webhook(request: Request):
+async def handle_telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     """Handles incoming Telegram updates."""
     modality_var.set("telegram")
     try:
@@ -155,4 +158,6 @@ async def handle_telegram_webhook(request: Request):
                     "metadata": {'message_id': message["message_id"],'chat_id': chat_id,'source':'Telegram', 'forwarded':forwarded,'forward_origin':forward_origin, 'timestamp': message.get("date")}
                 }
                 await event_queue.publish(event)
+
+    background_tasks.add_task(milestone_service.user_send_message, user_id)
     return {"status": "ok"}

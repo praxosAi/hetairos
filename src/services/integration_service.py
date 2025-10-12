@@ -11,10 +11,13 @@ from bson import ObjectId
 from src.utils.logging.base_logger import setup_logger
 from src.utils.redis_client import redis_client
 from src.services.user_service import user_service
-logger = setup_logger(__name__)
+from src.services.milestone_service import milestone_service
 import json
 import re
+import asyncio
 
+
+logger = setup_logger(__name__)
 class IntegrationService:
     """Manages all user integrations, including capabilities and authentication."""
 
@@ -99,6 +102,15 @@ class IntegrationService:
             new_integration_record['telegram_chat_id'] = telegram_chat_id
         
         result = await self.db_manager.db["integrations"].insert_one(new_integration_record)
+
+        # Schedule milestone update in background with error handling
+        async def _update_milestone_with_error_handling():
+            try:
+                await milestone_service.user_setup_messaging(user_id)
+            except Exception as e:
+                logger.error(f"Failed to update milestone for user {user_id}: {e}", exc_info=True)
+
+        asyncio.create_task(_update_milestone_with_error_handling())
 
         if result:
             return new_integration_record

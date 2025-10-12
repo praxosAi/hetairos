@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from src.core.event_queue import event_queue
 from src.services.integration_service import integration_service
 from src.utils.logging.base_logger import setup_logger,user_id_var, modality_var, request_id_var
@@ -13,6 +13,8 @@ import mimetypes
 from bson import ObjectId
 from src.utils.database import db_manager
 import requests
+from src.services.milestone_service import milestone_service
+
 logger = setup_logger(__name__)
 router = APIRouter()
 
@@ -40,7 +42,7 @@ extensions_to_filetypes = {
 
 
 @router.post("/imessage")
-async def handle_imessage_webhook(request: Request):
+async def handle_imessage_webhook(request: Request, background_tasks: BackgroundTasks):
     """Handles incoming iMessage updates from Sendblue."""
     body_bytes = await request.body()
     signature = request.headers.get("sb-signing-secret")
@@ -152,4 +154,5 @@ async def handle_imessage_webhook(request: Request):
             }
             await event_queue.publish(event)
 
+    background_tasks.add_task(milestone_service.user_send_message, user_id)
     return {"status": "ok"}

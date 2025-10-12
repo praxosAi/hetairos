@@ -16,7 +16,7 @@ class MilestoneService:
     def __init__(self):
         self.milestone_collection = db_manager.db["milestones"]
 
-    def _create_milestone(self, user_id:str|ObjectId, milestone_type:MilestoneType):
+    async def _create_milestone(self, user_id:str|ObjectId, milestone_type:MilestoneType, current_step:int=0):
         """Create a new milestone for a user"""
         try:
             try:
@@ -30,14 +30,14 @@ class MilestoneService:
             milestone_data = {
                 "user_id": user_object_id,
                 "type": milestone_type.value,
-                "current_step": 0,
-                "step_history": [],
+                "current_step": current_step,
+                "step_history": [] if current_step == 0 else [{"step": current_step, "completed_at": now}],
                 "created_at": now,
                 "updated_at": now
             }
 
             # Insert into database
-            result = self.milestone_collection.insert_one(milestone_data)
+            result = await self.milestone_collection.insert_one(milestone_data)
 
             if result.inserted_id:
                 milestone_data['_id'] = result.inserted_id
@@ -55,12 +55,21 @@ class MilestoneService:
             return None
         
     
-    def _set_milestone_step(self, id:str|ObjectId, new_step:int):
+    async def _set_milestone_step(self, user_id:str|ObjectId, milestone_type:MilestoneType, new_step):
         """Set the current step of a milestone"""
+        milestone = await self.milestone_collection.find_one({
+            "user_id": ObjectId(user_id),
+            "type": milestone_type.value
+        })
+
+        if not milestone:
+            milestone = await self._create_milestone(user_id, MilestoneType.MESSAGING, new_step)
+            return
+
         now = datetime.utcnow()
-        self.collection.find_one_and_update(
+        await self.milestone_collection.update_one(
             {
-                "id": ObjectId(id),
+                "_id": ObjectId(id),
                 "current_step": {"$lt": new_step}
             },
             {
@@ -77,30 +86,13 @@ class MilestoneService:
             }
         )
 
-    # @todo make them async 
-    def user_setup_messaging(self, user_id:str|ObjectId):
+    async def user_setup_messaging(self, user_id:str|ObjectId):
         """Set up messaging milestone for a user"""
-        milestone = self.milestone_collection.find_one({
-            "user_id": ObjectId(user_id),
-            "type": MilestoneType.MESSAGING.value
-        })
-        
-        if not milestone:
-            self._create_milestone(user_id, MilestoneType.MESSAGING)
-
-        self._set_milestone_step(milestone['_id'], 3)
+        await self._set_milestone_step(user_id, MilestoneType.MESSAGING, 3)
     
-    # @todo make them async 
-    def user_send_message(self, user_id:str|ObjectId):
+    async def user_send_message(self, user_id:str|ObjectId):
         """Update milestone when user sends first message"""
-        milestone = self.milestone_collection.find_one({
-            "user_id": ObjectId(user_id),
-            "type": MilestoneType.MESSAGING.value
-        })
-        
-        if not milestone:
-            self._create_milestone(user_id, MilestoneType.MESSAGING)
-        self._set_milestone_step(milestone['_id'], 4)
+        await self._set_milestone_step(user_id, MilestoneType.MESSAGING, 4)
         
     
 milestone_service = MilestoneService()

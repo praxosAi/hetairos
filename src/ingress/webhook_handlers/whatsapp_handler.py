@@ -177,6 +177,6 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                     finally:
                                         os.unlink(file_path) # Clean up the local file
 
-                        milestone_service.user_send_message(user_record["_id"])
+                        background_tasks.add_task(milestone_service.user_send_message, user_record["_id"])
 
     return {"status": "ok"}

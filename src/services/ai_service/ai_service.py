@@ -71,7 +71,7 @@ class AIService:
         # messages = [sys_message] + msgs_with_placeholders
         messages = msgs_with_placeholders
         logger.info('Calling granular_planning for precise tool selection')
-
+        
         # structured_llm = planning_llm.with_structured_output(GranularPlanningResponse)
         response_raw = await planning_llm.ainvoke(messages)
 

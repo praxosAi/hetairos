@@ -80,6 +80,22 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 - Returns the current plan and step from planning phase
 - Rarely needed - mostly for debugging
 
+
+**consult_defaults_and_preferences_for_missing_params**
+- Use this when you have determined that we are missing parameters for other needed tools, and that the info may be available in the user's saved preferences or default settings.
+- Use this when the info you are seeking is likely to be available in the user's preferences, or be a default data point.
+
+**consult_praxos_long_term_memory**
+- Use this when you need to access information from the user's long-term memory, called Praxos Memory. 
+- Information there can be relational or factual, and is based on what the user has told you in the past, or what you have learned about them through interactions, or the files and emails and documents that they have ingested.
+- This can include past interactions, preferences, or any other relevant data that may assist in the current task.
+
+**ask_user_for_missing_params**
+- Use this when you have determined that we are missing parameters for other needed tools, and that the info should be provided by the user. 
+- Generally, this is the first line of action when the info you are seeking is unlikely to be available in the user's preferences, be a default data point or long-term memory.
+- This is recordkeeping tool, and we use to know when this happens. If it's needed, it must always be indicated.
+
+
 ---
 
 ### Preference Management Tools
@@ -426,6 +442,44 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 - Creates: IF-THEN rules that execute automatically
 
 ---
+
+### Discord Tools (requires Discord integration)
+
+
+**list_discord_servers**
+- Lists all connected Discord servers for the user
+- Use this first to see which Discord servers are available
+- Returns: Server IDs, team names, team IDs     
+
+**send_discord_message**
+- Sends a message to a Discord channel
+- Args: channel (ID or name), text, account (optional server identifier)   
+
+**send_discord_dm**
+- Sends a direct message to a Discord user
+- Args: user_id, text, account (optional server identifier) 
+
+
+**list_discord_channels**
+- Lists channels in a Discord server
+- Args: account (server identifier)
+- Use when: "Show me channels in my Discord server"
+- Returns: Channel names, IDs, types
+
+**get_discord_channel_history**
+- Fetches recent messages from a Discord channel
+- Args: channel (ID or name), limit (default 10), account (optional server identifier)
+- Use when: "Get recent messages from #general"
+- Returns: List of messages with timestamps, authors
+
+**get_discord_user_info**
+- Gets info about a Discord user by ID
+- Args: user_id, account (optional server identifier)
+- Use when: "Get info about user with ID 123456789"
+- Returns: Username, ID, roles, join date
+
+---
+
 
 ## Tool Selection Guidelines
 

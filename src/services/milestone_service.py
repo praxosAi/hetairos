@@ -72,7 +72,7 @@ class MilestoneService:
         now = datetime.utcnow()
         await self.milestone_collection.update_one(
             {
-                "_id": ObjectId(id),
+                "_id": milestone['_id'],
                 "current_step": {"$lt": new_step}
             },
             {

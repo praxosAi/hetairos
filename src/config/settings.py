@@ -102,5 +102,5 @@ class Settings:
     # Bot Identity
     BOT_EMAIL_ADDRESS = "my@praxos.ai"
     SENDER_SERVICE_URL = os.getenv('SENDER_SERVICE_URL')
-    
+    OUTLOOK_VALIDATION_TOKEN = os.getenv("OUTLOOK_VALIDATION_TOKEN")
 settings = Settings()

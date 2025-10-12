@@ -647,6 +647,19 @@ class DatabaseManager:
             id_field="id",
             platform_id_field="platform_message_id"
         )
+    async def insert_new_outlook_email(self, email_record: Dict) -> str:
+        """Insert a new Outlook email record."""
+        document = {
+            'payload': email_record['normalized'],
+            'received_at': datetime.utcnow(),
+            'user_id': ObjectId(email_record['user_id']),
+            'platform': 'outlook',
+            'platform_message_id': email_record['id']
+        }
+
+        result = await self.documents.insert_one(document)
+        return str(result.inserted_id)
+
     async def insert_new_trigger(self, rule_id: str, conversation_id: str, trigger_text: str, user_id: str, is_one_time: bool) -> str:
         """Insert a new agent trigger and return its ID."""
         trigger_data = {'rule_id': rule_id, 'conversation_id': conversation_id, 'trigger_text': trigger_text, 'created_at': datetime.utcnow(), 'user_id': ObjectId(user_id),'status': 'active','is_one_time': is_one_time}

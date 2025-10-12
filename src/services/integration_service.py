@@ -481,7 +481,13 @@ class IntegrationService:
             projection={"user_id": 1}
         )
         return str(integ["user_id"]) if integ else None
-
+    async def get_user_by_ms_id(self, ms_id: str) -> Optional[str]:
+        """Find Praxos user by their Microsoft (Outlook) user ID."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"name": "outlook", "metadata.provider_user_info.id": ms_id},
+            projection={"user_id": 1}
+        )
+        return str(integ["user_id"]) if integ else None
     async def get_all_integrations_for_user_by_name(self, user_id: str, name: str) -> List[Dict[str, Any]]:
         """Get all integrations for a user by name."""
         integrations = await self.db_manager.db["integrations"].find({"user_id": ObjectId(user_id), "name": name}).to_list(length=100)

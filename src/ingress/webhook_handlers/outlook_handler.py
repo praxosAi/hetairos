@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Request, HTTPException, Response
 from src.integrations.email.email_bot_client import OutlookBotMessage
-from typing import List, Optional
+from typing import List, Optional,Dict, Any
 import aiohttp
 import json
+from src.utils.database import db_manager
 import re
 from src.services.integration_service import integration_service
-
+from src.integrations.microsoft.graph_client import MicrosoftGraphIntegration,extract_ms_ids_from_resource
+from src.core.praxos_client import PraxosClient
 from src.core.event_queue import event_queue
 from src.utils.logging.base_logger import setup_logger,user_id_var, modality_var, request_id_var
 from src.config.settings import settings
@@ -32,42 +34,119 @@ async def handle_outlook_webhook(request: Request):
     """Handle incoming Outlook webhooks for user subscriptions."""
     validation_token = request.query_params.get("validationToken")
     modality_var.set("outlook_webhook")
+
+    # Validation handshake
     if validation_token:
         webhook_logger.info("Responding to Outlook validation request.")
         return Response(content=validation_token, media_type="text/plain", status_code=200)
 
     webhook_logger.info("Received Outlook notification webhook.")
     body = await request.json()
-    
-    for notification in body.get("value", []):
+    webhook_logger.info(f"Webhook body: {json.dumps(body)}")
+    # Graph sends { "value": [ ... notifications ... ] }
+    notifications: List[Dict[str, Any]] = body.get("value", [])
+    if not notifications:
+        webhook_logger.warning("No notifications found in webhook body.")
+        return {"status": "ok", "fetched": 0}
+
+    processed = 0
+    inserted = 0
+
+    for notification in notifications:
+        # Verify clientState
         if notification.get("clientState") != settings.OUTLOOK_VALIDATION_TOKEN:
             webhook_logger.warning("Invalid clientState in notification. Ignoring.")
             continue
 
-        if notification.get("changeType") == "created":
-            resource = notification.get("resource")
-            ms_user_id = _extract_ms_user_id(resource) if resource else None
-            if not ms_user_id:
-                webhook_logger.warning(f"Could not extract MS user ID from resource: {resource}")
-                continue
-            
-            user_record = user_service.get_user_by_ms_id(ms_user_id)
-            if not user_record:
-                webhook_logger.warning(f"No user found for MS Graph ID: {ms_user_id}")
-                continue
-            ### todo, this is for ingest/filtering.
-            # event = {
-            #     "user_id": str(user_record["_id"]),
-            #     "source": "outlook",
-            #     "payload": {"resource": resource, "subscription_id": notification.get("subscriptionId")},
-            #     "metadata": {"change_type": "created"},
-            #     'output_type': 'email',
-            #     'email_type': 'new',
-            # }
-            # await event_queue.publish(event)
-            webhook_logger.info(f"Queued Outlook email event for user {user_record['_id']}")
+        # Only handle created messages? 
+        if notification.get("changeType") not in ("created", "updated"):
+            continue
 
-    return {"status": "ok"}
+        resource = notification.get("resource")
+        resource_to_process = resource.lower()
+        if resource_to_process.startswith("/"):
+            resource_to_process = resource_to_process[1:]
+        ms_user_id, msg_id = extract_ms_ids_from_resource(resource_to_process or "")
+        webhook_logger.info(f"Parsed ms_user_id: {ms_user_id}, msg_id: {msg_id} from resource: {resource}")
+        if not ms_user_id or not msg_id:
+            webhook_logger.warning(f"Could not parse ms_user_id/msg_id from resource: {resource}")
+            continue
+
+        # Find your app user by the stored Microsoft Graph user id
+        # user_record = user_service.get_user_by_ms_id(ms_user_id)
+        user_id = await integration_service.get_user_by_ms_id(ms_user_id)
+        user_record = user_service.get_user_by_id(user_id) if user_id else None
+        praxos_api_key = user_record.get("praxos_api_key")
+        praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
+        if not user_record:
+            webhook_logger.warning(f"No user found for MS Graph ID: {ms_user_id}")
+            continue
+
+        user_id = str(user_record["_id"])
+        processed += 1
+
+        # Authenticate client
+        outlook = MicrosoftGraphIntegration(user_id)
+        if not await outlook.authenticate():
+            webhook_logger.error(f"Outlook auth failed for user {user_id} (ms_id={ms_user_id})")
+            continue
+        
+        # Fetch + normalize (OPTIONAL: add a command prefix)
+        COMMAND = ""  # fill if you want to prepend trigger text
+        try:
+            normalized = await outlook.normalize_message_for_ingestion(
+                user_record=user_record,
+                ms_user_id=ms_user_id,
+                message_id=msg_id,
+                command_prefix=COMMAND,
+            )
+        except Exception as e:
+            webhook_logger.error(f"Failed to fetch/normalize message {msg_id}: {e}", exc_info=True)
+            continue
+
+        # Idempotent insert in 'documents' or your emails collection (same method you used for Gmail)
+        # Here we pass the *raw* Graph message is not available anymore, but our normalizer
+        # didn't return the raw; so we store a minimal record for dedupe:
+        # Option A: change insert_or_reject_emails to accept normalized dicts and look up platform_message_id from normalized["id"].
+        # Option B: fetch the raw message again, or build a small dict that includes {"id": msg_id}.
+        to_insert = [{"id": normalized["id"], "normalized": normalized}]
+        inserted_ids = await db_manager.insert_new_outlook_email(to_insert, user_id)
+        inserted_id = inserted_ids[0] if inserted_ids else None
+        
+        if not inserted_id:
+            webhook_logger.info(f"Outlook message {msg_id} already processed; skipping.")
+            continue
+
+        inserted += 1
+
+        # Attach inserted doc id to metadata
+        normalized["metadata"]["inserted_id"] = inserted_id
+        event_eval_result = await praxos_client.eval_event(normalized, 'outlook')
+        webhook_logger.info(f"Event eval result: {event_eval_result}")
+        # Build event like WhatsApp/Gmail
+        user_id_var.set(user_id)
+        event = {
+            "user_id": user_id,
+            "source": "event_ingestion",
+            "payload": normalized["payload"],  # text + files
+            "logging_context": {
+                "user_id": user_id_var.get(),
+                "request_id": str(request_id_var.get()),
+                "modality": "ingestion_api",
+            },
+            "metadata": {
+                **normalized["metadata"],
+                "subject": normalized["subject"],
+                "from": normalized["from"],
+                "to": normalized["to"],
+                "thread_id": normalized["thread_id"],
+            },
+        }
+
+        # Optional: evaluate + enqueue like Gmail
+        # await event_queue.publish(event)
+
+    return {"status": "ok", "processed": processed, "inserted": inserted}
 
 @router.post("/outlook-bot")
 async def handle_outlook_bot_webhook(message: OutlookBotMessage):

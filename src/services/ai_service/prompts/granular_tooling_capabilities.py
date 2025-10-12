@@ -84,18 +84,22 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 **consult_defaults_and_preferences_for_missing_params**
 - Use this when you have determined that we are missing parameters for other needed tools, and that the info may be available in the user's saved preferences or default settings.
 - Use this when the info you are seeking is likely to be available in the user's preferences, or be a default data point.
+- Examples: the user asks for cards on their trello, without specifying a board, or asks to send an email without specifying which one of their multiple email accounts to use as the sender. It is possible that this info is available in their preferences, or that there is a default value set for it.
+
 
 **consult_praxos_long_term_memory**
 - Use this when you need to access information from the user's long-term memory, called Praxos Memory. 
-- Information there can be relational or factual, and is based on what the user has told you in the past, or what you have learned about them through interactions, or the files and emails and documents that they have ingested.
+- Information there can be relational or individual specific data points, and is based on what the user has told you in the past, or what you have learned about them through interactions, or the files and emails and documents that they have ingested.
 - This can include past interactions, preferences, or any other relevant data that may assist in the current task.
+- Examples: The user wants to find their  glucose levels, which could be available in their health tracking data that has been ingested into their long-term memory. Or, the assistant needs to find the name of their alma mater university.
+
 
 **ask_user_for_missing_params**
 - Use this when you have determined that we are missing parameters for other needed tools, and that the info should be provided by the user. 
 - Generally, this is the first line of action when the info you are seeking is unlikely to be available in the user's preferences, be a default data point or long-term memory.
 - This is recordkeeping tool, and we use to know when this happens. If it's needed, it must always be indicated.
 
-
+Generally, the idea is : If the missing information for this command is something that is SPECIFIC to this current task, and not prior iterations, such as the subject of an email, or the recipient of a message, then it should be asked from the user. If it's something that could be available in the user's preferences, such as which email account to use, or which trello board to use, then consult preferences. If it's something that is more general knowledge about the user, such as their favorite restaurant, or their health data, then consult long-term memory.
 ---
 
 ### Preference Management Tools

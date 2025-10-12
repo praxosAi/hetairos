@@ -12,8 +12,11 @@ from src.utils.logging import setup_logger
 from src.utils.database import db_manager
 from src.utils.blob_utils import upload_bytes_to_blob_storage
 from bson import ObjectId
+from urllib.parse import urlencode,quote
+import httpx
 import re
 logger = setup_logger(__name__)
+PREFER_IMMUTABLE_ID = {'Prefer': 'IdType="ImmutableId"'}
 
 class MicrosoftGraphIntegration(BaseIntegration):
     def __init__(self, user_id: str):
@@ -349,32 +352,103 @@ class MicrosoftGraphIntegration(BaseIntegration):
             return []
 
     
+
     async def _graph_get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        headers = {"Authorization": f"Bearer {self.access_token}"}
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Accept": "application/json",
+            **PREFER_IMMUTABLE_ID,
+        }
         async with httpx.AsyncClient(timeout=20) as client:
             r = await client.get(url, headers=headers, params=params)
-            r.raise_for_status()
+            try:
+                r.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                detail = ""
+                try:
+                    detail = f" ; graph_error={r.json()}"
+                except Exception:
+                    detail = f" ; body={r.text[:500]}"
+                raise httpx.HTTPStatusError(f"{e}{detail}", request=e.request, response=e.response) from None
             return r.json()
 
     async def get_message_with_attachments(
-        self,
-        *,
-        ms_user_id: str,
-        message_id: str,
+        self, *, ms_user_id: str, message_id: str
     ) -> Dict[str, Any]:
         """
-        Fetch a message with inline expanded attachments.
-        (If your tenant disallows $expand, you can GET /attachments separately.)
+        Robust: /me + RAW immutable id + no $expand.
+        Then page attachments from child collection (ask for @odata.type + contentBytes).
         """
-        url = f"{self.GRAPH_BASE}/users/{ms_user_id}/messages/{message_id}"
-        params = {
-            # Select only the fields you need
-            "$select": "id,subject,body,from,toRecipients,receivedDateTime,conversationId,webLink,internetMessageHeaders",
-            # Expand attachments (file + item + reference; file attachments have `contentBytes`)
-            "$expand": "attachments($select=id,name,contentType,size,isInline,contentBytes)"
-        }
-        return await self._graph_get(url, params)
+        # NOTE: delegated token => use /me/, and keep RAW immutable id (no quote)
+        base = f"{self.graph_endpoint}/me/messages/{message_id}"
+        select_fields = (
+            "id,subject,body,from,toRecipients,receivedDateTime,conversationId,webLink,internetMessageHeaders"
+        )
 
+        # 1) Get message (no expand)
+        msg = await self._graph_get(base, {"$select": select_fields})
+
+        # 2) Get attachments (child collection), try to include contentBytes directly
+        # Also request @odata.type so we can branch on fileAttachment vs itemAttachment if needed
+        atts_url = f"{base}/attachments"
+        params = {
+            "$top": 50,
+            "$select": "id,name,contentType,size,isInline,@odata.type,contentBytes"
+        }
+
+        attachments: list[dict] = []
+        next_link = None
+        while True:
+            page = await self._graph_get(next_link, None) if next_link else await self._graph_get(atts_url, params)
+            attachments.extend(page.get("value", []))
+            next_link = page.get("@odata.nextLink")
+            if not next_link:
+                break
+
+        # 3) Optional: for fileAttachments that still lack contentBytes, fetch individually or stream $value
+        enriched: list[dict] = []
+        for a in attachments:
+            otype = a.get("@odata.type", "").lower()
+            if "fileattachment" in otype and "contentBytes" not in a:
+                try:
+                    # try to fetch just this attachment with contentBytes
+                    att = await self._graph_get(f"{base}/attachments/{a['id']}", {"$select": "id,name,contentType,size,isInline,contentBytes"})
+                    a = {**a, **att}
+                except Exception:
+                    # fall back to streaming via $value if you need actual bytes later
+                    pass
+            enriched.append(a)
+
+        msg["attachments"] = enriched
+        return msg
+
+    async def _translate_to_rest_id(self, raw_id: str) -> Optional[str]:
+        """
+        Translate an Exchange immutable id (AAMk...=) to a REST id.
+        Returns the translated id or None on failure.
+        """
+        url = f"{self.graph_endpoint}/me/translateExchangeIds"
+        payload = {
+            "inputIds": [raw_id],
+            "sourceIdType": "immutableId",
+            "targetIdType": "restId"
+        }
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            # no IdType header here; this endpoint expects the payload
+        }
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.post(url, headers=headers, json=payload)
+            try:
+                r.raise_for_status()
+                data = r.json()
+                out = (data.get("value") or [{}])[0]
+                return out.get("targetId")
+            except Exception as e:
+                logger.warning(f"Failed translating id via translateExchangeIds: {e}")
+                return None
     def _ms_headers_to_map(self, headers: Optional[List[Dict[str, Any]]]) -> Dict[str, str]:
         m: Dict[str, str] = {}
         for h in headers or []:

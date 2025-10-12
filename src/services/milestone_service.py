@@ -65,6 +65,9 @@ class MilestoneService:
         if not milestone:
             milestone = await self._create_milestone(user_id, MilestoneType.MESSAGING, new_step)
             return
+        
+        if milestone['current_step'] >= new_step:
+            return
 
         now = datetime.utcnow()
         await self.milestone_collection.update_one(
@@ -85,6 +88,7 @@ class MilestoneService:
                 }
             }
         )
+        logger.info(f"Updated milestone {milestone['_id']} to step {new_step} for user {user_id}")
 
     async def user_setup_messaging(self, user_id:str|ObjectId):
         """Set up messaging milestone for a user"""

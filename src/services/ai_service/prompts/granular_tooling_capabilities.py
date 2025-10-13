@@ -11,6 +11,8 @@ GRANULAR_TOOLING_CAPABILITIES = """
 Below is a comprehensive list of ALL available tool functions with their IDs and descriptions.
 **IMPORTANT**: Only include tools that are ACTUALLY needed for the task. Be precise and minimal.
 
+
+**IMPORTANT**: we do not consider capabilities such as "Transcribing the contents" of an image, 'Translating the contents' of an email, 'transcribing an audio file', or 'summarizing a document' as separate tools. These are capabilities that are part of the core AI functionality, and do not require a separate tool. The tools listed here are for external integrations, or for specific actions that require a distinct function call. Such capabilities can be handled by the AI directly, without needing to invoke a separate tool.
 ---
 
 ### Communication Tools
@@ -374,7 +376,6 @@ Generally, the idea is : If the missing information for this command is somethin
 
 ### Web & Search Tools
 
-
 **browse_website_with_ai**
 - AI-powered browser for interactive/JavaScript-heavy websites (30-60 seconds)
 - Args: task, max_steps (optional, default 30)
@@ -485,6 +486,8 @@ Generally, the idea is : If the missing information for this command is somethin
 ---
 
 
+---
+
 ## Tool Selection Guidelines
 
 When planning, consider:
@@ -522,4 +525,14 @@ When planning, consider:
 - "Browse this website and email me the pricing" → [`send_intermediate_message`, `browse_website_with_ai`, `send_email`]
 
 **Remember**: Only include tools that are NECESSARY. Don't include tools "just in case."
+
+
+
+### Product hunting: If the user is asking you to find products based on an image they sent, or based on a description, you should use the `identify_product_in_image` tool if they sent an image, or the `google_search` tool if they provided a text description of the product. Then, you should use browse_website_with_ai with extensive instructions and full context and names of products that could fit the bill, so that they can be found on the relevant websites and purchased by the user. You should provide all the potential product matches to the browser use tool, so it can automously search and find good matches. Always remember to use send_intermediate_message first, as this will take time.
+
+
+### 
 """
+
+
+

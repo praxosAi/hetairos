@@ -63,10 +63,8 @@ async def handle_outlook_webhook(request: Request):
             continue
 
         resource = notification.get("resource")
-        resource_to_process = resource.lower()
-        if resource_to_process.startswith("/"):
-            resource_to_process = resource_to_process[1:]
-        ms_user_id, msg_id = extract_ms_ids_from_resource(resource_to_process or "")
+
+        ms_user_id, msg_id = extract_ms_ids_from_resource(resource or "")
         webhook_logger.info(f"Parsed ms_user_id: {ms_user_id}, msg_id: {msg_id} from resource: {resource}")
         if not ms_user_id or not msg_id:
             webhook_logger.warning(f"Could not parse ms_user_id/msg_id from resource: {resource}")
@@ -94,6 +92,11 @@ async def handle_outlook_webhook(request: Request):
         # Fetch + normalize (OPTIONAL: add a command prefix)
         COMMAND = ""  # fill if you want to prepend trigger text
         try:
+
+            already_exists = await db_manager.check_platform_and_message_id_exists('outlook', msg_id, user_id)
+            if already_exists:
+                webhook_logger.info(f"Outlook message {msg_id} already processed for user {user_id}; skipping.")
+                continue
             normalized = await outlook.normalize_message_for_ingestion(
                 user_record=user_record,
                 ms_user_id=ms_user_id,
@@ -109,8 +112,9 @@ async def handle_outlook_webhook(request: Request):
         # didn't return the raw; so we store a minimal record for dedupe:
         # Option A: change insert_or_reject_emails to accept normalized dicts and look up platform_message_id from normalized["id"].
         # Option B: fetch the raw message again, or build a small dict that includes {"id": msg_id}.
-        to_insert = [{"id": normalized["id"], "normalized": normalized}]
-        inserted_ids = await db_manager.insert_new_outlook_email(to_insert, user_id)
+        to_insert = {"id": normalized["id"], "normalized": normalized}
+        to_insert['user_id'] = user_id
+        inserted_ids = await db_manager.insert_new_outlook_email(to_insert)
         inserted_id = inserted_ids[0] if inserted_ids else None
         
         if not inserted_id:
@@ -121,6 +125,7 @@ async def handle_outlook_webhook(request: Request):
 
         # Attach inserted doc id to metadata
         normalized["metadata"]["inserted_id"] = inserted_id
+        webhook_logger.info(f"eval event, normalized: {json.dumps(normalized)}")
         event_eval_result = await praxos_client.eval_event(normalized, 'outlook')
         webhook_logger.info(f"Event eval result: {event_eval_result}")
         # Build event like WhatsApp/Gmail

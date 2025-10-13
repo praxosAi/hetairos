@@ -14,6 +14,7 @@ from src.utils.blob_utils import upload_bytes_to_blob_storage
 from bson import ObjectId
 from urllib.parse import urlencode,quote
 import httpx
+import json
 import re
 logger = setup_logger(__name__)
 PREFER_IMMUTABLE_ID = {'Prefer': 'IdType="ImmutableId"'}
@@ -350,19 +351,18 @@ class MicrosoftGraphIntegration(BaseIntegration):
         except Exception as e:
             logger.error(f"Error searching for contact '{name}': {e}", exc_info=True)
             return []
-
-    
-
     async def _graph_get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         headers = {
             "Authorization": f"Bearer {self.access_token}",
             "Accept": "application/json",
             **PREFER_IMMUTABLE_ID,
         }
+        logger.info(f'requesting from {url}')
         async with httpx.AsyncClient(timeout=20) as client:
             r = await client.get(url, headers=headers, params=params)
             try:
                 r.raise_for_status()
+                logger.info('req success')
             except httpx.HTTPStatusError as e:
                 detail = ""
                 try:
@@ -379,47 +379,60 @@ class MicrosoftGraphIntegration(BaseIntegration):
         Robust: /me + RAW immutable id + no $expand.
         Then page attachments from child collection (ask for @odata.type + contentBytes).
         """
-        # NOTE: delegated token => use /me/, and keep RAW immutable id (no quote)
         base = f"{self.graph_endpoint}/me/messages/{message_id}"
         select_fields = (
             "id,subject,body,from,toRecipients,receivedDateTime,conversationId,webLink,internetMessageHeaders"
         )
-
+        
         # 1) Get message (no expand)
         msg = await self._graph_get(base, {"$select": select_fields})
+        try:
+            logger.info('msg obtained')
+            # 2) Get attachments (child collection), try to include contentBytes directly
+            # Also request @odata.type so we can branch on fileAttachment vs itemAttachment if needed
+            attachments = await self._graph_get(f"{base}/attachments", {"$top": 50})
+            # print('atts', json.dumps(attachments,indent=4))
+            # 2) Helpers
+            file_attachments = []
+            item_attachments = []
+            ref_attachments = []
+            for att in attachments.get("value", []):
+                att_type = att.get("@odata.type", "").lower()
+                if att_type == "#microsoft.graph.fileattachment":
+                    att['attachmentType'] = 'file'
+                    file_attachments.append(att)
+                elif att_type == "#microsoft.graph.itemattachment":
+                    att['attachmentType'] = 'item'
+                    item_attachments.append(att)
+                elif att_type == "#microsoft.graph.referenceattachment":
+                    att['attachmentType'] = 'reference'
+                    ref_attachments.append(att)
+                else:
+                    logger.warning(f"Unknown attachment type: {att_type}")
 
-        # 2) Get attachments (child collection), try to include contentBytes directly
-        # Also request @odata.type so we can branch on fileAttachment vs itemAttachment if needed
-        atts_url = f"{base}/attachments"
-        params = {
-            "$top": 50,
-            "$select": "id,name,contentType,size,isInline,@odata.type,contentBytes"
-        }
 
-        attachments: list[dict] = []
-        next_link = None
-        while True:
-            page = await self._graph_get(next_link, None) if next_link else await self._graph_get(atts_url, params)
-            attachments.extend(page.get("value", []))
-            next_link = page.get("@odata.nextLink")
-            if not next_link:
-                break
+            attachments = file_attachments + item_attachments + ref_attachments
+            # Optional enrichment: some fileAttachments may still lack contentBytes
+            enriched: list[dict] = []
+            for a in attachments:
+                # You can still check the metadata key (present even if not selected)
+                otype = (a.get("@odata.type") or "").lower()
+                if "fileattachment" in otype and "contentBytes" not in a:
+                    try:
+                        att = await self._graph_get(
+                            f"{base}/attachments/{a['id']}",
+                            {"$select": "id,name,contentType,size,isInline,contentBytes"},
+                        )
+                        a = {**a, **att}
+                    except Exception:
+                        # fallback to $value later if you truly need the bytes
+                        pass
+                enriched.append(a)
 
-        # 3) Optional: for fileAttachments that still lack contentBytes, fetch individually or stream $value
-        enriched: list[dict] = []
-        for a in attachments:
-            otype = a.get("@odata.type", "").lower()
-            if "fileattachment" in otype and "contentBytes" not in a:
-                try:
-                    # try to fetch just this attachment with contentBytes
-                    att = await self._graph_get(f"{base}/attachments/{a['id']}", {"$select": "id,name,contentType,size,isInline,contentBytes"})
-                    a = {**a, **att}
-                except Exception:
-                    # fall back to streaming via $value if you need actual bytes later
-                    pass
-            enriched.append(a)
-
-        msg["attachments"] = enriched
+            msg["attachments"] = enriched 
+        except Exception as e:
+            logger.error(f"Error fetching attachments for message {message_id}: {e}", exc_info=True)
+            msg["attachments"] = []
         return msg
 
     async def _translate_to_rest_id(self, raw_id: str) -> Optional[str]:
@@ -541,7 +554,7 @@ class MicrosoftGraphIntegration(BaseIntegration):
         files: List[Dict[str, Any]] = []
         for a in msg.get("attachments") or []:
             # Only store real file attachments with contentBytes
-            if a.get("@odata.type", "").endswith("FileAttachment") and a.get("contentBytes"):
+            if a.get("@odata.type", "").endswith("fileAttachment") and a.get("contentBytes"):
                 file_rec = await self._store_attachment(
                     user_record=user_record,
                     message_id=msg["id"],
@@ -554,8 +567,8 @@ class MicrosoftGraphIntegration(BaseIntegration):
             "id": msg.get("id"),
             "thread_id": msg.get("conversationId"),
             "subject": msg.get("subject") or "No Subject",
-            "from": (msg.get("from") or {}).get("emailAddress", {}).get("address", ""),
-            "to": ", ".join([(r.get("emailAddress") or {}).get("address", "") for r in msg.get("toRecipients") or [] if r.get("emailAddress")]),
+            "from": (msg.get("from") or {}),
+            "to": msg.get("toRecipients",[]),
             "date": msg.get("receivedDateTime"),
             "timestamp": msg.get("receivedDateTime"),
             "labels": [],  # Outlook doesn't have Gmail-style labels; keep empty or map categories if you use them
@@ -576,16 +589,21 @@ class MicrosoftGraphIntegration(BaseIntegration):
     
 def extract_ms_ids_from_resource(resource: str) -> Tuple[Optional[str], Optional[str]]:
     """
-    Returns (ms_user_id, message_id) given a resource like:
-    /users/{ms_user_id}/messages/{message_id}
-    /users/{ms_user_id}/mailFolders('Inbox')/messages/{message_id}
+    Returns (ms_user_id, message_id) given a resource path.
+    This version is case-insensitive.
     """
     if not resource:
         return None, None
-    m = re.search(r"users/([^/]+)/messages/([^/?]+)", resource)
+
+    # Try matching the simpler path first
+    # Note the re.IGNORECASE flag
+    m = re.search(r"Users/([^/]+)/messages/([^/?]+)", resource, re.IGNORECASE)
     if m:
         return m.group(1), m.group(2)
-    m2 = re.search(r"users/([^/]+)/mailFolders\('[^']+'\)/messages/([^/?]+)", resource)
+
+    # Then try the more complex mailFolders path
+    m2 = re.search(r"Users/([^/]+)/mailFolders\('[^']+'\)/messages/([^/?]+)", resource, re.IGNORECASE)
     if m2:
         return m2.group(1), m2.group(2)
+
     return None, None

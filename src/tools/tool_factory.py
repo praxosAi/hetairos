@@ -28,7 +28,6 @@ from src.tools.scheduling import create_scheduling_tools
 from src.tools.basic import create_basic_tools
 from src.tools.web import create_web_tools
 from src.tools.dropbox import create_dropbox_tools
-from src.tools.playwright import create_playwright_tools
 from src.tools.preference_tools import create_preference_tools
 from src.tools.integration_tools import create_integration_tools
 from src.tools.database_tools import create_database_access_tools

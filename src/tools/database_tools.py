@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from langchain_core.tools import tool
 from src.tools.tool_types import ToolExecutionResponse
+from src.tools.error_helpers import ErrorResponseBuilder
 from src.utils.database import conversation_db
 from src.services.integration_service import integration_service
 from enum import Enum
@@ -20,7 +21,11 @@ def create_database_access_tools(user_id: str) -> list:
             return ToolExecutionResponse(status="success", result=messages)
         except Exception as e:
             logger.error(f"Error fetching latest messages for user {user_id}: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="Failed to fetch messages.")
+            return ErrorResponseBuilder.from_exception(
+                operation="fetch_latest_messages",
+                exception=e,
+                integration="database"
+            )
     @tool
     async def get_user_integration_records() -> ToolExecutionResponse:
         """
@@ -31,6 +36,10 @@ def create_database_access_tools(user_id: str) -> list:
             return ToolExecutionResponse(status="success", result=records)
         except Exception as e:
             logger.error(f"Error fetching integration records for user {user_id}: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="Failed to fetch integration records.")
+            return ErrorResponseBuilder.from_exception(
+                operation="get_user_integration_records",
+                exception=e,
+                integration="database"
+            )
     ### TODO: media tool, and praxos call for media tool with source id
     return [fetch_latest_messages, get_user_integration_records]

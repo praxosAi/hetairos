@@ -504,6 +504,12 @@ class IntegrationService:
         """Get all integrations for a user by name."""
         integrations = await self.db_manager.db["integrations"].find({"user_id": ObjectId(user_id), "name": name}).to_list(length=100)
         return integrations
+
+    async def get_user_integration_names(self, user_id: str) -> List[str]:
+        """Get all integration names for a user."""
+        integrations = await self.db_manager.db["integrations"].find({"user_id": ObjectId(user_id)}).to_list(length=100)
+        return set(integration.get("name") for integration in integrations)
+
     async def get_user_by_integration(self, type: str, connected_account:str) -> Optional[List[str]]:
         """Get the user id by the integration type and connected account."""
 

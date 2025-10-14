@@ -2,6 +2,7 @@ from typing import List
 from langchain_core.tools import tool
 from src.integrations.email.gmail_client import GmailIntegration
 from src.tools.tool_types import ToolExecutionResponse
+from src.tools.error_helpers import ErrorResponseBuilder
 from src.utils.logging import setup_logger
 from typing import Optional
 
@@ -40,7 +41,12 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
             return ToolExecutionResponse(status="success", result=result)
         except Exception as e:
             logger.error(f"Error sending email: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="There was an error sending the email.")
+            return ErrorResponseBuilder.from_exception(
+                operation="send_email",
+                exception=e,
+                integration="Gmail",
+                context={"recipient": recipient}
+            )
 
     @tool
     async def reply_to_email(
@@ -65,7 +71,12 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
             return ToolExecutionResponse(status="success", result=result)
         except Exception as e:
             logger.error(f"Error replying to email ID {original_message_id}: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="There was an error sending the reply.")
+            return ErrorResponseBuilder.from_exception(
+                operation="reply_to_email",
+                exception=e,
+                integration="Gmail",
+                context={"original_message_id": original_message_id}
+            )
 
     # --- Information Retrieval Tools ---
 
@@ -84,7 +95,12 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
             emails = await gmail_integration.search_emails(query, max_results=max_results, account=account)
             return ToolExecutionResponse(status="success", result=emails)
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="An error occurred during the email search.")
+            return ErrorResponseBuilder.from_exception(
+                operation="search_gmail",
+                exception=e,
+                integration="Gmail",
+                context={"query": query}
+            )
 
     @tool
     async def get_email_content(
@@ -100,7 +116,12 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
             email_content = await gmail_integration.get_message_by_id(message_id=message_id, account=account)
             return ToolExecutionResponse(status="success", result=email_content)
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="Could not retrieve the email's content.")
+            return ErrorResponseBuilder.from_exception(
+                operation="get_email_content",
+                exception=e,
+                integration="Gmail",
+                context={"message_id": message_id, "resource_type": "email"}
+            )
 
     @tool
     async def get_emails_from_sender(
@@ -113,7 +134,12 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
             emails = await gmail_integration.get_emails_from_sender(sender_email, max_results=max_results, account=account)
             return ToolExecutionResponse(status="success", result=emails)
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message=f"An error occurred fetching emails from {sender_email}.")
+            return ErrorResponseBuilder.from_exception(
+                operation="get_emails_from_sender",
+                exception=e,
+                integration="Gmail",
+                context={"sender_email": sender_email}
+            )
 
     @tool
     async def find_contact_email(
@@ -127,7 +153,12 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
                 return ToolExecutionResponse(status="success", result=f"No contacts found matching '{name}'.")
             return ToolExecutionResponse(status="success", result=contacts)
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message=f"An error occurred while searching for '{name}'.")
+            return ErrorResponseBuilder.from_exception(
+                operation="find_contact_email",
+                exception=e,
+                integration="Google Contacts",
+                context={"contact_name": name}
+            )
 
     # --- Inbox Management Tools ---
     
@@ -142,7 +173,12 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
             result = await gmail_integration.archive_message(message_id=message_id, account=account)
             return ToolExecutionResponse(status="success", result=result)
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="The email could not be archived.")
+            return ErrorResponseBuilder.from_exception(
+                operation="archive_email",
+                exception=e,
+                integration="Gmail",
+                context={"message_id": message_id}
+            )
 
     @tool
     async def mark_email_as_read(
@@ -159,7 +195,12 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
             )
             return ToolExecutionResponse(status="success", result=result)
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="The email could not be marked as read.")
+            return ErrorResponseBuilder.from_exception(
+                operation="mark_email_as_read",
+                exception=e,
+                integration="Gmail",
+                context={"message_id": message_id}
+            )
 
 
     accounts = gmail_integration.get_connected_accounts()

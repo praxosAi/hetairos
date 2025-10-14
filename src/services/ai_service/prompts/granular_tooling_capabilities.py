@@ -137,7 +137,7 @@ Generally, the idea is : If the missing information for this command is somethin
 ### Integration Management Tools
 
 **get_oauth_initiation_url**
-- Gets OAuth URL for connecting new integrations
+- Gets OAuth URL for connecting new integrations. this is useful when a user wants to connect a new service, such as gmail, notion, dropbox, trello, etc, and they are not yet integrated.
 - Args: integration_name (e.g., "gmail", "notion", "dropbox", "trello")
 - Use when: User needs to connect a service they haven't integrated yet
 - Returns: URL for user to complete OAuth flow
@@ -171,7 +171,7 @@ Generally, the idea is : If the missing information for this command is somethin
 - Use when: "Show me emails from john@example.com"
 
 **find_contact_email**
-- Searches Google Contacts for a person's email by name
+- Searches Google Contacts for a person's email by name.
 - Args: name
 - Use when: User mentions a contact by name but you need their email
 - Example: "Send email to Sarah" → use this to find Sarah's email first

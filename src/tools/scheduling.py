@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from langchain_core.tools import tool
 from src.tools.tool_types import ToolExecutionResponse
+from src.tools.error_helpers import ErrorResponseBuilder
 from src.services.scheduling_service import scheduling_service
 from src.utils.logging import setup_logger
 from enum import Enum
@@ -84,7 +85,12 @@ def create_scheduling_tools(user_id: str,source:str,conversation_id:str) -> List
             ]
             return ToolExecutionResponse(status="success", result=formatted_tasks)
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            logger.error(f"Error in scheduling operation: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="scheduling_operation",
+                exception=e,
+                integration="scheduling_service"
+            )
 
     @tool
     async def cancel_scheduled_task(task_id: str) -> ToolExecutionResponse:
@@ -93,7 +99,12 @@ def create_scheduling_tools(user_id: str,source:str,conversation_id:str) -> List
             result = await scheduling_service.cancel_task(task_id)
             return ToolExecutionResponse(status="success", result=result)
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            logger.error(f"Error in scheduling operation: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="scheduling_operation",
+                exception=e,
+                integration="scheduling_service"
+            )
 
     @tool
     async def update_scheduled_task(task_id: str, new_time: Optional[datetime] = None, new_command: Optional[str] = None) -> ToolExecutionResponse:
@@ -102,6 +113,11 @@ def create_scheduling_tools(user_id: str,source:str,conversation_id:str) -> List
             result = await scheduling_service.update_task(task_id, new_time, new_command)
             return ToolExecutionResponse(status="success", result=result)
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            logger.error(f"Error in scheduling operation: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="scheduling_operation",
+                exception=e,
+                integration="scheduling_service"
+            )
 
     return [schedule_task, create_recurring_future_task, get_scheduled_tasks, cancel_scheduled_task, update_scheduled_task]

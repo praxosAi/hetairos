@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional
 from langchain_core.tools import tool
 from src.integrations.trello.trello_client import TrelloIntegration
 from src.tools.tool_types import ToolExecutionResponse
+from src.tools.error_helpers import ErrorResponseBuilder
 from src.utils.logging import setup_logger
 
 logger = setup_logger(__name__)
@@ -23,7 +24,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
                 result=json.dumps({"accounts": accounts})
             )
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="list_trello_accounts",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def list_trello_organizations(account: Optional[str] = None) -> ToolExecutionResponse:
@@ -45,10 +50,18 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Listed {len(orgs)} Trello organizations")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="list_trello_organizations",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error listing Trello organizations: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="list_trello_organizations",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def list_trello_boards(organization_id: Optional[str] = None, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -71,7 +84,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Listed {len(boards)} Trello boards")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error listing Trello boards: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -101,7 +118,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Retrieved board details for {board_id}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error getting Trello board details: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -127,7 +148,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Listed {len(cards)} Trello cards")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error listing Trello cards: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -157,7 +182,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Retrieved card details for {card_id}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error getting Trello card: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -199,7 +228,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Created Trello card: {card['id']}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error creating Trello card: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -244,7 +277,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Updated Trello card: {card_id}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error updating Trello card: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -275,7 +312,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Moved Trello card {card_id} to list {list_id}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error moving Trello card: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -300,7 +341,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Added comment to Trello card: {card_id}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error adding Trello comment: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -328,7 +373,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Trello search completed for query: {query}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error searching Trello: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -360,7 +409,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Created Trello checklist: {checklist['id']}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error creating Trello checklist: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -386,7 +439,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Created Trello board: {board['id']}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error creating Trello board: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -412,7 +469,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Created Trello list: {trello_list['id']}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error creating Trello list: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -436,7 +497,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Retrieved {len(members)} board members")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error getting board members: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -461,7 +526,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Assigned member {member_id} to card {card_id}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error assigning member to card: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -486,7 +555,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Removed member {member_id} from card {card_id}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error removing member from card: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -510,7 +583,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Retrieved {len(members)} card members")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error getting card members: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))
@@ -537,7 +614,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             logger.info(f"Successfully invited {email} to board {board_id}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="trello_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error sharing board: {e}", exc_info=True)
             return ToolExecutionResponse(status="error", system_error=str(e))

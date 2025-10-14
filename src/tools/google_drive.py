@@ -3,6 +3,7 @@ from typing import Optional, List
 from langchain_core.tools import tool
 from src.integrations.gdrive.gdrive_client import GoogleDriveIntegration
 from src.tools.tool_types import ToolExecutionResponse
+from src.tools.error_helpers import ErrorResponseBuilder
 from src.utils.logging import setup_logger
 
 logger = setup_logger(__name__)
@@ -33,7 +34,12 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
             return ToolExecutionResponse(status="success", result=results)
         except Exception as e:
             logger.error(f"Error searching Google Drive files: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="An error occurred while searching Google Drive.")
+            return ErrorResponseBuilder.from_exception(
+                operation="search_google_drive_files",
+                exception=e,
+                integration="Google Drive",
+                context={"query": query}
+            )
 
     @tool
     async def save_file_to_drive(
@@ -51,7 +57,12 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
             return ToolExecutionResponse(status="success", result=result)
         except Exception as e:
             logger.error(f"Error saving file to Google Drive: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="Could not save the file to Google Drive.")
+            return ErrorResponseBuilder.from_exception(
+                operation="save_file_to_drive",
+                exception=e,
+                integration="Google Drive",
+                context={"file_name": file_name}
+            )
 
     @tool
     async def create_text_file_in_drive(
@@ -69,7 +80,12 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
             return ToolExecutionResponse(status="success", result=f"File '{filename}' created. Link: {file_metadata.get('webViewLink')}")
         except Exception as e:
             logger.error(f"Error creating text file in Google Drive: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="Could not create the text file in Google Drive.")
+            return ErrorResponseBuilder.from_exception(
+                operation="create_text_file_in_drive",
+                exception=e,
+                integration="Google Drive",
+                context={"filename": filename}
+            )
 
     @tool
     async def read_file_content_by_id(
@@ -83,7 +99,12 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
             return ToolExecutionResponse(status="success", result=content)
         except Exception as e:
             logger.error(f"Error reading file content from Google Drive: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message=f"Could not read file with ID '{file_id}'.")
+            return ErrorResponseBuilder.from_exception(
+                operation="read_file_content_by_id",
+                exception=e,
+                integration="Google Drive",
+                context={"file_id": file_id, "resource_type": "file"}
+            )
 
     # This tool is now functionally covered by search_google_drive_files, but we keep it
     # for simpler "browsing" use cases as its docstring is simpler for the AI.
@@ -100,7 +121,12 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
             return ToolExecutionResponse(status="success", result=files)
         except Exception as e:
             logger.error(f"Error listing files from Google Drive: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="Could not list files from Google Drive.")
+            return ErrorResponseBuilder.from_exception(
+                operation="list_drive_files",
+                exception=e,
+                integration="Google Drive",
+                context={"folder_id": folder_id}
+            )
     
     # 3. New logic to dynamically update descriptions for single vs. multiple accounts
     accounts = gdrive_integration.get_connected_accounts()

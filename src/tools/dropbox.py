@@ -1,6 +1,7 @@
 from langchain_core.tools import tool
 from src.integrations.dropbox.dropbox_client import DropboxIntegration
 from src.tools.tool_types import ToolExecutionResponse
+from src.tools.error_helpers import ErrorResponseBuilder
 from src.utils.logging import setup_logger
 from typing import Optional
 import json
@@ -23,7 +24,11 @@ def create_dropbox_tools(dropbox_integration: DropboxIntegration) -> list:
                 result=json.dumps({"accounts": accounts})
             )
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="list_dropbox_accounts",
+                exception=e,
+                integration="Dropbox"
+            )
 
     @tool
     async def save_file_to_dropbox(file_path: str, content: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -40,9 +45,18 @@ def create_dropbox_tools(dropbox_integration: DropboxIntegration) -> list:
             return ToolExecutionResponse(status="success", result=f"File '{file_path}' saved to Dropbox successfully.")
         except ValueError as e:
             # Multi-account error - let user know they need to specify account
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="save_file_to_dropbox",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="save_file_to_dropbox",
+                exception=e,
+                integration="Dropbox",
+                context={"file_path": file_path}
+            )
 
     @tool
     async def read_file_from_dropbox(file_path: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -58,9 +72,18 @@ def create_dropbox_tools(dropbox_integration: DropboxIntegration) -> list:
             return ToolExecutionResponse(status="success", result=content.decode('utf-8'))
         except ValueError as e:
             # Multi-account error
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="read_file_from_dropbox",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message=f"Could not read the file '{file_path}' from Dropbox.")
+            return ErrorResponseBuilder.from_exception(
+                operation="read_file_from_dropbox",
+                exception=e,
+                integration="Dropbox",
+                context={"file_path": file_path, "resource_type": "file"}
+            )
 
     @tool
     async def list_dropbox_files(folder_path: str = "", recursive: bool = False, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -86,7 +109,11 @@ def create_dropbox_tools(dropbox_integration: DropboxIntegration) -> list:
             # Multi-account error
             return ToolExecutionResponse(status="error", user_message=str(e))
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="list_dropbox_accounts",
+                exception=e,
+                integration="Dropbox"
+            )
 
     @tool
     async def search_dropbox_files(query: str, max_results: int = 100, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -113,7 +140,11 @@ def create_dropbox_tools(dropbox_integration: DropboxIntegration) -> list:
             # Multi-account error
             return ToolExecutionResponse(status="error", user_message=str(e))
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="list_dropbox_accounts",
+                exception=e,
+                integration="Dropbox"
+            )
 
     return [
         list_dropbox_accounts,

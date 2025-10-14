@@ -6,6 +6,7 @@ from requests.utils import requote_uri
 from bs4 import BeautifulSoup
 from langchain_core.tools import tool
 from src.tools.tool_types import ToolExecutionResponse
+from src.tools.error_helpers import ErrorResponseBuilder
 from src.utils.logging import setup_logger
 from typing import Optional
 from src.config.settings import settings
@@ -104,10 +105,10 @@ def read_webpage_content(url: str) -> ToolExecutionResponse:
                 logger.warning(f"Parsing error on {attempt_url}: {e}")
 
     logger.error(f"All attempts failed for URL {url}. Last error: {last_error}")
-    return ToolExecutionResponse(
-        status="error",
-        system_error=str(last_error),
-        user_message=f"Failed to retrieve the page after multiple strategies. Last error: {last_error}"
+    return ErrorResponseBuilder.from_exception(
+        operation="read_webpage_content",
+        exception=last_error if isinstance(last_error, Exception) else Exception(str(last_error)),
+        context={"url": url}
     )
 
 def create_browser_tool(request_id):
@@ -173,10 +174,11 @@ def create_browser_tool(request_id):
 
         except Exception as e:
             logger.error(f"AI browser error for {task}: {e}", exc_info=True)
-            return ToolExecutionResponse(
-                status="error",
-                system_error=str(e),
-                user_message="Failed to browse the website. The site may be inaccessible or the task too complex."
+            return ErrorResponseBuilder.from_exception(
+                operation="browse_website_with_ai",
+                exception=e,
+                integration="browser_use",
+                context={"task": task}
             )
 
     return browse_website_with_ai

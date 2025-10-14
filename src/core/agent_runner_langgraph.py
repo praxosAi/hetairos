@@ -122,6 +122,7 @@ class LangGraphAgentRunner:
             timezone_name = user_preferences.get('timezone', 'America/New_York') if user_preferences else 'America/New_York'
             user_tz = pytz.timezone(timezone_name)
             current_time_user = datetime.now(user_tz).isoformat()
+        
             # Process input based on type
             if isinstance(input, list):
                 # Grouped messages - use the parallel method
@@ -171,6 +172,7 @@ class LangGraphAgentRunner:
             plan = None
             required_tool_ids = None
             plan_str = ''
+            conversational = True
             if source in ['scheduled','recurring','triggered']:
                 ### here, we add an AI Message that indicates the scheduled nature of the request.
                 if source == 'scheduled':
@@ -181,7 +183,10 @@ class LangGraphAgentRunner:
                     schedule_msg = AIMessage(content=f"NOTE: This command was previously set to be triggered by an event. The triggering event has now occurred, and I must perform the requested actions. I should not ask the user for confirmation. if the request was of form 'if X happens, remind me to ...', I should interpret this as a command to send the user a message now, and not set up a future reminder.")
                 history.append(schedule_msg)
             try:
-                plan, required_tool_ids, plan_str = await ai_service.granular_planning(history)
+                user_integration_names = await integration_service.get_user_integration_names(user_context.user_id)
+                plan, required_tool_ids, plan_str = await ai_service.granular_planning(history,user_integration_names)
+                if plan and plan.query_type and plan.query_type == 'command':
+                    conversational = False
             except Exception as e:
                 logger.error(f"Error during granular planning call: {e}", exc_info=True)
                 required_tool_ids = None  # Fallback to loading all tools
@@ -197,7 +202,11 @@ class LangGraphAgentRunner:
             minimal_tools = True
             if required_tool_ids is not None and len(required_tool_ids) > 0:
                 minimal_tools = False
+            
             tool_executor = ToolNode(tools)
+            if minimal_tools and conversational:
+                ### this is a basic query
+                self.llm = self.fast_llm
             llm_with_tools = self.llm.bind_tools(tools)
             tool_descriptions = ""
             for i, tool in enumerate(tools):

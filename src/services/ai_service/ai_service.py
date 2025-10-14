@@ -51,7 +51,7 @@ class AIService:
 
 
 
-    async def granular_planning(self, context: list[BaseMessage]) -> Tuple[GranularPlanningResponse, Optional[list[str]], Optional[str]]:
+    async def granular_planning(self, context: list[BaseMessage], user_integration_names: set[str]) -> Tuple[GranularPlanningResponse, Optional[list[str]], Optional[str]]:
         planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0, cached_content=PLANNING_CACHE_NAME)
 
         """
@@ -70,6 +70,7 @@ class AIService:
         # sys_message = SystemMessage(content=planning_prompt)
         # messages = [sys_message] + msgs_with_placeholders
         messages = msgs_with_placeholders
+        messages.append(HumanMessage(content='We know that the user has the following tools available to them: \n' + '\n'.join(list(user_integration_names))))
         logger.info('Calling granular_planning for precise tool selection')
         
         # structured_llm = planning_llm.with_structured_output(GranularPlanningResponse)

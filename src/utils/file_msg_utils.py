@@ -426,6 +426,7 @@ def replace_media_with_placeholders(messages: List) -> List:
 
 
 async def update_history( conversation_manager: Any, new_messages: List[BaseMessage], conversation_id: str, user_context: UserContext, final_state: Dict[str, Any]):
+    inserted_ct = 0
     for msg in new_messages:
         try:
         # Skip the final AI message (will be added separately below)
@@ -455,5 +456,7 @@ async def update_history( conversation_manager: Any, new_messages: List[BaseMess
                         "tool_call_id": msg.tool_call_id if hasattr(msg, 'tool_call_id') else ""
                     }
                 )
+            inserted_ct += 1
         except Exception as e:
             logger.error(f"Error persisting intermediate message: {e}", exc_info=True)
+    logger.info(f"Persisted {inserted_ct} new intermediate messages to conversation log")

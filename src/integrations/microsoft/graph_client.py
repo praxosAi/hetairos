@@ -1,15 +1,23 @@
 import asyncio
 import base64
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional,Any, Tuple
 import aiohttp
+import mimetypes
 from src.integrations.base_integration import BaseIntegration
 from src.config.settings import settings
 from src.utils.rate_limiter import rate_limiter
 from src.services.integration_service import integration_service
 from src.utils.logging import setup_logger
-
+from src.utils.database import db_manager
+from src.utils.blob_utils import upload_bytes_to_blob_storage
+from bson import ObjectId
+from urllib.parse import urlencode,quote
+import httpx
+import json
+import re
 logger = setup_logger(__name__)
+PREFER_IMMUTABLE_ID = {'Prefer': 'IdType="ImmutableId"'}
 
 class MicrosoftGraphIntegration(BaseIntegration):
     def __init__(self, user_id: str):
@@ -343,5 +351,259 @@ class MicrosoftGraphIntegration(BaseIntegration):
         except Exception as e:
             logger.error(f"Error searching for contact '{name}': {e}", exc_info=True)
             return []
+    async def _graph_get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Accept": "application/json",
+            **PREFER_IMMUTABLE_ID,
+        }
+        logger.info(f'requesting from {url}')
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get(url, headers=headers, params=params)
+            try:
+                r.raise_for_status()
+                logger.info('req success')
+            except httpx.HTTPStatusError as e:
+                detail = ""
+                try:
+                    detail = f" ; graph_error={r.json()}"
+                except Exception:
+                    detail = f" ; body={r.text[:500]}"
+                raise httpx.HTTPStatusError(f"{e}{detail}", request=e.request, response=e.response) from None
+            return r.json()
 
+    async def get_message_with_attachments(
+        self, *, ms_user_id: str, message_id: str
+    ) -> Dict[str, Any]:
+        """
+        Robust: /me + RAW immutable id + no $expand.
+        Then page attachments from child collection (ask for @odata.type + contentBytes).
+        """
+        base = f"{self.graph_endpoint}/me/messages/{message_id}"
+        select_fields = (
+            "id,subject,body,from,toRecipients,receivedDateTime,conversationId,webLink,internetMessageHeaders"
+        )
+        
+        # 1) Get message (no expand)
+        msg = await self._graph_get(base, {"$select": select_fields})
+        try:
+            logger.info('msg obtained')
+            # 2) Get attachments (child collection), try to include contentBytes directly
+            # Also request @odata.type so we can branch on fileAttachment vs itemAttachment if needed
+            attachments = await self._graph_get(f"{base}/attachments", {"$top": 50})
+            # print('atts', json.dumps(attachments,indent=4))
+            # 2) Helpers
+            file_attachments = []
+            item_attachments = []
+            ref_attachments = []
+            for att in attachments.get("value", []):
+                att_type = att.get("@odata.type", "").lower()
+                if att_type == "#microsoft.graph.fileattachment":
+                    att['attachmentType'] = 'file'
+                    file_attachments.append(att)
+                elif att_type == "#microsoft.graph.itemattachment":
+                    att['attachmentType'] = 'item'
+                    item_attachments.append(att)
+                elif att_type == "#microsoft.graph.referenceattachment":
+                    att['attachmentType'] = 'reference'
+                    ref_attachments.append(att)
+                else:
+                    logger.warning(f"Unknown attachment type: {att_type}")
+
+
+            attachments = file_attachments + item_attachments + ref_attachments
+            # Optional enrichment: some fileAttachments may still lack contentBytes
+            enriched: list[dict] = []
+            for a in attachments:
+                # You can still check the metadata key (present even if not selected)
+                otype = (a.get("@odata.type") or "").lower()
+                if "fileattachment" in otype and "contentBytes" not in a:
+                    try:
+                        att = await self._graph_get(
+                            f"{base}/attachments/{a['id']}",
+                            {"$select": "id,name,contentType,size,isInline,contentBytes"},
+                        )
+                        a = {**a, **att}
+                    except Exception:
+                        # fallback to $value later if you truly need the bytes
+                        pass
+                enriched.append(a)
+
+            msg["attachments"] = enriched 
+        except Exception as e:
+            logger.error(f"Error fetching attachments for message {message_id}: {e}", exc_info=True)
+            msg["attachments"] = []
+        return msg
+
+    async def _translate_to_rest_id(self, raw_id: str) -> Optional[str]:
+        """
+        Translate an Exchange immutable id (AAMk...=) to a REST id.
+        Returns the translated id or None on failure.
+        """
+        url = f"{self.graph_endpoint}/me/translateExchangeIds"
+        payload = {
+            "inputIds": [raw_id],
+            "sourceIdType": "immutableId",
+            "targetIdType": "restId"
+        }
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            # no IdType header here; this endpoint expects the payload
+        }
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.post(url, headers=headers, json=payload)
+            try:
+                r.raise_for_status()
+                data = r.json()
+                out = (data.get("value") or [{}])[0]
+                return out.get("targetId")
+            except Exception as e:
+                logger.warning(f"Failed translating id via translateExchangeIds: {e}")
+                return None
+    def _ms_headers_to_map(self, headers: Optional[List[Dict[str, Any]]]) -> Dict[str, str]:
+        m: Dict[str, str] = {}
+        for h in headers or []:
+            name = (h.get("name") or "").strip()
+            value = (h.get("value") or "").strip()
+            if name:
+                m[name] = value
+        return m
+
+    def _extract_plain_text(self, body: Dict[str, Any]) -> str:
+        """
+        Outlook returns body as {contentType: 'html'|'text', content: '...'}
+        Normalize to text (strip HTML crud in the simple case).
+        """
+        ctype = (body.get("contentType") or "").lower()
+        content = body.get("content") or ""
+        if ctype == "text":
+            return content
+        # super-minimal HTML -> text
+        import re
+        from html import unescape
+        text = re.sub(r"<br\s*/?>", "\n", content, flags=re.I)
+        text = re.sub(r"</p\s*>", "\n\n", text, flags=re.I)
+        text = re.sub(r"<[^>]+>", "", text)
+        return unescape(text).strip()
+
+    async def _store_attachment(
+        self,
+        *,
+        user_record: Dict[str, Any],
+        message_id: str,
+        att: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Store a *file* attachment (not item/reference) that has contentBytes.
+        """
+        content_bytes_b64 = att.get("contentBytes")
+        if not content_bytes_b64:
+            return None
+
+        raw = base64.b64decode(content_bytes_b64.encode("utf-8"))
+
+        filename = att.get("name") or "attachment"
+        mime_type = att.get("contentType") or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        blob_name = f"{str(user_record['_id'])}/outlook/{message_id}/{filename}"
+        blob_path = await upload_bytes_to_blob_storage(raw, blob_name, content_type=mime_type)
+
+        # Insert into documents; you already use platform_message_id as the email id
+        document_entry = {
+            "user_id": ObjectId(user_record["_id"]),
+            "platform": "outlook",
+            "platform_file_id": att.get("id"),
+            "platform_message_id": message_id,
+            "type": "document",
+            "blob_path": blob_name,
+            "mime_type": mime_type,
+            "file_name": filename,
+        }
+        inserted_id = await db_manager.add_document(document_entry)
+
+        return {
+            "type": "document",
+            "blob_path": blob_path,
+            "mime_type": mime_type,
+            "caption": "",
+            "file_name": filename,
+            "inserted_id": str(inserted_id),
+        }
+
+    async def normalize_message_for_ingestion(
+        self,
+        *,
+        user_record: Dict[str, Any],
+        ms_user_id: str,
+        message_id: str,
+        command_prefix: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Fetch + normalize an Outlook message into your standard shape:
+          payload.text, payload.files[], and metadata.
+        """
+        msg = await self.get_message_with_attachments(ms_user_id=ms_user_id, message_id=message_id)
+
+        headers_map = self._ms_headers_to_map(msg.get("internetMessageHeaders"))
+
+        body_text = self._extract_plain_text(msg.get("body") or {})
+        if command_prefix:
+            body_text = f"{command_prefix}\n\n{body_text}" if body_text else command_prefix
+
+        files: List[Dict[str, Any]] = []
+        for a in msg.get("attachments") or []:
+            # Only store real file attachments with contentBytes
+            if a.get("@odata.type", "").endswith("fileAttachment") and a.get("contentBytes"):
+                file_rec = await self._store_attachment(
+                    user_record=user_record,
+                    message_id=msg["id"],
+                    att=a,
+                )
+                if file_rec:
+                    files.append(file_rec)
+
+        normalized = {
+            "id": msg.get("id"),
+            "thread_id": msg.get("conversationId"),
+            "subject": msg.get("subject") or "No Subject",
+            "from": (msg.get("from") or {}),
+            "to": msg.get("toRecipients",[]),
+            "date": msg.get("receivedDateTime"),
+            "timestamp": msg.get("receivedDateTime"),
+            "labels": [],  # Outlook doesn't have Gmail-style labels; keep empty or map categories if you use them
+            "snippet": "",  # You can synthesize a snippet if you want
+            "payload": {
+                "text": body_text,
+                "files": files,
+            },
+            "metadata": {
+                "platform": "outlook",
+                "outlook_message_id": msg.get("id"),
+                "outlook_thread_id": msg.get("conversationId"),
+                "headers": headers_map,
+                "web_link": msg.get("webLink"),
+            },
+        }
+        return normalized
     
+def extract_ms_ids_from_resource(resource: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Returns (ms_user_id, message_id) given a resource path.
+    This version is case-insensitive.
+    """
+    if not resource:
+        return None, None
+
+    # Try matching the simpler path first
+    # Note the re.IGNORECASE flag
+    m = re.search(r"Users/([^/]+)/messages/([^/?]+)", resource, re.IGNORECASE)
+    if m:
+        return m.group(1), m.group(2)
+
+    # Then try the more complex mailFolders path
+    m2 = re.search(r"Users/([^/]+)/mailFolders\('[^']+'\)/messages/([^/?]+)", resource, re.IGNORECASE)
+    if m2:
+        return m2.group(1), m2.group(2)
+
+    return None, None

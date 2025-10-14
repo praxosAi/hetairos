@@ -11,6 +11,8 @@ GRANULAR_TOOLING_CAPABILITIES = """
 Below is a comprehensive list of ALL available tool functions with their IDs and descriptions.
 **IMPORTANT**: Only include tools that are ACTUALLY needed for the task. Be precise and minimal.
 
+
+**IMPORTANT**: we do not consider capabilities such as "Transcribing the contents" of an image, 'Translating the contents' of an email, 'transcribing an audio file', or 'summarizing a document' as separate tools. These are capabilities that are part of the core AI functionality, and do not require a separate tool. The tools listed here are for external integrations, or for specific actions that require a distinct function call. Such capabilities can be handled by the AI directly, without needing to invoke a separate tool.
 ---
 
 ### Communication Tools
@@ -80,6 +82,26 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 - Returns the current plan and step from planning phase
 - Rarely needed - mostly for debugging
 
+
+**consult_defaults_and_preferences_for_missing_params**
+- Use this when you have determined that we are missing parameters for other needed tools, and that the info may be available in the user's saved preferences or default settings.
+- Use this when the info you are seeking is likely to be available in the user's preferences, or be a default data point.
+- Examples: the user asks for cards on their trello, without specifying a board, or asks to send an email without specifying which one of their multiple email accounts to use as the sender. It is possible that this info is available in their preferences, or that there is a default value set for it.
+
+
+**consult_praxos_long_term_memory**
+- Use this when you need to access information from the user's long-term memory, called Praxos Memory. 
+- Information there can be relational or individual specific data points, and is based on what the user has told you in the past, or what you have learned about them through interactions, or the files and emails and documents that they have ingested.
+- This can include past interactions, preferences, or any other relevant data that may assist in the current task.
+- Examples: The user wants to find their  glucose levels, which could be available in their health tracking data that has been ingested into their long-term memory. Or, the assistant needs to find the name of their alma mater university.
+
+
+**ask_user_for_missing_params**
+- Use this when you have determined that we are missing parameters for other needed tools, and that the info should be provided by the user. 
+- Generally, this is the first line of action when the info you are seeking is unlikely to be available in the user's preferences, be a default data point or long-term memory.
+- This is recordkeeping tool, and we use to know when this happens. If it's needed, it must always be indicated.
+
+Generally, the idea is : If the missing information for this command is something that is SPECIFIC to this current task, and not prior iterations, such as the subject of an email, or the recipient of a message, then it should be asked from the user. If it's something that could be available in the user's preferences, such as which email account to use, or which trello board to use, then consult preferences. If it's something that is more general knowledge about the user, such as their favorite restaurant, or their health data, then consult long-term memory.
 ---
 
 ### Preference Management Tools
@@ -354,7 +376,6 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 
 ### Web & Search Tools
 
-
 **browse_website_with_ai**
 - AI-powered browser for interactive/JavaScript-heavy websites (30-60 seconds)
 - Args: task, max_steps (optional, default 30)
@@ -427,6 +448,46 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 
 ---
 
+### Discord Tools (requires Discord integration)
+
+
+**list_discord_servers**
+- Lists all connected Discord servers for the user
+- Use this first to see which Discord servers are available
+- Returns: Server IDs, team names, team IDs     
+
+**send_discord_message**
+- Sends a message to a Discord channel
+- Args: channel (ID or name), text, account (optional server identifier)   
+
+**send_discord_dm**
+- Sends a direct message to a Discord user
+- Args: user_id, text, account (optional server identifier) 
+
+
+**list_discord_channels**
+- Lists channels in a Discord server
+- Args: account (server identifier)
+- Use when: "Show me channels in my Discord server"
+- Returns: Channel names, IDs, types
+
+**get_discord_channel_history**
+- Fetches recent messages from a Discord channel
+- Args: channel (ID or name), limit (default 10), account (optional server identifier)
+- Use when: "Get recent messages from #general"
+- Returns: List of messages with timestamps, authors
+
+**get_discord_user_info**
+- Gets info about a Discord user by ID
+- Args: user_id, account (optional server identifier)
+- Use when: "Get info about user with ID 123456789"
+- Returns: Username, ID, roles, join date
+
+---
+
+
+---
+
 ## Tool Selection Guidelines
 
 When planning, consider:
@@ -464,4 +525,14 @@ When planning, consider:
 - "Browse this website and email me the pricing" → [`send_intermediate_message`, `browse_website_with_ai`, `send_email`]
 
 **Remember**: Only include tools that are NECESSARY. Don't include tools "just in case."
+
+
+
+### Product hunting: If the user is asking you to find products based on an image they sent, or based on a description, you should use the `identify_product_in_image` tool if they sent an image, or the `google_search` tool if they provided a text description of the product. Then, you should use browse_website_with_ai with extensive instructions and full context and names of products that could fit the bill, so that they can be found on the relevant websites and purchased by the user. You should provide all the potential product matches to the browser use tool, so it can automously search and find good matches. Always remember to use send_intermediate_message first, as this will take time.
+
+
+### 
 """
+
+
+

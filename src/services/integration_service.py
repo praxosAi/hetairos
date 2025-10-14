@@ -477,6 +477,29 @@ class IntegrationService:
         )
         return str(integ["user_id"]) if integ else None
 
+    async def get_user_by_discord_guild_id(self, guild_id: str) -> Optional[str]:
+        """Find user by Discord guild_id (deprecated - use get_user_by_discord_user_id instead)."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"name": "discord", "connected_account": guild_id},
+            projection={"user_id": 1}
+        )
+        return str(integ["user_id"]) if integ else None
+
+    async def get_user_by_discord_user_id(self, discord_user_id: str) -> Optional[str]:
+        """Find Praxos user by their Discord user ID."""
+        # Discord user ID is stored in metadata.webhook_info.user_id
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"name": "discord", "metadata.webhook_info.user_id": discord_user_id},
+            projection={"user_id": 1}
+        )
+        return str(integ["user_id"]) if integ else None
+    async def get_user_by_ms_id(self, ms_id: str) -> Optional[str]:
+        """Find Praxos user by their Microsoft (Outlook) user ID."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"name": "outlook", "metadata.provider_user_info.id": ms_id},
+            projection={"user_id": 1}
+        )
+        return str(integ["user_id"]) if integ else None
     async def get_all_integrations_for_user_by_name(self, user_id: str, name: str) -> List[Dict[str, Any]]:
         """Get all integrations for a user by name."""
         integrations = await self.db_manager.db["integrations"].find({"user_id": ObjectId(user_id), "name": name}).to_list(length=100)

@@ -238,11 +238,11 @@ class ConversationDatabase:
             input_text = payload.get("text")
         else:
             return True
-        if '/START_NEW' in input_text:
+        if input_text and '/START_NEW' in input_text:
             ## @TODO: we should then remove this tag from the message content.
             self.logger.info("Detected /START_NEW tag in the message, starting a new conversation.")
             return True
-        if '/CONTINUE_LAST' in input_text:
+        if input_text and '/CONTINUE_LAST' in input_text:
             return False
         if (datetime.utcnow() - last_activity) > timeout_delta:
             if not payload:
@@ -647,6 +647,27 @@ class DatabaseManager:
             id_field="id",
             platform_id_field="platform_message_id"
         )
+    async def insert_new_outlook_email(self, email_record: Dict) -> str:
+        """Insert a new Outlook email record."""
+        ### check if the email already exists
+        existing = await self.documents.find_one({
+            'platform': 'outlook',
+            'platform_message_id': email_record['id'],
+            'user_id': ObjectId(email_record['user_id'])
+        })
+        if existing:
+            return None
+        document = {
+            'payload': email_record['normalized'],
+            'received_at': datetime.utcnow(),
+            'user_id': ObjectId(email_record['user_id']),
+            'platform': 'outlook',
+            'platform_message_id': email_record['id']
+        }
+    
+        result = await self.documents.insert_one(document)
+        return str(result.inserted_id)
+
     async def insert_new_trigger(self, rule_id: str, conversation_id: str, trigger_text: str, user_id: str, is_one_time: bool) -> str:
         """Insert a new agent trigger and return its ID."""
         trigger_data = {'rule_id': rule_id, 'conversation_id': conversation_id, 'trigger_text': trigger_text, 'created_at': datetime.utcnow(), 'user_id': ObjectId(user_id),'status': 'active','is_one_time': is_one_time}
@@ -673,5 +694,14 @@ class DatabaseManager:
             {"user_id": ObjectId(user_id), "tool_name": tool_name},
             update_fields
         )
+    async def check_platform_and_message_id_exists(self, platform: str, platform_message_id: str, user_id: str) -> bool:
+        """Check if a document with the given platform and platform_message_id exists for the user."""
+        count = await self.documents.find_one({
+            "platform": platform,
+            "platform_message_id": platform_message_id,
+            "user_id": ObjectId(user_id)
+        })
+        if count:
+            return True
 # Global database instance
 db_manager = DatabaseManager()

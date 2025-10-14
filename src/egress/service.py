@@ -325,6 +325,70 @@ class EgressService:
         except Exception as e:
             logger.error(f"Failed to send Slack response: {e}", exc_info=True)
 
+    async def _send_discord_response(self, event: dict, response_text: str, response_files):
+        """Send response to Discord using interaction webhook."""
+        metadata = event.get("metadata", {})
+        interaction_token = metadata.get("interaction_token")
+        application_id = metadata.get("application_id")
+
+        # If this is an interaction (slash command), use webhook follow-up
+        if interaction_token and application_id:
+            logger.info(f"Sending Discord interaction follow-up response")
+
+            try:
+                import httpx
+                import os
+
+                # Use Discord interaction webhook to edit the initial message
+                # This replaces "Processing..." with the actual response
+                async with httpx.AsyncClient() as client:
+                    response = await client.patch(
+                        f"https://discord.com/api/v10/webhooks/{application_id}/{interaction_token}/messages/@original",
+                        headers={"Content-Type": "application/json"},
+                        json={"content": response_text}
+                    )
+
+                    if response.status_code not in [200, 201]:
+                        logger.error(f"Discord follow-up failed: {response.status_code} - {response.text}")
+                        return
+
+                    logger.info("Successfully sent Discord interaction follow-up")
+                    return
+
+            except Exception as e:
+                logger.error(f"Failed to send Discord follow-up: {e}", exc_info=True)
+                return
+
+        # Fallback: regular message send (for non-interaction events)
+        user_id = event.get("user_id")
+        channel = metadata.get("channel")
+
+        if not user_id or not channel:
+            logger.error(f"Missing user_id or channel for Discord message")
+            return
+
+        try:
+            from src.integrations.discord.discord_client import DiscordIntegration
+            discord_integration = DiscordIntegration(user_id)
+
+            if not await discord_integration.authenticate():
+                logger.error(f"Failed to authenticate Discord for user {user_id}")
+                return
+
+            if response_text:
+                await discord_integration.send_message(
+                    channel=channel,
+                    text=response_text
+                )
+
+            if response_files:
+                logger.warning("Discord file attachments not yet implemented")
+
+            logger.info(f"Successfully sent response to Discord channel {channel}")
+
+        except Exception as e:
+            logger.error(f"Failed to send Discord response: {e}", exc_info=True)
+
     async def _send_webhook_reponse(self, event, response_text):
         logging.info('attempting to publish to websocket')
         token = event.get("metadata", {}).get("token")
@@ -353,7 +417,7 @@ class EgressService:
             return
 
         logger.info(f"Routing response for source: {source}, output_type: {event.get('output_type')}")
-        if event.get('output_type') not in ['email','websocket','telegram','whatsapp','imessage','slack'] and event.get('source') in ['scheduled','recurring']:
+        if event.get('output_type') not in ['email','websocket','telegram','whatsapp','imessage','slack','discord'] and event.get('source') in ['scheduled','recurring']:
             logger.info('incorrect output type for scheduled or recurring event')
             if event.get('metadata',{}).get('original_source', None):
                 logger.info(f"Overriding event source from {event['output_type']} to {event['metadata']['original_source']}")
@@ -375,6 +439,9 @@ class EgressService:
 
             elif final_output_type == "slack":
                 await self._send_slack_response(event, response_text, response_files)
+
+            elif final_output_type == "discord":
+                await self._send_discord_response(event, response_text, response_files)
 
             elif final_output_type == "websocket":
                 await self._send_webhook_reponse(event, response_text)

@@ -60,3 +60,5 @@ python-multipart
 playwright==1.55.0
 browser-use
 google-search-results
+slack-sdk
+PyNaCl

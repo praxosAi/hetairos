@@ -94,7 +94,7 @@ async def handle_gmail_webhook(request: Request):
             event_eval_result = await praxos_client.eval_event(message, 'gmail')
             # logger.info(f"Event evaluation result: {event_eval_result}")
             if event_eval_result.get('trigger'):
-                ### TODO: this is messy.
+
 
 
 

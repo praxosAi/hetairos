@@ -104,8 +104,8 @@ class AgentToolsFactory:
             except Exception as e:
                 logger.error(f"Error creating basic tools: {e}", exc_info=True)
 
-        # Preference tools
-        if needs_category(['add_user_preference_annotation', 'set_assistant_name', 'set_timezone', 'set_language_response', 'delete_user_preference_annotations']):
+        # Preference tools: this should always be included, as these are essential for user customization
+        if True or needs_category(['add_user_preference_annotation', 'set_assistant_name', 'set_timezone', 'set_language_response', 'delete_user_preference_annotations']):
             try:
                 tools.extend(create_preference_tools(user_id))
             except Exception as e:
@@ -292,7 +292,7 @@ class AgentToolsFactory:
                     logger.error(f"Error creating Trello tools: {e}", exc_info=True)
 
         # --- Praxos Memory Tools ---
-        if needs_category(['query_praxos_memory', 'query_praxos_memory_intelligent_search', 'enrich_praxos_memory_entries', 'setup_new_trigger']):
+        if needs_category(['query_praxos_memory', 'query_praxos_memory_intelligent_search', 'enrich_praxos_memory_entries', 'setup_new_trigger','consult_praxos_long_term_memory']):
             from src.config.settings import settings
             if settings.OPERATING_MODE == "local":
                 praxos_api_key = settings.PRAXOS_API_KEY

@@ -527,7 +527,7 @@ class PraxosClient:
         
         try:
             # Use direct search method as specified by user
-            result = self.env.evaluate_event(event_json,'gmail')
+            result = self.env.evaluate_event(event_json,event_type)
             return result
         except Exception as e:
             duration = time.time() - start_time

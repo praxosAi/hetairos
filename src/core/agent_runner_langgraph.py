@@ -17,7 +17,7 @@ from src.services.integration_service import integration_service
 from pydantic import BaseModel, Field
 from src.utils.logging import setup_logger
 from src.core.praxos_client import PraxosClient
-from src.core.models.agent_runner_models import AgentFinalResponse, AgentState, FileLink
+from src.core.models.agent_runner_models import AgentFinalResponse, AgentState, FileLink,GraphConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chat_models import init_chat_model
 import uuid
@@ -27,7 +27,9 @@ from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64
 from src.services.user_service import user_service
 from src.services.ai_service.ai_service import ai_service
 from src.core.callbacks.ToolMonitorCallback import ToolMonitorCallback
-from src.utils.file_msg_utils import generate_file_messages,get_conversation_history,process_media_output, generate_user_messages_parallel
+from src.core.nodes import call_model, generate_final_response, obtain_data, should_continue_router
+
+from src.utils.file_msg_utils import generate_file_messages,get_conversation_history,process_media_output, generate_user_messages_parallel,update_history
 logger = setup_logger(__name__)
 
 
@@ -176,11 +178,11 @@ class LangGraphAgentRunner:
             if source in ['scheduled','recurring','triggered']:
                 ### here, we add an AI Message that indicates the scheduled nature of the request.
                 if source == 'scheduled':
-                    schedule_msg = AIMessage(content=f"This command was previously scheduled. The user scheduled this command to happen now. I must now perform the requested actions. I should not ask the user for confirmation. if the request was of form 'remind me to ...', I should interpret this as a command to send the user a message now, and not set up a future reminder.")
+                    schedule_msg = AIMessage(content=f"NOTE: This command was previously scheduled. The user scheduled this command to happen now. I must now perform the requested actions. I should not ask the user for confirmation. if the request was of form 'remind me to ...', I should interpret this as a command to send the user a message now, and not set up a future reminder.")
                 if source == 'recurring':
-                    schedule_msg = AIMessage(content=f"This command was previously set to recur. The user set this command to recur, and this moment is one of the times it must be performed. I must now perform the requested actions. I should not ask the user for confirmation. if the request was of form 'remind me to ...', I should interpret this as a command to send the user a message now, and not set up a future reminder.")
+                    schedule_msg = AIMessage(content=f"NOTE: This command was previously set to recur. The user set this command to recur, and this moment is one of the times it must be performed. I must now perform the requested actions. I should not ask the user for confirmation. if the request was of form 'remind me to ...', I should interpret this as a command to send the user a message now, and not set up a future reminder.")
                 if source == 'triggered':
-                    schedule_msg = AIMessage(content=f"This command was previously set to be triggered by an event. The triggering event has now occurred, and I must perform the requested actions. I should not ask the user for confirmation. if the request was of form 'if X happens, remind me to ...', I should interpret this as a command to send the user a message now, and not set up a future reminder.")
+                    schedule_msg = AIMessage(content=f"NOTE: This command was previously set to be triggered by an event. The triggering event has now occurred, and I must perform the requested actions. I should not ask the user for confirmation. if the request was of form 'if X happens, remind me to ...', I should interpret this as a command to send the user a message now, and not set up a future reminder.")
                 history.append(schedule_msg)
             try:
                 plan, required_tool_ids, plan_str = await ai_service.granular_planning(history)
@@ -210,138 +212,6 @@ class LangGraphAgentRunner:
                     continue
             system_prompt = create_system_prompt(user_context, source, metadata, tool_descriptions, plan)
 
-            MAX_TOOL_ITERS = 3
-            MAX_DATA_ITERS = 2  # guard against loops in obtain_data
-
-
-            # --- Graph Definition ---
-            async def call_model(state: AgentState):
-                messages = state['messages']
-                response = await llm_with_tools.ainvoke([("system", system_prompt)] + messages)
-                return {"messages": state['messages'] + [response]}
-            ### /// for a true good should continue graph, we should have much more extensive error handling.
-            def should_continue_router(state: AgentState) -> Command[Literal["obtain_data","action","finalize"]]:
-                """
-                Router that can jump to obtain_data (missing params), action (tool execution), or finalize.
-                It also mutates state via Command.update to avoid conditional-edge state-loss.
-                """
-                try:
-                    new_state = state['messages'][len(initial_state['messages']):]
-                    last_message = state['messages'][-1] if state['messages'] else None
-                    try:
-                        if last_message and isinstance(last_message, ToolMessage):
-                            if  isinstance(last_message.content,ToolExecutionResponse):
-                                if last_message.content.status == "error" and state.get("tool_iter_counter", 0) < MAX_TOOL_ITERS:
-                                    next_count = state.get("tool_iter_counter", 0) + 1
-                                    appended = AIMessage(
-                                        content="The last tool execution resulted in an error. I will retry, trying to analyze what failed and adjusting my approach. "
-                                    )
-                                    return Command(
-                                        goto="action",
-                                        update={"messages": state["messages"] + [appended], "tool_iter_counter": next_count},
-                                    )
-                    except Exception as e:
-                        logger.error(f"Error checking last message type: {e}", exc_info=True)
-                        #
-                    # 1) Missing-params path → obtain_data (only if not already probed too many times)
-                    if not minimal_tools and 'ask_user_for_missing_params' in required_tool_ids:
-                        if state.get("param_probe_done", False):
-                            ### now we finalize. 
-                            logger.info("Param probe already done; proceeding to finalize.")
-                            return Command(goto="finalize")
-                        if state.get("data_iter_counter", 0) >= MAX_DATA_ITERS:
-                            logger.info("Missing-param probe reached cap; finalizing.")
-                            return Command(goto="finalize")
-                        if not state.get("param_probe_done", False):
-                            logger.info("Missing params required; routing to obtain_data node.")
-                            return Command(goto="obtain_data")
-
-                    # 2) Tools required but none called yet → push toward action
-                    if not minimal_tools:
-                        tool_called = any(isinstance(m, AIMessage) and getattr(m, "tool_calls", None) for m in new_state)
-                        if not tool_called:
-                            next_count = state.get("tool_iter_counter", 0) + 1
-                            appended = AIMessage(
-                                content=(
-                                    "I need to use a tool to proceed. Let me consult the plan and use the appropriate tool. "
-                                    f"The original plan was:\n\n{plan_str}"
-                                )
-                            )
-                            if next_count > MAX_TOOL_ITERS:
-                                logger.info("Too many iterations without tool usage; finalizing.")
-                                return Command(
-                                    goto="finalize",
-                                    update={"messages": state["messages"] + [appended], "tool_iter_counter": next_count},
-                                )
-                            return Command(
-                                goto="action",
-                                update={"messages": state["messages"] + [appended], "tool_iter_counter": next_count},
-                            )
-                except Exception as e:
-                    logger.error(f"Error in router evaluation: {e}", exc_info=True)
-                    # fall through
-
-                # 3) Default: if last AI message has tool_calls → action; else → finalize
-                try:
-                    last_message = state['messages'][-1] if state['messages'] else None
-                    if not isinstance(last_message, AIMessage) or not getattr(last_message, "tool_calls", None):
-                        logger.info("No tool calls in the last message; proceeding to finalize.")
-                        return Command(goto="finalize")
-                    return Command(goto="action")
-                except Exception as e:
-                    logger.error(f"Error in router default evaluation: {e}", exc_info=True)
-                    return Command(goto="finalize")
-
-            async def obtain_data(state: AgentState) -> Command[Literal["action","finalize"]]:
-                """
-                Single-purpose node to solicit missing params without creating loops.
-                It appends a clear instruction for the next tool node and marks the probe as done.
-                """
-                
-                current = state.get("data_iter_counter", 0) + 1
-                if current > MAX_DATA_ITERS:
-                    logger.info("obtain_data cap reached; finalizing.")
-                    return Command(goto="finalize")
-
-                msg = AIMessage(
-                    content=(
-                        "We are missing required parameters. Call the `ask_user_for_missing_params` tool now to craft a single, "
-                        "concise question to the user that gathers ONLY the missing fields. After receiving the user's answer, "
-                        "continue with the main plan."
-                    )
-                )
-                logger.info(f"Routing to action with obtain_data instruction (iteration {current}).")
-                return Command(
-                    goto="action",
-                    update={
-                        "messages": state["messages"] + [msg],
-                        "data_iter_counter": current,
-                        "param_probe_done": True,   # prevent immediate re-entry from router
-                    },
-                )
-            async def generate_final_response(state: AgentState):
-                final_message = state['messages'][-2:] # Last message should be AI's final response
-                logger.info(f"final_message {str(state['messages'][-1])}")
-                source_to_use = source
-                logger.info(f"Final agent message before formatting: {str(final_message)}")
-                logger.info(f"Source channel: {source}, metadata: {state['metadata']}")
-                if source in ['scheduled','recurring'] and state.get('metadata') and state['metadata'].get('output_type'):
-                    source_to_use = state['metadata']['output_type']
-                prompt = (
-                    f"the system prompt given to the agent was: '''{system_prompt}'''\n\n"
-                    f"Given the following final response from an agent: '{json.dumps(final_message,indent=3,default=str)} \n\n', "
-                    f"and knowing the initial request came from the '{source_to_use}' channel, "
-                    "format this into the required JSON structure. The delivery_platform must match the source channel, unless the user indicates or implies otherwise, or the command requires a different channel. Note that a scheduled/recurring/triggered command cannot have websocket as the delivery platform. If the user has specifically asked for a different delivery platform, you must comply. for example, if the user has sent an email, but requests a response on imessage, comply. Explain the choice of delivery platform in the execution_notes field, acknowledging if the user requested a particular platform or not. "
-                    "IF the source channel is 'websocket', you must always respond on websocket. assume that any actions that required different platforms, such as sending an email, have already been handled. "
-                    f"the user's original message in this case was {input_text}. pay attention to whether it contains a particular request for delivery platform. "
-                    " do not mention explicit tool ids in your final response. instead, focus on what the user wants to do, and how we can help them."
-                    "If the response requires generating audio, video, or image, set the output_modality and generation_instructions fields accordingly.  the response should simply acknowledge the request to generate the media, and not attempt to generate it yourself. this is not a task for you. simply trust in the systems that will handle it after you. "
-                )
-                response = await self.structured_llm.ainvoke(prompt)
-                return {"final_response": response}
-
-
-            
             workflow = StateGraph(AgentState)
             workflow.add_node("agent", call_model)
             workflow.add_node("router", should_continue_router)
@@ -358,13 +228,27 @@ class LangGraphAgentRunner:
 
                         
             app = workflow.compile()
-
+            
+            graph_config = GraphConfig(
+                llm_with_tools=llm_with_tools,
+                structured_llm=self.structured_llm,
+                system_prompt=system_prompt,
+                initial_state_len=len(history),
+                plan_str=plan_str,
+                required_tool_ids=required_tool_ids,
+                minimal_tools=minimal_tools,
+                source=source,
+                input_text=input_text
+            )
             initial_state: AgentState = {
                 "messages": history,
                 "user_context": user_context,
                 "metadata": metadata,
                 "final_response": None,
-                "tool_iter_counter": 0
+                "tool_iter_counter": 0,
+                "data_iter_counter": 0,
+                "param_probe_done": False,
+                "config": graph_config,
             }
             # --- END Graph Definition ---
 
@@ -379,44 +263,14 @@ class LangGraphAgentRunner:
                 {
                     "recursion_limit": 100,
                     "callbacks": [tool_monitor],
-                    "tool_iter_counter": 0
+                    "tool_iter_counter": 0,
                 }
             )
 
             # Persist only NEW intermediate messages from this execution
             new_messages = final_state['messages'][len(initial_state['messages']):]
 
-            for msg in new_messages:
-                try:
-                # Skip the final AI message (will be added separately below)
-                    if msg == final_state['messages'][-1]:
-                        continue
-
-                    if isinstance(msg, AIMessage) and msg.tool_calls:
-                        # Persist AI messages with tool calls
-                        tool_names = ', '.join([tc.get('name', 'unknown') for tc in msg.tool_calls])
-                        content = msg.content if msg.content else f"[Calling tools: {tool_names}]"
-                        await self.conversation_manager.add_assistant_message(
-                            user_context.user_id,
-                            conversation_id,
-                            content,
-                            metadata={"tool_calls": [tc.get('name') for tc in msg.tool_calls]}
-                        )
-                    elif isinstance(msg, ToolMessage):
-                        # Persist tool results
-                        content = str(msg.content)
-                        await self.conversation_manager.add_assistant_message(
-                            user_context.user_id,
-                            conversation_id,
-                            f"[Tool: {msg.name}] {content}",
-                            metadata={
-                                "tool_name": msg.name,
-                                "message_type": "tool_result",
-                                "tool_call_id": msg.tool_call_id if hasattr(msg, 'tool_call_id') else ""
-                            }
-                        )
-                except Exception as e:
-                    logger.error(f"Error persisting intermediate message: {e}", exc_info=True)
+            await update_history( conversation_manager=self.conversation_manager, new_messages=new_messages, conversation_id=conversation_id, user_context=user_context, final_state=final_state)
             final_response = final_state['final_response']
             output_blobs = []
             await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, final_response.response)

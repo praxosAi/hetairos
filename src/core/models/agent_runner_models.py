@@ -2,6 +2,7 @@ from langgraph.graph import MessagesState
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from src.core.context import UserContext
+from langchain_core.runnables import Runnable
 class FileLink(BaseModel):
     url: str = Field(description="URL to the file.")
     file_type: Optional[str] = Field(description="Type of the file, e.g., image, document, etc.", enum=["image", "document", "audio", "video","other_file"])
@@ -19,10 +20,30 @@ class AgentFinalResponse(BaseModel):
         extra = "forbid"
         arbitrary_types_allowed = True
 
+
+
+class GraphConfig(BaseModel):
+    """Configuration and context for a single graph execution."""
+    llm_with_tools: Runnable 
+    structured_llm: Runnable
+    system_prompt: str
+    initial_state_len: int
+    plan_str: str
+    required_tool_ids: Optional[List[str]] = None
+    minimal_tools: bool = True
+    source: str
+    input_text: str
+    MAX_TOOL_ITERS: int = 3
+    MAX_DATA_ITERS: int = 2
+    class Config:
+        arbitrary_types_allowed = True
+# Update your AgentState to include this config
 class AgentState(MessagesState):
     user_context: UserContext
-    metadata: Optional[Dict[str, Any]]
-    final_response: Optional[AgentFinalResponse] # To hold the structured output
+    metadata: Dict
+    final_response: Optional[AgentFinalResponse]
     tool_iter_counter: int
-    data_iter_counter: int
-    param_probe_done: bool  # has obtain_data been executed?
+    data_iter_counter: int # Add this
+    param_probe_done: bool # Add this
+    config: GraphConfig # Add this
+    

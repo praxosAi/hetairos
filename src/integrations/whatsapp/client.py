@@ -223,6 +223,7 @@ class WhatsAppClient:
             self.logger.error(f"WhatsApp send media error: {e}")
             return None
     async def send_media_from_link(self, to_phone: str, media_link_object: Dict):
+        media_obj = media_link_object
         if not isinstance(media_obj, dict):
             if isinstance(media_obj, str):
                 media_obj = json.loads(media_obj)

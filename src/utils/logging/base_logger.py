@@ -11,10 +11,11 @@ user_id_var: ContextVar[Optional[str]] = ContextVar("user_id", default='SYSTEM_L
 modality_var: ContextVar[Optional[str]] = ContextVar("modality", default='SYSTEM_LEVEL')
 
 
-if platform.system() == "Darwin":
-    # macOS terminal often has poor support for ANSI colors
+if platform.system() == "Darwin" or platform.system() == "Windows":
+    # If local, use colored logging for better readability
     json_logging = False
 else:
+    # If in production (Linux), use JSON logging for better integration with log management system.
     json_logging = True
 # Flag to ensure noisy loggers are only suppressed once
 _loggers_suppressed = False

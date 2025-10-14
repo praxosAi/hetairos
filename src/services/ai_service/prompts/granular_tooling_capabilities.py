@@ -338,39 +338,180 @@ Generally, the idea is : If the missing information for this command is somethin
 - Args: query, max_results (default 100)
 - Use when: "Find my resume", "Search for project plan"
 ---
-
 ### Trello Tools (requires Trello integration)
 
+**list_trello_accounts**
+* **Description**: Lists all connected Trello accounts for the user. This should be the first tool used to see which Trello accounts are available.
+* **Returns**: A list of available Trello accounts.
+
+***
+
 **list_trello_organizations**
-- Lists user's Trello workspaces/organizations
-- Use when: Need to see available Trello workspaces
-- Returns: Organization names, IDs
+* **Description**: Lists all Trello organizations (workspaces) accessible to the user, providing their IDs, names, and URLs.
+* **Args**:
+    * `account` (optional): The Trello account identifier. If not specified, the default account is used.
+
+***
 
 **list_trello_boards**
-- Lists Trello boards, optionally filtered by organization
-- Args: organization_id (optional)
-- Use when: "Show my Trello boards", "What Trello boards do I have?"
+* **Description**: Lists all Trello boards, which can be filtered by a specific organization.
+* **Args**:
+    * `organization_id` (optional): The ID of a workspace to filter the boards.
+    * `account` (optional): The Trello account identifier.
+
+***
+
+**create_trello_board**
+* **Description**: Creates a new Trello board.
+* **Args**:
+    * `name`: The name for the new board.
+    * `description` (optional): A description for the board.
+    * `organization_id` (optional): The ID of the workspace where the board will be created. Defaults to the user's personal workspace.
+    * `account` (optional): The Trello account identifier.
+
+***
 
 **get_trello_board_details**
-- Gets detailed info about a specific Trello board
-- Args: board_id
-- Use when: Need board structure, lists, members, etc.
-- Returns: Board name, lists, cards, members
+* **Description**: Gets detailed information about a specific Trello board, including its structure and lists.
+* **Args**:
+    * `board_id`: The ID of the board.
+    * `account` (optional): The Trello account identifier.
+
+***
+
+**share_trello_board**
+* **Description**: Shares a Trello board with another person by inviting them via their email address.
+* **Args**:
+    * `board_id`: The ID of the board to share.
+    * `email`: The email address of the person to invite.
+    * `full_name` (optional): The full name of the person being invited.
+    * `account` (optional): The Trello account identifier.
+
+***
+
+**create_trello_list**
+* **Description**: Creates a new list on a specified Trello board.
+* **Args**:
+    * `board_id`: The ID of the board where the list will be created.
+    * `list_name`: The name for the new list.
+    * `pos` (optional): The position of the list on the board ("top" or "bottom"). Defaults to "bottom".
+    * `account` (optional): The Trello account identifier.
+
+***
 
 **list_trello_cards**
-- Lists cards from a Trello board or list
-- Args: board_id, list_id (optional)
-- Use when: "Show me cards on my Work board"
+* **Description**: Lists all cards from a Trello board or a specific list on a board.
+* **Args**:
+    * `board_id` (optional): The ID of the board to get cards from.
+    * `list_id` (optional): The ID of the list to get cards from.
+    * `account` (optional): The Trello account identifier.
+
+***
+
+**get_trello_card**
+* **Description**: Retrieves detailed information for a specific Trello card, including its description, checklists, and due date.
+* **Args**:
+    * `card_id`: The ID of the card.
+    * `account` (optional): The Trello account identifier.
+
+***
 
 **create_trello_card**
-- Creates a new Trello card
-- Args: board_id, list_id, name, description (optional), due_date (optional)
-- Use when: User wants to add tasks or items to Trello
+* **Description**: Creates a new card in a specified Trello list.
+* **Args**:
+    * `list_id`: The ID of the list where the card will be created.
+    * `name`: The title of the card.
+    * `description` (optional): The card's description.
+    * `due` (optional): The due date in ISO 8601 format.
+    * `pos` (optional): The position in the list ("top" or "bottom"). Defaults to "bottom".
+    * `account` (optional): The Trello account identifier.
+
+***
 
 **update_trello_card**
-- Updates an existing Trello card
-- Args: card_id, name (optional), description (optional), due_date (optional), list_id (optional)
-- Use when: Moving cards, updating descriptions, changing due dates
+* **Description**: Updates an existing Trello card. This can be used to change its name, description, due date, or move it to a new list.
+* **Args**:
+    * `card_id`: The ID of the card to update.
+    * `name` (optional): The new name for the card.
+    * `description` (optional): The new description.
+    * `due` (optional): The new due date.
+    * `due_complete` (optional): A boolean to mark the due date as complete.
+    * `list_id` (optional): The ID of a new list to move the card to.
+    * `account` (optional): The Trello account identifier.
+
+***
+
+**move_trello_card**
+* **Description**: Moves a Trello card to a different list.
+* **Args**:
+    * `card_id`: The ID of the card to move.
+    * `list_id`: The ID of the destination list.
+    * `pos` (optional): The position in the new list ("top" or "bottom"). Defaults to "bottom".
+    * `account` (optional): The Trello account identifier.
+
+***
+
+**add_trello_comment**
+* **Description**: Adds a text comment to a specific Trello card.
+* **Args**:
+    * `card_id`: The ID of the card.
+    * `text`: The comment to add.
+    * `account` (optional): The Trello account identifier.
+
+***
+
+**create_trello_checklist**
+* **Description**: Creates a new checklist on a Trello card and can optionally add items to it.
+* **Args**:
+    * `card_id`: The ID of the card.
+    * `checklist_name`: The name of the new checklist.
+    * `items` (optional): A list of strings to add as initial checklist items.
+    * `account` (optional): The Trello account identifier.
+
+***
+
+**get_board_members**
+* **Description**: Gets a list of all members of a specific Trello board. Useful for finding member IDs for assigning cards.
+* **Args**:
+    * `board_id`: The ID of the board.
+    * `account` (optional): The Trello account identifier.
+
+***
+
+**get_card_members**
+* **Description**: Gets a list of members currently assigned to a specific Trello card.
+* **Args**:
+    * `card_id`: The ID of the card.
+    * `account` (optional): The Trello account identifier.
+
+***
+
+**assign_member_to_card**
+* **Description**: Assigns a board member to a Trello card.
+* **Args**:
+    * `card_id`: The ID of the card.
+    * `member_id`: The ID of the member to assign.
+    * `account` (optional): The Trello account identifier.
+
+***
+
+**unassign_member_from_card**
+* **Description**: Removes a member's assignment from a Trello card.
+* **Args**:
+    * `card_id`: The ID of the card.
+    * `member_id`: The ID of the member to unassign.
+    * `account` (optional): The Trello account identifier.
+
+***
+
+**search_trello**
+* **Description**: Searches across Trello for items like cards and boards that match a query. Use this when a specific term is provided for a card, and u need to find it.
+* **Args**:
+    * `query`: The search term.
+    * `model_types` (optional): Comma-separated list of types to search (e.g., "cards,boards").
+    * `organization_ids` (optional): Comma-separated list of workspace IDs to limit the search.
+    * `account` (optional): The Trello account identifier.
+
 
 ---
 

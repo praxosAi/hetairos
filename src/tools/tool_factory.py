@@ -170,9 +170,8 @@ class AgentToolsFactory:
         needs_outlook = needs_category(['send_outlook_email', 'fetch_outlook_calendar_events', 'get_outlook_emails_from_sender', 'find_outlook_contact_email'])
         needs_notion = needs_category(['list_databases', 'list_notion_pages', 'query_notion_database', 'get_all_workspace_entries', 'search_notion_pages_by_keyword', 'create_notion_page', 'create_notion_database_entry', 'create_notion_database', 'append_to_notion_page', 'update_notion_page_properties', 'get_notion_page_content'])
         needs_dropbox = needs_category(['save_file_to_dropbox', 'read_file_from_dropbox','list_dropbox_files','search_dropbox_files'])
-        needs_trello = needs_category(['list_trello_organizations', 'list_trello_boards', 'get_trello_board_details', 'list_trello_cards', 'create_trello_card', 'update_trello_card'])
-
-        # If no specific tools requested, authenticate all (backward compatibility)
+        needs_trello = needs_category(['list_trello_accounts','list_trello_organizations','list_trello_boards','get_trello_board_details','create_trello_board','share_trello_board','create_trello_list','list_trello_cards','get_trello_card','create_trello_card','update_trello_card','move_trello_card','add_trello_comment','create_trello_checklist','get_board_members','get_card_members','assign_member_to_card','unassign_member_from_card','search_trello']) 
+         # If no specific tools requested, authenticate all (backward compatibility)
         if required_tool_ids is None:
             needs_gmail = needs_gcal = needs_gdrive = needs_outlook = needs_notion = needs_dropbox = needs_trello = True
 

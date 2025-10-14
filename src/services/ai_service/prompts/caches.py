@@ -3,7 +3,8 @@ from google.genai import types
 from src.config.settings import settings
 from src.utils.logging import setup_logger
 logger = setup_logger(__name__)
-PLANNING_CACHE_NAME = 'cachedContents/bzft7d0tw1kfmr0or2ttyj4e730zwr1278uf2m9w'
+PLANNING_CACHE_NAME = 'cachedContents/pdt9brh3bbmdke5z39p10vrv3yj278jb86io18c2'
+
 async def update_cache_ttl():
     """Updates the cache TTL in a fire-and-forget manner."""
     try:

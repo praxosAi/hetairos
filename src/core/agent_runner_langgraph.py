@@ -184,6 +184,7 @@ class LangGraphAgentRunner:
                 history.append(schedule_msg)
             try:
                 user_integration_names = await integration_service.get_user_integration_names(user_context.user_id)
+                logger.info(f"User {user_context.user_id} has integrations: {user_integration_names}")
                 plan, required_tool_ids, plan_str = await ai_service.granular_planning(history,user_integration_names)
                 if plan and plan.query_type and plan.query_type == 'command':
                     conversational = False

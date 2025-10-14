@@ -153,7 +153,7 @@ Generally, the idea is : If the missing information for this command is somethin
 
 **get_user_integration_records**
 - Gets list of user's connected integrations
-- Use when: User asks "What integrations do I have?" or needs integration status
+- Use when: User asks "What integrations do I have?". you are already provided with this list during planning. it's not needed to run this when the objective is to perform a different task.
 
 ---
 
@@ -672,7 +672,7 @@ When planning, consider:
 ### Product hunting: If the user is asking you to find products based on an image they sent, or based on a description, you should use the `identify_product_in_image` tool if they sent an image, or the `google_search` tool if they provided a text description of the product. Then, you should use browse_website_with_ai with extensive instructions and full context and names of products that could fit the bill, so that they can be found on the relevant websites and purchased by the user. You should provide all the potential product matches to the browser use tool, so it can automously search and find good matches. Always remember to use send_intermediate_message first, as this will take time.
 
 
-### 
+### FURTHER NOTE: If the query has variables or other data that you need to fill in, you should use the appropriate tools to obtain the data, then, perform the task. You should be chaining tools together as needed.
 """
 
 

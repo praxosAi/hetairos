@@ -173,6 +173,15 @@ class LangGraphAgentRunner:
             plan = None
             required_tool_ids = None
             plan_str = ''
+            if source in ['scheduled','recurring','triggered']:
+                ### here, we add an AI Message that indicates the scheduled nature of the request.
+                if source == 'scheduled':
+                    schedule_msg = AIMessage(content=f"This command was previously scheduled. The user scheduled this command to happen now. I must now perform the requested actions. I should not ask the user for confirmation. if the request was of form 'remind me to ...', I should interpret this as a command to send the user a message now, and not set up a future reminder.")
+                if source == 'recurring':
+                    schedule_msg = AIMessage(content=f"This command was previously set to recur. The user set this command to recur, and this moment is one of the times it must be performed. I must now perform the requested actions. I should not ask the user for confirmation. if the request was of form 'remind me to ...', I should interpret this as a command to send the user a message now, and not set up a future reminder.")
+                if source == 'triggered':
+                    schedule_msg = AIMessage(content=f"This command was previously set to be triggered by an event. The triggering event has now occurred, and I must perform the requested actions. I should not ask the user for confirmation. if the request was of form 'if X happens, remind me to ...', I should interpret this as a command to send the user a message now, and not set up a future reminder.")
+                history.append(schedule_msg)
             try:
                 plan, required_tool_ids, plan_str = await ai_service.granular_planning(history)
             except Exception as e:

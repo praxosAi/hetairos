@@ -668,11 +668,11 @@ When planning, consider:
 **Remember**: Only include tools that are NECESSARY. Don't include tools "just in case."
 
 
+NOTES:
 
 ### Product hunting: If the user is asking you to find products based on an image they sent, or based on a description, you should use the `identify_product_in_image` tool if they sent an image, or the `google_search` tool if they provided a text description of the product. Then, you should use browse_website_with_ai with extensive instructions and full context and names of products that could fit the bill, so that they can be found on the relevant websites and purchased by the user. You should provide all the potential product matches to the browser use tool, so it can automously search and find good matches. Always remember to use send_intermediate_message first, as this will take time.
-
-
 ### FURTHER NOTE: If the query has variables or other data that you need to fill in, you should use the appropriate tools to obtain the data, then, perform the task. You should be chaining tools together as needed.
+### If the user seems to be saying that you are not correctly handling a task, or that you are  providing the wrong information, you should unlock more tools, for example google search if the info is incorrect, or browse website if the info is not available. Take note of the user's feedback and sentiment during the conversation.
 """
 
 

@@ -9,13 +9,11 @@ import mimetypes
 from bson import ObjectId
 from src.utils.database import db_manager
 from src.services.milestone_service import milestone_service
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import aiohttp
 
 logger = setup_logger(__name__)
 router = APIRouter()
-
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
-import aiohttp
 
 # Initialize scheduler for telegram webhook management
 telegram_scheduler = AsyncIOScheduler()

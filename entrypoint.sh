@@ -14,7 +14,7 @@ if [ "$1" = "web" ]; then
   export UVICORN_WS="websockets"
 
   # Execute gunicorn with --log-level debug to get verbose output.
-  exec gunicorn -w 4 -k uvicorn.workers.UvicornWorker src.ingress.api:app --bind 0.0.0.0:8000 --log-level debug
+  exec gunicorn -w 4 -k uvicorn.workers.UvicornWorker src.ingress.api:app --bind 0.0.0.0:8000 --log-level debug --preload
   # uvicorn src.ingress.api:app --host 0.0.0.0 --port 8000 --log-level debug --ws websockets
 elif [ "$1" = "worker" ]; then
   echo "Starting background workers..."

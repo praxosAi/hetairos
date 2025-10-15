@@ -36,6 +36,7 @@ anyio==4.10.0
     #   portkey-ai
     #   sse-starlette
     #   starlette
+APScheduler==3.11.0
 attrs==25.3.0
     # via
     #   aiohttp

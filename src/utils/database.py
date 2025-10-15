@@ -238,11 +238,11 @@ class ConversationDatabase:
             input_text = payload.get("text")
         else:
             return True
-        if '/START_NEW' in input_text:
+        if input_text and '/START_NEW' in input_text:
             ## @TODO: we should then remove this tag from the message content.
             self.logger.info("Detected /START_NEW tag in the message, starting a new conversation.")
             return True
-        if '/CONTINUE_LAST' in input_text:
+        if input_text and '/CONTINUE_LAST' in input_text:
             return False
         if (datetime.utcnow() - last_activity) > timeout_delta:
             if not payload:
@@ -509,51 +509,58 @@ class DatabaseManager:
             {"_id": ObjectId(document_id)},
             {"$set": {"source_id": source_id}}
         )
-    async def insert_or_reject_emails(
+    async def insert_or_reject_items(
         self,
-        emails: List[Dict[str, Any]],
+        items: List[Dict[str, Any]],
         user_id: str,
+        platform: str,
+        id_field: str = "id",
+        platform_id_field: str = "platform_item_id"
     ) -> List[Optional[str]]:
         """
-        Insert Gmail emails into `self.documents` if their `id` (Gmail message id)
-        is not already present in `platform_message_id`.
+        Generic method to insert items (emails, events, files, cards, pages) with deduplication.
+
+        Args:
+            items: List of items to insert
+            user_id: User ID
+            platform: Platform name (gmail, google_calendar, google_drive, dropbox, notion, trello, etc.)
+            id_field: Field name in the item dict that contains the unique ID (default: "id")
+            platform_id_field: Field name to store the platform ID in MongoDB (default: "platform_item_id")
 
         Returns:
-            List[Optional[str]]: aligned to `emails`
+            List[Optional[str]]: aligned to `items`
                 - inserted: the Mongo _id (as a string)
                 - skipped/duplicate/invalid: None
         """
-        if not emails:
+        if not items:
             return []
 
-        # Extract candidate ids (Gmail message 'id') in order
-        extracted_ids: List[Optional[str]] = [em.get("id") for em in emails]
+        # Extract candidate ids in order
+        extracted_ids: List[Optional[str]] = [item.get(id_field) for item in items]
 
         # Filter valid candidates
         candidate_ids = [pid for pid in extracted_ids if pid]
         if not candidate_ids:
-            return [None] * len(emails)
+            return [None] * len(items)
 
         # Pre-check which already exist in DB
         existing_ids = set(
             await self.documents.distinct(
-                "platform_message_id",
-                {"platform_message_id": {"$in": candidate_ids}}
+                platform_id_field,
+                {platform_id_field: {"$in": candidate_ids}, "platform": platform}
             )
         )
 
         # Prepare inserts (skip in-batch duplicates and pre-existing)
         ops: List[InsertOne] = []
-        attempt_pids: List[str] = []  # pids we try to insert (keep order with ops)
+        attempt_pids: List[str] = []
         now = datetime.utcnow()
         seen_in_batch: set[str] = set()
-
-        # Pre-generate _id for each staged doc (lets us map reliably if needed)
         staged_docs: List[Dict[str, Any]] = []
 
-        for email, pid in zip(emails, extracted_ids):
+        for item, pid in zip(items, extracted_ids):
             if not pid:
-                staged_docs.append(None)  # placeholder for alignment
+                staged_docs.append(None)
                 continue
 
             # Already in DB?
@@ -572,57 +579,95 @@ class DatabaseManager:
             doc = {
                 "_id": doc_id,
                 "user_id": ObjectId(user_id),
-                "platform": "gmail",
-                "platform_message_id": pid,
+                "platform": platform,
+                platform_id_field: pid,
                 "received_at": now,
-                "payload": email,
+                "payload": item,
             }
             ops.append(InsertOne(doc))
             attempt_pids.append(pid)
-            staged_docs.append(doc)  # keep reference; same positional order as emails
+            staged_docs.append(doc)
 
         # If nothing to insert, build result of Nones
         if not ops:
-            return [None] * len(emails)
+            return [None] * len(items)
 
-        # Try the bulk insert; allow concurrent races (unique index) without aborting whole batch
+        # Try the bulk insert
         try:
             await self.documents.bulk_write(ops, ordered=False)
         except BulkWriteError as bwe:
-            # Likely duplicates due to race; we'll resolve via a post-query
-            self.logger.warning(f"bulk_write had duplicate(s) or partial insert: {bwe.details}")
+            logger.warning(f"bulk_write had duplicate(s) or partial insert: {bwe.details}")
         except Exception as e:
-            # Unexpected failure; we still try a post-query to return what exists
-            self.logger.error(f"bulk_write error: {e}", exc_info=True)
+            logger.error(f"bulk_write error: {e}", exc_info=True)
 
         # Post-insert: fetch _ids for all pids we attempted to insert
-        # (works whether we inserted them or a concurrent worker did)
         pid_to_id: Dict[str, ObjectId] = {}
         async for d in self.documents.find(
-            {"platform_message_id": {"$in": attempt_pids}},
-            projection={"platform_message_id": 1, "_id": 1}
+            {platform_id_field: {"$in": attempt_pids}, "platform": platform},
+            projection={platform_id_field: 1, "_id": 1}
         ):
-            pid_to_id[d["platform_message_id"]] = d["_id"]
+            pid_to_id[d[platform_id_field]] = d["_id"]
 
         # Build aligned result
         result: List[Optional[str]] = []
-        for email, pid, staged in zip(emails, extracted_ids, staged_docs):
+        for item, pid, staged in zip(items, extracted_ids, staged_docs):
             if not pid:
                 result.append(None)
                 continue
             if pid in existing_ids:
                 result.append(None)
                 continue
-            # Was a candidate in this batch (first occurrence)?
             if staged is None:
-                # Either a repeat in-batch, or invalid
                 result.append(None)
                 continue
-            # Return the actual _id present now (ours or concurrent insert)
             _id = pid_to_id.get(pid)
             result.append(str(_id) if _id else None)
 
         return result
+
+    async def insert_or_reject_emails(
+        self,
+        emails: List[Dict[str, Any]],
+        user_id: str,
+    ) -> List[Optional[str]]:
+        """
+        Insert Gmail emails into `self.documents` if their `id` (Gmail message id)
+        is not already present in `platform_message_id`.
+        Uses the generic insert_or_reject_items method.
+
+        Returns:
+            List[Optional[str]]: aligned to `emails`
+                - inserted: the Mongo _id (as a string)
+                - skipped/duplicate/invalid: None
+        """
+        return await self.insert_or_reject_items(
+            items=emails,
+            user_id=user_id,
+            platform="gmail",
+            id_field="id",
+            platform_id_field="platform_message_id"
+        )
+    async def insert_new_outlook_email(self, email_record: Dict) -> str:
+        """Insert a new Outlook email record."""
+        ### check if the email already exists
+        existing = await self.documents.find_one({
+            'platform': 'outlook',
+            'platform_message_id': email_record['id'],
+            'user_id': ObjectId(email_record['user_id'])
+        })
+        if existing:
+            return None
+        document = {
+            'payload': email_record['normalized'],
+            'received_at': datetime.utcnow(),
+            'user_id': ObjectId(email_record['user_id']),
+            'platform': 'outlook',
+            'platform_message_id': email_record['id']
+        }
+    
+        result = await self.documents.insert_one(document)
+        return str(result.inserted_id)
+
     async def insert_new_trigger(self, rule_id: str, conversation_id: str, trigger_text: str, user_id: str, is_one_time: bool) -> str:
         """Insert a new agent trigger and return its ID."""
         trigger_data = {'rule_id': rule_id, 'conversation_id': conversation_id, 'trigger_text': trigger_text, 'created_at': datetime.utcnow(), 'user_id': ObjectId(user_id),'status': 'active','is_one_time': is_one_time}
@@ -649,5 +694,14 @@ class DatabaseManager:
             {"user_id": ObjectId(user_id), "tool_name": tool_name},
             update_fields
         )
+    async def check_platform_and_message_id_exists(self, platform: str, platform_message_id: str, user_id: str) -> bool:
+        """Check if a document with the given platform and platform_message_id exists for the user."""
+        count = await self.documents.find_one({
+            "platform": platform,
+            "platform_message_id": platform_message_id,
+            "user_id": ObjectId(user_id)
+        })
+        if count:
+            return True
 # Global database instance
 db_manager = DatabaseManager()

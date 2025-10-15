@@ -104,8 +104,8 @@ class AgentToolsFactory:
             except Exception as e:
                 logger.error(f"Error creating basic tools: {e}", exc_info=True)
 
-        # Preference tools
-        if needs_category(['add_user_preference_annotation', 'set_assistant_name', 'set_timezone', 'set_language_response', 'delete_user_preference_annotations']):
+        # Preference tools: this should always be included, as these are essential for user customization
+        if True or needs_category(['add_user_preference_annotation', 'set_assistant_name', 'set_timezone', 'set_language_response', 'delete_user_preference_annotations']):
             try:
                 tools.extend(create_preference_tools(user_id))
             except Exception as e:
@@ -169,7 +169,7 @@ class AgentToolsFactory:
         needs_gdrive = needs_category(['search_google_drive_files', 'save_file_to_drive', 'create_text_file_in_drive', 'read_file_content_by_id', 'list_drive_files'])
         needs_outlook = needs_category(['send_outlook_email', 'fetch_outlook_calendar_events', 'get_outlook_emails_from_sender', 'find_outlook_contact_email'])
         needs_notion = needs_category(['list_databases', 'list_notion_pages', 'query_notion_database', 'get_all_workspace_entries', 'search_notion_pages_by_keyword', 'create_notion_page', 'create_notion_database_entry', 'create_notion_database', 'append_to_notion_page', 'update_notion_page_properties', 'get_notion_page_content'])
-        needs_dropbox = needs_category(['save_file_to_dropbox', 'read_file_from_dropbox'])
+        needs_dropbox = needs_category(['save_file_to_dropbox', 'read_file_from_dropbox','list_dropbox_files','search_dropbox_files'])
         needs_trello = needs_category(['list_trello_organizations', 'list_trello_boards', 'get_trello_board_details', 'list_trello_cards', 'create_trello_card', 'update_trello_card'])
 
         # If no specific tools requested, authenticate all (backward compatibility)
@@ -292,7 +292,7 @@ class AgentToolsFactory:
                     logger.error(f"Error creating Trello tools: {e}", exc_info=True)
 
         # --- Praxos Memory Tools ---
-        if needs_category(['query_praxos_memory', 'query_praxos_memory_intelligent_search', 'enrich_praxos_memory_entries', 'setup_new_trigger']):
+        if needs_category(['query_praxos_memory', 'query_praxos_memory_intelligent_search', 'enrich_praxos_memory_entries', 'setup_new_trigger','consult_praxos_long_term_memory']):
             from src.config.settings import settings
             if settings.OPERATING_MODE == "local":
                 praxos_api_key = settings.PRAXOS_API_KEY

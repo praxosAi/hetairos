@@ -68,7 +68,7 @@ async def handle_gmail_webhook(request: Request):
             )
         new_messages = []
         if message_ids:
-            new_messages = gmail_integration.get_messages_by_ids(message_ids, user_id="me")
+            new_messages = gmail_integration.get_messages_by_ids(message_ids, account=user_email)
 
         if new_checkpoint:
             await integration_service.set_gmail_checkpoint(user_id, user_email, new_checkpoint)
@@ -94,7 +94,7 @@ async def handle_gmail_webhook(request: Request):
             event_eval_result = await praxos_client.eval_event(message, 'gmail')
             # logger.info(f"Event evaluation result: {event_eval_result}")
             if event_eval_result.get('trigger'):
-                ### TODO: this is messy.
+
 
 
 

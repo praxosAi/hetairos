@@ -5,29 +5,45 @@
 #    pip-compile --output-file=requirements.txt requirements.in
 #
 aiofiles==24.1.0
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   bubus
 aiohappyeyeballs==2.6.1
     # via aiohttp
 aiohttp==3.12.15
     # via
     #   -r requirements.in
+    #   browser-use
     #   langchain-community
     #   microsoft-kiota-authentication-azure
 aiosignal==1.4.0
     # via aiohttp
 annotated-types==0.7.0
     # via pydantic
+anthropic==0.69.0
+    # via browser-use
 anyio==4.10.0
     # via
     #   -r requirements.in
+    #   anthropic
+    #   browser-use
+    #   bubus
     #   google-genai
+    #   groq
     #   httpx
+    #   mcp
     #   openai
     #   portkey-ai
+    #   sse-starlette
     #   starlette
 APScheduler==3.11.0
 attrs==25.3.0
-    # via aiohttp
+    # via
+    #   aiohttp
+    #   jsonschema
+    #   referencing
+authlib==1.6.5
+    # via browser-use
 azure-core==1.35.0
     # via
     #   azure-cosmos
@@ -46,60 +62,80 @@ azure-servicebus==7.14.2
     # via -r requirements.in
 azure-storage-blob==12.26.0
     # via -r requirements.in
+backoff==2.2.1
+    # via posthog
 beautifulsoup4==4.13.5
     # via -r requirements.in
+browser-use==0.8.0
+    # via -r requirements.in
+bubus==1.5.6
+    # via browser-use
 build==1.3.0
     # via pip-tools
 cached-property==2.0.1
     # via portkey-ai
-cachetools==5.5.2
+cachetools==6.2.0
     # via google-auth
-certifi==2025.8.3
+cdp-use==1.4.1
+    # via browser-use
+certifi==2025.10.5
     # via
     #   httpcore
     #   httpx
     #   requests
 cffi==2.0.0
-    # via cryptography
+    # via
+    #   cryptography
+    #   pynacl
 charset-normalizer==3.4.3
-    # via requests
-click==8.2.1
+    # via
+    #   reportlab
+    #   requests
+click==8.3.0
     # via
     #   pip-tools
     #   uvicorn
 croniter==6.0.0
     # via -r requirements.in
-cryptography==45.0.7
+cryptography==46.0.2
     # via
+    #   authlib
     #   azure-identity
     #   azure-storage-blob
     #   msal
     #   pyjwt
+cython==3.1.4
+    # via screeninfo
 dataclasses-json==0.6.7
     # via langchain-community
 defusedxml==0.7.1
     # via fpdf2
 distro==1.9.0
     # via
+    #   anthropic
+    #   groq
     #   openai
     #   portkey-ai
+    #   posthog
 dnspython==2.8.0
     # via pymongo
+docstring-parser==0.17.0
+    # via anthropic
 dropbox==12.0.2
     # via -r requirements.in
 et-xmlfile==2.0.0
     # via openpyxl
-fastapi==0.116.1
+fastapi==0.118.3
     # via -r requirements.in
 ffmpeg-python==0.2.0
     # via -r requirements.in
 filetype==1.2.0
     # via langchain-google-genai
-fonttools==4.59.2
+fonttools==4.60.1
     # via fpdf2
 fpdf2==2.8.4
     # via -r requirements.in
-frozenlist==1.7.0
+frozenlist==1.8.0
     # via
     #   aiohttp
     #   aiosignal
@@ -109,26 +145,31 @@ google-ai-generativelanguage==0.7.0
     # via
     #   -r requirements.in
     #   langchain-google-genai
-google-api-core[grpc]==2.25.1
+google-api-core[grpc]==2.26.0
     # via
+    #   browser-use
     #   google-ai-generativelanguage
     #   google-api-python-client
     #   google-cloud-core
+    #   google-cloud-modelarmor
     #   google-cloud-pubsub
     #   langchain-google-community
-google-api-python-client==2.181.0
+google-api-python-client==2.184.0
     # via
     #   -r requirements.in
+    #   browser-use
     #   langchain-google-community
-google-auth==2.40.3
+google-auth==2.41.1
     # via
     #   -r requirements.in
+    #   browser-use
     #   google-ai-generativelanguage
     #   google-api-core
     #   google-api-python-client
     #   google-auth-httplib2
     #   google-auth-oauthlib
     #   google-cloud-core
+    #   google-cloud-modelarmor
     #   google-cloud-pubsub
     #   google-genai
 google-auth-httplib2==0.2.0
@@ -136,12 +177,20 @@ google-auth-httplib2==0.2.0
     #   -r requirements.in
     #   google-api-python-client
 google-auth-oauthlib==1.2.2
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   browser-use
 google-cloud-core==2.4.3
+    # via langchain-google-community
+google-cloud-modelarmor==0.2.8
     # via langchain-google-community
 google-cloud-pubsub==2.31.1
     # via -r requirements.in
-google-genai==1.38.0
+google-genai==1.42.0
+    # via
+    #   -r requirements.in
+    #   browser-use
+google-search-results==2.4.2
     # via -r requirements.in
 googleapis-common-protos[grpc]==1.70.0
     # via
@@ -152,9 +201,11 @@ googlemaps==4.10.0
     # via -r requirements.in
 greenlet==3.2.4
     # via playwright
+groq==0.32.0
+    # via browser-use
 grpc-google-iam-v1==0.14.2
     # via google-cloud-pubsub
-grpcio==1.74.0
+grpcio==1.75.1
     # via
     #   google-api-core
     #   google-cloud-pubsub
@@ -162,7 +213,7 @@ grpcio==1.74.0
     #   grpc-google-iam-v1
     #   grpcio-status
     #   langchain-google-community
-grpcio-status==1.71.2
+grpcio-status==1.75.1
     # via
     #   google-api-core
     #   google-cloud-pubsub
@@ -176,27 +227,37 @@ h2==4.3.0
     # via httpx
 hpack==4.1.0
     # via h2
+html2text==2025.4.15
+    # via browser-use
 httpcore==1.0.9
     # via httpx
-httplib2==0.30.0
+httplib2==0.31.0
     # via
     #   google-api-python-client
     #   google-auth-httplib2
 httpx[http2]==0.28.1
     # via
     #   -r requirements.in
+    #   anthropic
+    #   browser-use
+    #   cdp-use
     #   google-genai
+    #   groq
     #   langgraph-sdk
     #   langsmith
+    #   mcp
     #   microsoft-kiota-http
     #   msgraph-core
     #   notion-client
+    #   ollama
     #   openai
     #   portkey-ai
     #   praxos-python
     #   python-telegram-bot
-httpx-sse==0.4.1
-    # via langchain-community
+httpx-sse==0.4.3
+    # via
+    #   langchain-community
+    #   mcp
 hyperframe==6.1.0
     # via h2
 idna==3.10
@@ -212,23 +273,28 @@ isodate==0.7.2
     #   azure-keyvault-secrets
     #   azure-servicebus
     #   azure-storage-blob
-jiter==0.10.0
+jiter==0.11.0
     # via
+    #   anthropic
     #   openai
     #   portkey-ai
 jsonpatch==1.33
     # via langchain-core
 jsonpointer==3.0.0
     # via jsonpatch
+jsonschema==4.25.1
+    # via mcp
+jsonschema-specifications==2025.9.1
+    # via jsonschema
 langchain[openai]==0.3.27
     # via
     #   -r requirements.in
     #   langchain-community
-langchain-community==0.3.29
+langchain-community==0.3.31
     # via
     #   -r requirements.in
     #   langchain-google-community
-langchain-core==0.3.75
+langchain-core==0.3.79
     # via
     #   langchain
     #   langchain-community
@@ -239,17 +305,17 @@ langchain-core==0.3.75
     #   langgraph
     #   langgraph-checkpoint
     #   langgraph-prebuilt
-langchain-google-community==2.0.7
+langchain-google-community==2.0.10
     # via -r requirements.in
 langchain-google-genai==2.1.12
     # via -r requirements.in
-langchain-openai==0.3.32
+langchain-openai==0.3.35
     # via langchain
 langchain-text-splitters==0.3.11
     # via langchain
-langgraph==0.6.3
+langgraph==0.6.10
     # via -r requirements.in
-langgraph-checkpoint==2.1.1
+langgraph-checkpoint==2.1.2
     # via
     #   langgraph
     #   langgraph-prebuilt
@@ -257,19 +323,21 @@ langgraph-prebuilt==0.6.4
     # via
     #   -r requirements.in
     #   langgraph
-langgraph-sdk==0.2.6
+langgraph-sdk==0.2.9
     # via langgraph
-langsmith==0.4.27
+langsmith==0.4.34
     # via
     #   langchain
     #   langchain-community
     #   langchain-core
-lxml==6.0.1
+lxml==6.0.2
     # via
     #   -r requirements.in
     #   python-docx
 marshmallow==3.26.1
     # via dataclasses-json
+mcp==1.17.0
+    # via browser-use
 microsoft-kiota-abstractions==1.9.7
     # via
     #   microsoft-kiota-authentication-azure
@@ -281,15 +349,15 @@ microsoft-kiota-http==1.9.7
     # via msgraph-core
 motor==3.7.1
     # via -r requirements.in
-msal==1.33.0
+msal==1.34.0
     # via
     #   azure-identity
     #   msal-extensions
 msal-extensions==1.3.1
     # via azure-identity
-msgraph-core==1.3.5
+msgraph-core==1.3.8
     # via -r requirements.in
-multidict==6.6.4
+multidict==6.7.0
     # via
     #   aiohttp
     #   yarl
@@ -297,19 +365,22 @@ mypy-extensions==1.1.0
     # via typing-inspect
 notion-client==2.5.0
     # via -r requirements.in
-numpy==2.2.6
+numpy==2.3.3
     # via
     #   langchain-community
     #   pandas
 oauthlib==3.3.1
     # via requests-oauthlib
-openai==1.107.0
+ollama==0.6.0
+    # via browser-use
+openai==1.109.1
     # via
     #   -r requirements.in
+    #   browser-use
     #   langchain-openai
 openpyxl==3.1.5
     # via -r requirements.in
-opentelemetry-api==1.36.0
+opentelemetry-api==1.37.0
     # via
     #   google-cloud-pubsub
     #   microsoft-kiota-abstractions
@@ -317,19 +388,19 @@ opentelemetry-api==1.36.0
     #   microsoft-kiota-http
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-sdk==1.36.0
+opentelemetry-sdk==1.37.0
     # via
     #   google-cloud-pubsub
     #   microsoft-kiota-abstractions
     #   microsoft-kiota-authentication-azure
     #   microsoft-kiota-http
-opentelemetry-semantic-conventions==0.57b0
+opentelemetry-semantic-conventions==0.58b0
     # via opentelemetry-sdk
 orjson==3.11.3
     # via
     #   langgraph-sdk
     #   langsmith
-ormsgpack==1.10.0
+ormsgpack==1.11.0
     # via langgraph-checkpoint
 packaging==25.0
     # via
@@ -338,21 +409,30 @@ packaging==25.0
     #   langchain-core
     #   langsmith
     #   marshmallow
-pandas==2.3.2
+pandas==2.3.3
     # via -r requirements.in
 pillow==11.3.0
-    # via fpdf2
-pip-tools==7.5.0
+    # via
+    #   browser-use
+    #   fpdf2
+    #   reportlab
+pip-tools==7.5.1
     # via -r requirements.in
 playwright==1.55.0
     # via -r requirements.in
 ply==3.11
     # via stone
-portkey-ai==1.14.4
+portalocker==2.10.1
+    # via
+    #   browser-use
+    #   bubus
+portkey-ai==1.15.1
     # via -r requirements.in
+posthog==6.7.6
+    # via browser-use
 praxos-python==0.4.0
     # via -r requirements.in
-propcache==0.3.2
+propcache==0.4.1
     # via
     #   aiohttp
     #   yarl
@@ -360,16 +440,20 @@ proto-plus==1.26.1
     # via
     #   google-ai-generativelanguage
     #   google-api-core
+    #   google-cloud-modelarmor
     #   google-cloud-pubsub
-protobuf==5.29.5
+protobuf==6.32.1
     # via
     #   google-ai-generativelanguage
     #   google-api-core
+    #   google-cloud-modelarmor
     #   google-cloud-pubsub
     #   googleapis-common-protos
     #   grpc-google-iam-v1
     #   grpcio-status
     #   proto-plus
+psutil==7.1.0
+    # via browser-use
 pyasn1==0.6.1
     # via
     #   pyasn1-modules
@@ -378,24 +462,32 @@ pyasn1-modules==0.4.2
     # via google-auth
 pycparser==2.23
     # via cffi
-pydantic==2.11.7
+pydantic==2.12.0
     # via
     #   -r requirements.in
+    #   anthropic
+    #   browser-use
+    #   bubus
     #   fastapi
     #   google-genai
+    #   groq
     #   langchain
     #   langchain-core
     #   langchain-google-genai
     #   langgraph
     #   langsmith
+    #   mcp
+    #   ollama
     #   openai
     #   portkey-ai
     #   praxos-python
     #   pydantic-settings
-pydantic-core==2.33.2
+pydantic-core==2.41.1
     # via pydantic
-pydantic-settings==2.10.1
-    # via langchain-community
+pydantic-settings==2.11.0
+    # via
+    #   langchain-community
+    #   mcp
 pydub==0.25.1
     # via -r requirements.in
 pyee==13.0.0
@@ -404,12 +496,18 @@ pyjwt[crypto]==2.10.1
     # via
     #   msal
     #   pyjwt
-pymongo==4.14.1
+pymongo==4.15.3
     # via
     #   -r requirements.in
     #   motor
-pyparsing==3.2.3
+pynacl==1.6.0
+    # via -r requirements.in
+pyotp==2.9.0
+    # via browser-use
+pyparsing==3.2.5
     # via httplib2
+pypdf==6.1.1
+    # via browser-use
 pypdf2==3.0.1
     # via -r requirements.in
 pyproject-hooks==1.2.0
@@ -420,44 +518,57 @@ python-dateutil==2.9.0.post0
     # via
     #   croniter
     #   pandas
+    #   posthog
 python-docx==1.2.0
     # via -r requirements.in
 python-dotenv==1.1.1
     # via
     #   -r requirements.in
+    #   browser-use
     #   pydantic-settings
 python-magic==0.4.27
     # via -r requirements.in
 python-multipart==0.0.20
-    # via -r requirements.in
-python-telegram-bot==22.3
+    # via
+    #   -r requirements.in
+    #   mcp
+python-telegram-bot==22.5
     # via -r requirements.in
 pytz==2025.2
     # via
     #   -r requirements.in
     #   croniter
     #   pandas
-pyyaml==6.0.2
+pyyaml==6.0.3
     # via
     #   langchain
     #   langchain-community
     #   langchain-core
 redis==6.4.0
     # via -r requirements.in
-regex==2025.9.1
+referencing==0.36.2
+    # via
+    #   jsonschema
+    #   jsonschema-specifications
+regex==2025.9.18
     # via tiktoken
+reportlab==4.4.4
+    # via browser-use
 requests==2.32.5
     # via
     #   -r requirements.in
     #   azure-core
+    #   browser-use
     #   dropbox
     #   google-api-core
     #   google-genai
+    #   google-search-results
     #   googlemaps
     #   langchain
     #   langchain-community
     #   langsmith
     #   msal
+    #   posthog
     #   requests-oauthlib
     #   requests-toolbelt
     #   tiktoken
@@ -465,30 +576,44 @@ requests-oauthlib==2.0.0
     # via google-auth-oauthlib
 requests-toolbelt==1.0.0
     # via langsmith
+rpds-py==0.27.1
+    # via
+    #   jsonschema
+    #   referencing
 rsa==4.9.1
     # via google-auth
+screeninfo==0.8.1
+    # via browser-use
 six==1.17.0
     # via
     #   azure-core
     #   dropbox
+    #   posthog
     #   python-dateutil
     #   stone
+slack-sdk==3.37.0
+    # via -r requirements.in
 sniffio==1.3.1
     # via
+    #   anthropic
     #   anyio
+    #   groq
     #   openai
     #   portkey-ai
 soupsieve==2.8
     # via beautifulsoup4
-sqlalchemy==2.0.43
+sqlalchemy==2.0.44
     # via
     #   langchain
     #   langchain-community
-starlette==0.47.3
+sse-starlette==3.0.2
+    # via mcp
+starlette==0.48.0
     # via
     #   -r requirements.in
     #   fastapi
-std-uritemplate==2.0.5
+    #   mcp
+std-uritemplate==2.0.6
     # via microsoft-kiota-abstractions
 stone==3.3.1
     # via dropbox
@@ -497,17 +622,18 @@ tenacity==9.1.2
     #   google-genai
     #   langchain-community
     #   langchain-core
-tiktoken==0.11.0
+tiktoken==0.12.0
     # via langchain-openai
 tqdm==4.67.1
     # via
     #   openai
     #   portkey-ai
-types-requests==2.32.4.20250809
+types-requests==2.32.4.20250913
     # via portkey-ai
 typing-extensions==4.15.0
     # via
     #   aiosignal
+    #   anthropic
     #   anyio
     #   azure-core
     #   azure-cosmos
@@ -516,25 +642,31 @@ typing-extensions==4.15.0
     #   azure-servicebus
     #   azure-storage-blob
     #   beautifulsoup4
+    #   browser-use
+    #   bubus
     #   fastapi
     #   google-genai
+    #   groq
+    #   grpcio
     #   langchain-core
     #   openai
     #   opentelemetry-api
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
     #   portkey-ai
+    #   posthog
     #   pydantic
     #   pydantic-core
     #   pyee
     #   python-docx
+    #   referencing
     #   sqlalchemy
     #   starlette
     #   typing-inspect
     #   typing-inspection
 typing-inspect==0.9.0
     # via dataclasses-json
-typing-inspection==0.4.1
+typing-inspection==0.4.2
     # via
     #   pydantic
     #   pydantic-settings
@@ -546,24 +678,30 @@ urllib3==2.5.0
     # via
     #   requests
     #   types-requests
-uvicorn==0.35.0
-    # via -r requirements.in
+uuid7==0.1.0
+    # via
+    #   browser-use
+    #   bubus
+uvicorn==0.37.0
+    # via
+    #   -r requirements.in
+    #   mcp
 websockets==15.0.1
     # via
     #   -r requirements.in
+    #   cdp-use
     #   google-genai
 wheel==0.45.1
     # via pip-tools
-xxhash==3.5.0
+xxhash==3.6.0
     # via langgraph
-yarl==1.20.1
+yarl==1.22.0
     # via aiohttp
 zipp==3.23.0
     # via importlib-metadata
-zstandard==0.24.0
+zstandard==0.25.0
     # via langsmith
 
 # The following packages are considered to be unsafe in a requirements file:
 # pip
 # setuptools
-browser-use

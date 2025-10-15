@@ -17,6 +17,8 @@ class EgressService:
         self.whatsapp_client = WhatsAppClient()
         self.telegram_client = TelegramClient()
         self.imessage_client = IMessageClient()
+        # Note: Slack client will be initialized per-request with user_id
+        # since it requires authentication (unlike WhatsApp/Telegram which use API keys)
 
         # Track active watchdog tasks per chat/user
         self.active_typing_tasks: Dict[str, asyncio.Task] = {}
@@ -274,13 +276,118 @@ class EgressService:
             except Exception as e:
                 logger.error(f"No chat_id in user record for Telegram message. Event: {event}, error: {e}", exc_info=True)
                 return
-        
+
         if response_text:
             await self.telegram_client.send_message(chat_id, response_text)
             if response_files:
                 for file_obj in response_files:
                     await self.telegram_client.send_media(chat_id, file_obj)
         logger.info(f"Successfully sent response to Telegram user {chat_id}")
+
+    async def _send_slack_response(self, event: dict, response_text: str, response_files):
+        """Send response to Slack channel or DM."""
+        user_id = event.get("user_id")
+        if not user_id:
+            logger.error(f"No user_id in event for Slack message. Event: {event}")
+            return
+
+        # Get channel from event metadata
+        channel = event.get("metadata", {}).get("channel")
+        thread_ts = event.get("metadata", {}).get("thread_ts")  # Reply in thread if available
+
+        if not channel:
+            logger.error(f"No channel in event metadata for Slack message. Event: {event}")
+            return
+
+        try:
+            # Initialize Slack client for this user
+            from src.integrations.slack.slack_client import SlackIntegration
+            slack_integration = SlackIntegration(user_id)
+
+            if not await slack_integration.authenticate():
+                logger.error(f"Failed to authenticate Slack for user {user_id}")
+                return
+
+            # Send message (will auto-select workspace if user has only one)
+            if response_text:
+                await slack_integration.send_message(
+                    channel=channel,
+                    text=response_text,
+                    thread_ts=thread_ts  # Reply in thread
+                )
+
+            # Note: File attachments not implemented yet for Slack
+            if response_files:
+                logger.warning("Slack file attachments not yet implemented")
+
+            logger.info(f"Successfully sent response to Slack channel {channel}")
+
+        except Exception as e:
+            logger.error(f"Failed to send Slack response: {e}", exc_info=True)
+
+    async def _send_discord_response(self, event: dict, response_text: str, response_files):
+        """Send response to Discord using interaction webhook."""
+        metadata = event.get("metadata", {})
+        interaction_token = metadata.get("interaction_token")
+        application_id = metadata.get("application_id")
+
+        # If this is an interaction (slash command), use webhook follow-up
+        if interaction_token and application_id:
+            logger.info(f"Sending Discord interaction follow-up response")
+
+            try:
+                import httpx
+                import os
+
+                # Use Discord interaction webhook to edit the initial message
+                # This replaces "Processing..." with the actual response
+                async with httpx.AsyncClient() as client:
+                    response = await client.patch(
+                        f"https://discord.com/api/v10/webhooks/{application_id}/{interaction_token}/messages/@original",
+                        headers={"Content-Type": "application/json"},
+                        json={"content": response_text}
+                    )
+
+                    if response.status_code not in [200, 201]:
+                        logger.error(f"Discord follow-up failed: {response.status_code} - {response.text}")
+                        return
+
+                    logger.info("Successfully sent Discord interaction follow-up")
+                    return
+
+            except Exception as e:
+                logger.error(f"Failed to send Discord follow-up: {e}", exc_info=True)
+                return
+
+        # Fallback: regular message send (for non-interaction events)
+        user_id = event.get("user_id")
+        channel = metadata.get("channel")
+
+        if not user_id or not channel:
+            logger.error(f"Missing user_id or channel for Discord message")
+            return
+
+        try:
+            from src.integrations.discord.discord_client import DiscordIntegration
+            discord_integration = DiscordIntegration(user_id)
+
+            if not await discord_integration.authenticate():
+                logger.error(f"Failed to authenticate Discord for user {user_id}")
+                return
+
+            if response_text:
+                await discord_integration.send_message(
+                    channel=channel,
+                    text=response_text
+                )
+
+            if response_files:
+                logger.warning("Discord file attachments not yet implemented")
+
+            logger.info(f"Successfully sent response to Discord channel {channel}")
+
+        except Exception as e:
+            logger.error(f"Failed to send Discord response: {e}", exc_info=True)
 
     async def _send_webhook_reponse(self, event, response_text):
         logging.info('attempting to publish to websocket')
@@ -310,7 +417,7 @@ class EgressService:
             return
 
         logger.info(f"Routing response for source: {source}, output_type: {event.get('output_type')}")
-        if event.get('output_type') not in ['email','websocket','telegram','whatsapp','imessage'] and event.get('source') in ['scheduled','recurring']:
+        if event.get('output_type') not in ['email','websocket','telegram','whatsapp','imessage','slack','discord'] and event.get('source') in ['scheduled','recurring']:
             logger.info('incorrect output type for scheduled or recurring event')
             if event.get('metadata',{}).get('original_source', None):
                 logger.info(f"Overriding event source from {event['output_type']} to {event['metadata']['original_source']}")
@@ -330,9 +437,15 @@ class EgressService:
             elif final_output_type == "telegram":
                 await self._send_telegram_response(event, response_text, response_files)
 
+            elif final_output_type == "slack":
+                await self._send_slack_response(event, response_text, response_files)
+
+            elif final_output_type == "discord":
+                await self._send_discord_response(event, response_text, response_files)
+
             elif final_output_type == "websocket":
                 await self._send_webhook_reponse(event, response_text)
-                
+
             else:
                 logger.warning(f"Unknown output target '{final_output_type}'. Cannot route response.")
 

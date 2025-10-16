@@ -13,6 +13,7 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 
 
 **IMPORTANT**: we do not consider capabilities such as "Transcribing the contents" of an image, 'Translating the contents' of an email, 'transcribing an audio file', or 'summarizing a document' as separate tools. These are capabilities that are part of the core AI functionality, and do not require a separate tool. The tools listed here are for external integrations, or for specific actions that require a distinct function call. Such capabilities can be handled by the AI directly, without needing to invoke a separate tool.
+**IMPORTANT**: Generating a video, image or audio is not a tool functionality. the model simply has to return the correct result. if this is requested, you do not need to select a tool. the system will handle it automatically. 
 ---
 
 ### Communication Tools

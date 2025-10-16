@@ -429,7 +429,7 @@ portkey-ai==1.15.1
     # via -r requirements.in
 posthog==6.7.6
     # via browser-use
-praxos-python==0.4.0
+praxos-python==0.5.0
     # via -r requirements.in
 propcache==0.4.1
     # via

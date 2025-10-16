@@ -18,8 +18,13 @@ LANGUAGE_MAP = {
 }
 
 
-def create_system_prompt(user_context: UserContext, source: str, metadata: Optional[Dict[str, Any]], tool_descriptions: str, plan: str) -> str:
-    """Replicates the system prompt construction from the original AgentRunner."""
+def create_system_prompt(user_context: UserContext, source: str, metadata: Optional[Dict[str, Any]], tool_descriptions: str, plan: str, resolution_guidance: str = "") -> str:
+    """
+    Replicates the system prompt construction from the original AgentRunner.
+
+    Args:
+        resolution_guidance: Optional guidance on parameter resolution from KG
+    """
     user_record = user_context.user_record
     user_record_for_context = "\n\nThe following information is known about this user of the assistant:"
     if user_record:
@@ -127,7 +132,26 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
 
     """
 
-    system_prompt = base_prompt + praxos_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt + total_system_capabilities_prompt
+    # KG-first guidance
+    kg_first_prompt = ""
+    if resolution_guidance:
+        kg_first_prompt = resolution_guidance + """
+**IMPORTANT - Knowledge Graph First Approach:**
+Before asking the user for information, ALWAYS check the knowledge graph first using these tools:
+- query_praxos_memory() - Search for relevant information
+- extract_entities_by_type() - Find entities like people, organizations
+- extract_literals_by_type() - Find literal values like emails, phones
+- get_entities_by_type_name() - Get all entities of a specific type
+
+The parameter resolution above shows what data is ALREADY AVAILABLE in the KG.
+- ✓ Auto-resolved parameters: Use these values directly, don't ask the user
+- ? Disambiguation needed: Present options to user, let them choose
+- ✗ De novo parameters: These must come from the user
+
+ONLY ASK THE USER for information that is NOT in the knowledge graph.
+"""
+
+    system_prompt = base_prompt + praxos_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt + total_system_capabilities_prompt + kg_first_prompt
     if tool_descriptions:
         system_prompt += f"\n\nThe following tools are available to you:\n{tool_descriptions}\nUse them in accordance with the user intent."
     if plan:

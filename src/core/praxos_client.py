@@ -586,6 +586,99 @@ class PraxosClient:
             duration = time.time() - start_time
             praxos_logger.error(f"Error evaluating event {event_json} of type {event_type}: {e}")
             return {"error": str(e)}
+
+    async def create_entity_in_kg(self, entity_type: str, label: str, properties: List[Dict[str, Any]], nested_entities: Dict = None):
+        """Create a new entity in the knowledge graph"""
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        start_time = time.time()
+        praxos_logger.info(f"Creating entity in KG: type={entity_type}, label={label}")
+
+        try:
+            result = self.env.create_entity(
+                entity_type=entity_type,
+                label=label,
+                properties=properties,
+                nested_entities=nested_entities,
+                auto_type=True
+            )
+
+            duration = time.time() - start_time
+            nodes_created = result.get('nodes_created', 0)
+            praxos_logger.info(f"Created entity '{label}' with {nodes_created} nodes in {duration:.2f}s")
+
+            return result
+
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(f"Failed to create entity: {e} (Duration: {duration:.2f}s)")
+            return {"error": str(e)}
+
+    async def update_literal_value(self, node_id: str, new_value: Any, new_type: str = None):
+        """Update a literal value in the knowledge graph"""
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        start_time = time.time()
+        praxos_logger.info(f"Updating literal {node_id} to value: {new_value}")
+
+        try:
+            result = self.env.update_literal(node_id, new_value, new_type)
+
+            duration = time.time() - start_time
+            praxos_logger.info(f"Updated literal {node_id} in {duration:.2f}s")
+
+            return result
+
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(f"Failed to update literal: {e} (Duration: {duration:.2f}s)")
+            return {"error": str(e)}
+
+    async def update_entity_properties(self, node_id: str, properties: List[Dict[str, Any]], replace_all: bool = False):
+        """Update an entity's properties in the knowledge graph"""
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        start_time = time.time()
+        praxos_logger.info(f"Updating entity {node_id} with {len(properties)} properties (replace_all={replace_all})")
+
+        try:
+            result = self.env.update_entity_properties(node_id, properties, replace_all)
+
+            duration = time.time() - start_time
+            nodes_modified = result.get('nodes_modified', 0)
+            praxos_logger.info(f"Updated entity {node_id}, modified {nodes_modified} nodes in {duration:.2f}s")
+
+            return result
+
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(f"Failed to update entity: {e} (Duration: {duration:.2f}s)")
+            return {"error": str(e)}
+
+    async def delete_node_from_kg(self, node_id: str, cascade: bool = True, force: bool = False):
+        """Delete a node from the knowledge graph"""
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        start_time = time.time()
+        praxos_logger.info(f"Deleting node {node_id} (cascade={cascade}, force={force})")
+
+        try:
+            result = self.env.delete_node(node_id, cascade, force)
+
+            duration = time.time() - start_time
+            nodes_deleted = result.get('nodes_deleted', 0)
+            praxos_logger.info(f"Deleted node {node_id}, removed {nodes_deleted} nodes in {duration:.2f}s")
+
+            return result
+
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(f"Failed to delete node: {e} (Duration: {duration:.2f}s)")
+            return {"error": str(e)}
     async def add_business_data(self, data: Dict[str, Any], name: str = None, description: str = None, root_entity_type: str = "schema:Thing", metadata: Dict[str, Any] = None):
       
       """Add business data to Praxos memory using add_business_data method"""

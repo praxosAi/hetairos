@@ -112,6 +112,15 @@ class IntegrationService:
 
         asyncio.create_task(_update_milestone_with_error_handling())
 
+        # Sync integration to KG in background
+        async def _sync_to_kg():
+            try:
+                await self.sync_integration_to_kg(user_id, name, new_integration_record)
+            except Exception as e:
+                logger.error(f"Failed to sync integration {name} to KG for user {user_id}: {e}", exc_info=True)
+
+        asyncio.create_task(_sync_to_kg())
+
         if result:
             return new_integration_record
         else:
@@ -530,5 +539,141 @@ class IntegrationService:
     async def update_integration(self, integration_id: str, integration: dict):
         """Update an integration."""
         await self.db_manager.db["integrations"].update_one({"_id": ObjectId(integration_id)}, {"$set": integration})
+
+    async def sync_integration_to_kg(self, user_id: str, integration_name: str, integration_data: Dict[str, Any], praxos_client=None):
+        """
+        Sync integration state to the knowledge graph.
+        Creates or updates a schema:Integration entity in the KG.
+
+        Args:
+            user_id: User ID
+            integration_name: Name of the integration (e.g., "gmail", "slack")
+            integration_data: Integration metadata (status, connected_account, capabilities, etc.)
+            praxos_client: Optional PraxosClient instance (created if not provided)
+        """
+        try:
+            # Import here to avoid circular dependency
+            if not praxos_client:
+                from src.core.praxos_client import PraxosClient
+                praxos_client = PraxosClient(
+                    environment_name=f"user_{user_id}",
+                    api_key=settings.PRAXOS_API_KEY
+                )
+
+            # Check if integration entity already exists in KG
+            existing = await praxos_client.get_nodes_by_type(
+                type_name="schema:Integration",
+                include_literals=True,
+                max_results=100
+            )
+
+            # Look for matching integration
+            integration_node = None
+            if isinstance(existing, list):
+                for node in existing:
+                    data = node.get('data', {})
+                    props = data.get('properties', {})
+                    if props.get('integration_type') == integration_name:
+                        integration_node = node
+                        break
+
+            # Build properties for the integration entity
+            properties = [
+                {"key": "integration_type", "value": integration_name, "type": "StringType"},
+                {"key": "status", "value": integration_data.get('status', 'active'), "type": "StatusEnumType"},
+                {"key": "connected_at", "value": integration_data.get('created_at', datetime.now(timezone.utc)).isoformat(), "type": "DateTimeType"}
+            ]
+
+            # Add optional properties
+            if integration_data.get('connected_account'):
+                properties.append({
+                    "key": "account",
+                    "value": integration_data['connected_account'],
+                    "type": "EmailType" if '@' in str(integration_data['connected_account']) else "StringType"
+                })
+
+            # Add capabilities if defined
+            if integration_name in self.integration_capabilities:
+                properties.append({
+                    "key": "capabilities",
+                    "value": json.dumps(self.integration_capabilities[integration_name]),
+                    "type": "StringType"
+                })
+
+            if integration_node:
+                # Update existing integration
+                node_id = integration_node.get('id') or integration_node.get('data', {}).get('node_id')
+                logger.info(f"Updating existing integration in KG: {integration_name} (node_id={node_id})")
+
+                result = await praxos_client.update_entity_properties(
+                    node_id=node_id,
+                    properties=properties,
+                    replace_all=False  # Merge with existing
+                )
+            else:
+                # Create new integration entity
+                logger.info(f"Creating new integration in KG: {integration_name}")
+
+                result = await praxos_client.create_entity_in_kg(
+                    entity_type="schema:Integration",
+                    label=f"{integration_name.title()} Integration",
+                    properties=properties
+                )
+
+            logger.info(f"Successfully synced {integration_name} integration to KG for user {user_id}")
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to sync integration {integration_name} to KG for user {user_id}: {e}", exc_info=True)
+            return {"error": str(e)}
+
+    async def remove_integration_from_kg(self, user_id: str, integration_name: str, praxos_client=None):
+        """
+        Remove integration entity from KG when user disconnects.
+
+        Args:
+            user_id: User ID
+            integration_name: Name of the integration to remove
+            praxos_client: Optional PraxosClient instance
+        """
+        try:
+            if not praxos_client:
+                from src.core.praxos_client import PraxosClient
+                praxos_client = PraxosClient(
+                    environment_name=f"user_{user_id}",
+                    api_key=settings.PRAXOS_API_KEY
+                )
+
+            # Find the integration entity
+            existing = await praxos_client.get_nodes_by_type(
+                type_name="schema:Integration",
+                include_literals=True,
+                max_results=100
+            )
+
+            # Look for matching integration
+            for node in existing if isinstance(existing, list) else []:
+                data = node.get('data', {})
+                props = data.get('properties', {})
+                if props.get('integration_type') == integration_name:
+                    node_id = node.get('id') or data.get('node_id')
+
+                    # Soft delete the integration
+                    result = await praxos_client.delete_node_from_kg(
+                        node_id=node_id,
+                        cascade=True,  # Delete connected properties
+                        force=False
+                    )
+
+                    logger.info(f"Successfully removed {integration_name} integration from KG for user {user_id}")
+                    return result
+
+            logger.warning(f"Integration {integration_name} not found in KG for user {user_id}")
+            return {"warning": "Integration not found in KG"}
+
+        except Exception as e:
+            logger.error(f"Failed to remove integration {integration_name} from KG for user {user_id}: {e}", exc_info=True)
+            return {"error": str(e)}
+
 # Global instance
 integration_service = IntegrationService()

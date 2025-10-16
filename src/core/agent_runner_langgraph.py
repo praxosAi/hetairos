@@ -199,6 +199,33 @@ class LangGraphAgentRunner:
                 request_id=self.trace_id,
                 required_tool_ids=required_tool_ids
             )
+
+            # NEW: Type-driven parameter resolution
+            resolution_context = None
+            # if required_tool_ids and not minimal_tools:
+            #     try:
+            #         from src.core.kg_input_resolution import analyze_tools_for_query
+            #         from src.core.praxos_client import PraxosClient
+
+            #         # Create praxos client for KG queries
+            #         praxos_client = PraxosClient(
+            #             environment_name=f"user_{user_context.user_id}",
+            #             api_key=settings.PRAXOS_API_KEY
+            #         )
+
+            #         # Analyze tools for parameter resolution
+            #         resolution_context = await analyze_tools_for_query(
+            #             tools=tools,
+            #             required_tool_ids=required_tool_ids,
+            #             user_query=input_text,
+            #             praxos_client=praxos_client
+            #         )
+
+            #         logger.info(f"Parameter resolution analysis complete for {len(resolution_context)} tools")
+
+            #     except Exception as e:
+            #         logger.error(f"Error during parameter resolution analysis: {e}", exc_info=True)
+            #         resolution_context = None
             logger.info(f"Loaded {len(tools)} tools based on planning")
             minimal_tools = True
             if required_tool_ids is not None and len(required_tool_ids) > 0:
@@ -216,7 +243,17 @@ class LangGraphAgentRunner:
                 except Exception as e:
                     logger.error(f"Error getting description for tool: {e}, for tool {str(tool)}", exc_info=True)
                     continue
-            system_prompt = create_system_prompt(user_context, source, metadata, tool_descriptions, plan)
+
+            # Add resolution guidance to system prompt if available
+            resolution_guidance = ""
+            if resolution_context:
+                resolution_guidance = "\n\n**KNOWLEDGE GRAPH PARAMETER RESOLUTION:**\n"
+                resolution_guidance += "Some tool parameters can be auto-filled from the knowledge graph:\n\n"
+                for tool_name, tool_resolution in resolution_context.items():
+                    if tool_resolution["analysis"]["kg_resolvable_count"] > 0:
+                        resolution_guidance += tool_resolution["guidance"] + "\n"
+
+            system_prompt = create_system_prompt(user_context, source, metadata, tool_descriptions, plan, resolution_guidance)
 
             workflow = StateGraph(AgentState)
             workflow.add_node("agent", call_model)

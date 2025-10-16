@@ -121,6 +121,7 @@ class AIService:
                 logger.info("send_intermediate_message is the only tool selected. Removing it as output suffices for this case.")
                 required_tool_ids = []
                 planning.tooling_need = False
+                planning.query_type = "conversational"
 
             logger.info('required tool ids are: ' + str(required_tool_ids))
             # Build plan string if plan/steps are provided

@@ -307,12 +307,12 @@ class LangGraphAgentRunner:
                 user_id=user_context.user_id,
                 execution_id=execution_id
             )
-
+            ### for now, we remove it.
             final_state = await app.ainvoke(
                 initial_state,
                 {
                     "recursion_limit": 100,
-                    "callbacks": [tool_monitor],
+                    # "callbacks": [tool_monitor],
                     "tool_iter_counter": 0,
                 }
             )

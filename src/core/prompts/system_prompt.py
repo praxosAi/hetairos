@@ -151,9 +151,12 @@ The parameter resolution above shows what data is ALREADY AVAILABLE in the KG.
 ONLY ASK THE USER for information that is NOT in the knowledge graph.
 """
 
+
+    
     system_prompt = base_prompt + praxos_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt + total_system_capabilities_prompt + kg_first_prompt
     if tool_descriptions:
         system_prompt += f"\n\nThe following tools are available to you:\n{tool_descriptions}\nUse them in accordance with the user intent."
     if plan:
         system_prompt += f"\n\nThe following plan has been created for you:\n{plan}\n Use it to guide your actions, but do not feel bound by it. You can deviate from the plan if you think it's necessary."
+    system_prompt += "\n\n Please note. the final output of the execution is delivered to the user. if the only thing u need to do is send a message to the user, you do not need to use any tool. your response will be sent to the user automatically. the intermediate messaging tool, when available, is for sending a message to the user prior to finishing our task. "
     return system_prompt

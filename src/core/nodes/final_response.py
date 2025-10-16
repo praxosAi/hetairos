@@ -32,6 +32,7 @@ async def generate_final_response(state: AgentState):
         f"the user's original message in this case was {input_text}. pay attention to whether it contains a particular request for delivery platform. "
         " do not mention explicit tool ids in your final response. instead, focus on what the user wants to do, and how we can help them."
         "If the response requires generating audio, video, or image, set the output_modality and generation_instructions fields accordingly.  the response should simply acknowledge the request to generate the media, and not attempt to generate it yourself. this is not a task for you. simply trust in the systems that will handle it after you. "
+        "this response will be sent to the user. if the task is to send a reminder to the user, the generation of this response here counts as sending a message to the user. This is not a failure, but a fundamental aspect of how the system works. "
     )
     response = await config.structured_llm.ainvoke(prompt)
     return {"final_response": response}

@@ -245,6 +245,41 @@ class UserService:
 
         return result.modified_count > 0
 
+    async def get_user_id_from_api_key(self, api_key: str) -> Optional[str]:
+        """
+        Validate API key and return associated user_id.
+        Checks both mcp_api_key and api_key fields.
+
+        Args:
+            api_key: The API key to validate
+
+        Returns:
+            user_id string if valid, None if invalid
+        """
+        try:
+            db = self._get_database()
+            users_collection = db.users
+
+            # Look up user by API key - try both fields
+            user = users_collection.find_one({
+                "$or": [
+                    {"mcp_api_key": api_key},
+                    {"api_key": api_key}
+                ]
+            })
+
+            if not user:
+                logger.warning("No user found for provided API key")
+                return None
+
+            user_id = str(user.get('_id'))
+            logger.info(f"Validated API key for user {user_id}")
+            return user_id
+
+        except Exception as e:
+            logger.error(f"Error validating API key: {e}", exc_info=True)
+            return None
+
     async def initialize_user_knowledge_graph(self, user_id: str, user_email: str = None, user_data: Dict = None):
         """
         Initialize knowledge graph for a new user with their profile entity.

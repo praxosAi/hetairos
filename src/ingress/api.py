@@ -17,6 +17,7 @@ from src.ingress.webhook_handlers import trello_handler
 from src.ingress.webhook_handlers import dropbox_handler
 from src.ingress.webhook_handlers import slack_handler
 from src.ingress.webhook_handlers import discord_handler
+from src.ingress.webhook_handlers import mcp_handler
 from src.core import suspended_event_queue
 from src.utils.logging.base_logger import request_id_var, user_id_var, modality_var
 from src.utils.redis_client import subscribe_to_channel
@@ -78,6 +79,9 @@ app.include_router(trello_handler.router, prefix="/webhooks")
 
 # General HTTP ingress
 app.include_router(http_handler.router, prefix="/ingress")
+
+# MCP (Model Context Protocol) ingress
+app.include_router(mcp_handler.router, prefix="/api")
 
 # Admin
 app.include_router(suspended_event_queue.router, prefix="/admin/suspended-events")

@@ -113,13 +113,13 @@ class IntegrationService:
         asyncio.create_task(_update_milestone_with_error_handling())
 
         # Sync integration to KG in background
-        async def _sync_to_kg():
-            try:
-                await self.sync_integration_to_kg(user_id, name, new_integration_record)
-            except Exception as e:
-                logger.error(f"Failed to sync integration {name} to KG for user {user_id}: {e}", exc_info=True)
+        # async def _sync_to_kg():
+        #     try:
+        #         await self.sync_integration_to_kg(user_id, name, new_integration_record)
+        #     except Exception as e:
+        #         logger.error(f"Failed to sync integration {name} to KG for user {user_id}: {e}", exc_info=True)
 
-        asyncio.create_task(_sync_to_kg())
+        # asyncio.create_task(_sync_to_kg())
 
         if result:
             return new_integration_record

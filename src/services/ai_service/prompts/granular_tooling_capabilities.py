@@ -20,8 +20,10 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 **send_intermediate_message**
 - Sends status updates to users during long-running operations (30+ seconds)
 - Use for: Web browsing, media generation, long searches
-- Example: "I'm browsing that website now, this will take about 30 seconds..."
 - DO NOT use for simple tasks that complete quickly
+- DO NOT use this if the only task is to send a message. the output will be automatically sent at the end of execution. Thus, this is only for long-running tasks where you want to keep the user informed while you work, not for simply sending a message to the user.
+- Example: "I'm browsing that website now, this will take about 30 seconds..."
+- DO NOT USE IF the task is to simply send the user to the message right now, without any other long-running task. in that case, we will simply provide the message as the final response.
 
 **reply_to_user_via_email**
 - Replies to a user's email using the Praxos bot

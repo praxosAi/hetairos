@@ -227,10 +227,17 @@ class LangGraphAgentRunner:
             #         logger.error(f"Error during parameter resolution analysis: {e}", exc_info=True)
             #         resolution_context = None
             logger.info(f"Loaded {len(tools)} tools based on planning")
+            # Determine minimal_tools correctly based on planning outcome
+            # If planning indicates tooling_need=True (conversational=False) or specific tools were required, it's not minimal
             minimal_tools = True
             if required_tool_ids is not None and len(required_tool_ids) > 0:
                 minimal_tools = False
-            
+            # Also check if planning indicated this is a command (not conversational)
+            # even if no tools were specified after filtering (e.g., send_intermediate_message was removed)
+            if not conversational:
+                minimal_tools = False
+                logger.info("Query classified as 'command', setting minimal_tools=False even if no tools specified after filtering")
+
             tool_executor = ToolNode(tools)
             if minimal_tools and conversational:
                 ### this is a basic query

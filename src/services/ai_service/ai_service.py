@@ -92,7 +92,9 @@ class AIService:
             retry_hint = HumanMessage(content="IMPORTANT: The previous planning response indicated that tools are needed (tooling_need=True) but did not specify which tools in the required_tools list. Please provide the specific tool IDs that are needed for this task in the required_tools field. Be precise and list the exact tools required.")
             messages.append(retry_hint)
 
-            # Retry the planning call
+            # Retry the planning call, with a stronger llm.
+            planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, cached_content=PLANNING_CACHE_NAME)
+            planning_llm = planning_llm.with_structured_output(GranularPlanningResponse)
             response_raw = await planning_llm.ainvoke(messages)
             for tool in response_raw.tool_calls:
                 if tool['name'] == 'Create_Granular_Planning_Response':

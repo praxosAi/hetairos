@@ -278,7 +278,8 @@ class LangGraphAgentRunner:
 
                         
             app = workflow.compile()
-            
+            if input_text is None:
+                input_text = "placeholder for empty input"
             graph_config = GraphConfig(
                 llm_with_tools=llm_with_tools,
                 structured_llm=self.structured_llm,

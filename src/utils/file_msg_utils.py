@@ -395,7 +395,7 @@ def replace_media_with_placeholders(messages: List) -> List:
                 # Create new content list with placeholders for non-text items
                 new_content = []
                 for item in content:
-                    if isinstance(item, dict) and item.get('type') != 'text':
+                    if isinstance(item, dict) and item.get('type') not in ['media','text']:
                         # Replace media with placeholder
                         media_type = item.get('type', 'media').upper()
                         new_content.append({'type': 'text', 'text': f"[{media_type}]"})

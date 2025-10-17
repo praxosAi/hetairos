@@ -16,7 +16,9 @@ class ToolFunctionID(str, Enum):
     GET_SCHEDULED_TASKS = "get_scheduled_tasks"
     CANCEL_SCHEDULED_TASK = "cancel_scheduled_task"
     UPDATE_SCHEDULED_TASK = "update_scheduled_task"
-
+    CREATE_IMAGE_TOOL = "create_image_tool"
+    CREATE_AUDIO_TOOL = "create_audio_tool"
+    CREATE_VIDEO_TOOL = "create_video_tool"
     # Basic tools
     GET_CURRENT_TIME = "get_current_time"
     GET_CURRENT_TASK_PLAN_AND_STEP = "get_current_task_plan_and_step"

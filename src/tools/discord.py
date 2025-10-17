@@ -1,6 +1,7 @@
 from langchain_core.tools import tool
 from src.integrations.discord.discord_client import DiscordIntegration
 from src.tools.tool_types import ToolExecutionResponse
+from src.tools.error_helpers import ErrorResponseBuilder
 from src.utils.logging import setup_logger
 from typing import Optional, List, Dict, Any
 import json
@@ -32,7 +33,11 @@ def create_discord_tools(discord_integration: DiscordIntegration) -> list:
                 result=json.dumps({"servers": servers})
             )
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="list_discord_servers",
+                exception=e,
+                integration="Discord"
+            )
 
     @tool
     async def send_discord_message(channel: str, text: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -56,10 +61,19 @@ def create_discord_tools(discord_integration: DiscordIntegration) -> list:
             )
         except ValueError as e:
             # Multi-account error
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="send_discord_message",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error sending Discord message: {e}")
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="Failed to send Discord message")
+            return ErrorResponseBuilder.from_exception(
+                operation="send_discord_message",
+                exception=e,
+                integration="Discord",
+                context={"channel": channel}
+            )
 
     @tool
     async def send_discord_dm(user_id: str, text: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -82,10 +96,19 @@ def create_discord_tools(discord_integration: DiscordIntegration) -> list:
             )
         except ValueError as e:
             # Multi-account error
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="send_discord_dm",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error sending Discord DM: {e}")
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="Failed to send Discord DM")
+            return ErrorResponseBuilder.from_exception(
+                operation="send_discord_dm",
+                exception=e,
+                integration="Discord",
+                context={"user_id": user_id}
+            )
 
     @tool
     async def list_discord_channels(types: str = "public_channel,private_channel", account: Optional[str] = None) -> ToolExecutionResponse:
@@ -107,10 +130,18 @@ def create_discord_tools(discord_integration: DiscordIntegration) -> list:
             )
         except ValueError as e:
             # Multi-account error
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="list_discord_channels",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error listing Discord channels: {e}")
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="list_discord_channels",
+                exception=e,
+                integration="Discord"
+            )
 
     @tool
     async def get_discord_channel_history(channel: str, limit: int = 50, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -133,10 +164,19 @@ def create_discord_tools(discord_integration: DiscordIntegration) -> list:
             )
         except ValueError as e:
             # Multi-account error
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="get_discord_channel_history",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error getting Discord channel history: {e}")
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="get_discord_channel_history",
+                exception=e,
+                integration="Discord",
+                context={"channel": channel}
+            )
 
     @tool
     async def get_discord_user_info(user_id: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -155,10 +195,19 @@ def create_discord_tools(discord_integration: DiscordIntegration) -> list:
             )
         except ValueError as e:
             # Multi-account error
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="get_discord_user_info",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error getting Discord user info: {e}")
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="get_discord_user_info",
+                exception=e,
+                integration="Discord",
+                context={"user_id": user_id}
+            )
 
     return [
         list_discord_servers,

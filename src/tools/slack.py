@@ -1,6 +1,7 @@
 from langchain_core.tools import tool
 from src.integrations.slack.slack_client import SlackIntegration
 from src.tools.tool_types import ToolExecutionResponse
+from src.tools.error_helpers import ErrorResponseBuilder
 from src.utils.logging import setup_logger
 from typing import Optional, List, Dict, Any
 import json
@@ -32,7 +33,11 @@ def create_slack_tools(slack_integration: SlackIntegration) -> list:
                 result=json.dumps({"workspaces": workspaces})
             )
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="list_slack_workspaces",
+                exception=e,
+                integration="Slack"
+            )
 
     @tool
     async def send_slack_message(channel: str, text: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -55,11 +60,20 @@ def create_slack_tools(slack_integration: SlackIntegration) -> list:
                 })
             )
         except ValueError as e:
-            # Multi-account error
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            # Multi-account error - user needs to specify which workspace
+            return ErrorResponseBuilder.missing_parameter(
+                operation="send_slack_message",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error sending Slack message: {e}")
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="Failed to send Slack message")
+            return ErrorResponseBuilder.from_exception(
+                operation="send_slack_message",
+                exception=e,
+                integration="Slack",
+                context={"channel": channel}
+            )
 
     @tool
     async def send_slack_dm(user_id: str, text: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -81,11 +95,20 @@ def create_slack_tools(slack_integration: SlackIntegration) -> list:
                 })
             )
         except ValueError as e:
-            # Multi-account error
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            # Multi-account error - user needs to specify which workspace
+            return ErrorResponseBuilder.missing_parameter(
+                operation="send_slack_dm",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error sending Slack DM: {e}")
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="Failed to send Slack DM")
+            return ErrorResponseBuilder.from_exception(
+                operation="send_slack_dm",
+                exception=e,
+                integration="Slack",
+                context={"user_id": user_id}
+            )
 
     @tool
     async def list_slack_channels(types: str = "public_channel,private_channel", account: Optional[str] = None) -> ToolExecutionResponse:
@@ -107,10 +130,18 @@ def create_slack_tools(slack_integration: SlackIntegration) -> list:
             )
         except ValueError as e:
             # Multi-account error
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="list_slack_channels",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error listing Slack channels: {e}")
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="list_slack_channels",
+                exception=e,
+                integration="Slack"
+            )
 
     @tool
     async def get_slack_channel_history(channel: str, limit: int = 50, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -133,10 +164,19 @@ def create_slack_tools(slack_integration: SlackIntegration) -> list:
             )
         except ValueError as e:
             # Multi-account error
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="get_slack_channel_history",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error getting Slack channel history: {e}")
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="get_slack_channel_history",
+                exception=e,
+                integration="Slack",
+                context={"channel": channel}
+            )
 
     @tool
     async def get_slack_user_info(user_id: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -155,10 +195,19 @@ def create_slack_tools(slack_integration: SlackIntegration) -> list:
             )
         except ValueError as e:
             # Multi-account error
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="get_slack_user_info",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error getting Slack user info: {e}")
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="get_slack_user_info",
+                exception=e,
+                integration="Slack",
+                context={"user_id": user_id}
+            )
 
     return [
         list_slack_workspaces,

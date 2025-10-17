@@ -395,11 +395,39 @@ class EgressService:
         if not token:
             logger.error(f"No user_id in event for WebSocket message. Event: {event}")
             return
-        
+
         # The channel name must match what the ingress WebSocket endpoint subscribes to.
         channel = f"ws-out:{token}"
         await publish_message(channel, response_text)
         logger.info(f"Successfully published response to Redis channel '{channel}' for token {token}, which belongs to user {event.get('user_id')}")
+
+    async def _send_mcp_response(self, event: dict, response_text: str, response_files):
+        """Send response to MCP client via Redis pub/sub."""
+        response_channel = event.get("metadata", {}).get("response_channel")
+        mcp_request_id = event.get("metadata", {}).get("mcp_request_id")
+
+        if not response_channel:
+            logger.error(f"No response_channel in event metadata for MCP response. Event: {event}")
+            return
+
+        try:
+            # Build response payload matching MCPResponse schema
+            response_payload = {
+                "response": response_text,
+                "delivery_platform": "mcp",
+                "execution_notes": None,
+                "output_modality": "text",
+                "file_links": response_files or []
+            }
+
+            # Publish to the response channel that the MCP endpoint is waiting on
+            import json
+            await publish_message(response_channel, json.dumps(response_payload))
+
+            logger.info(f"Successfully published MCP response to channel '{response_channel}' for request {mcp_request_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to send MCP response: {e}", exc_info=True)
 
     async def send_response(self, event: dict, result: dict):
         """
@@ -417,7 +445,7 @@ class EgressService:
             return
 
         logger.info(f"Routing response for source: {source}, output_type: {event.get('output_type')}")
-        if event.get('output_type') not in ['email','websocket','telegram','whatsapp','imessage','slack','discord'] and event.get('source') in ['scheduled','recurring']:
+        if event.get('output_type') not in ['email','websocket','telegram','whatsapp','imessage','slack','discord','mcp'] and event.get('source') in ['scheduled','recurring']:
             logger.info('incorrect output type for scheduled or recurring event')
             if event.get('metadata',{}).get('original_source', None):
                 logger.info(f"Overriding event source from {event['output_type']} to {event['metadata']['original_source']}")
@@ -445,6 +473,9 @@ class EgressService:
 
             elif final_output_type == "websocket":
                 await self._send_webhook_reponse(event, response_text)
+
+            elif final_output_type == "mcp":
+                await self._send_mcp_response(event, response_text, response_files)
 
             else:
                 logger.warning(f"Unknown output target '{final_output_type}'. Cannot route response.")

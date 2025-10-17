@@ -51,7 +51,7 @@ class AIService:
 
 
 
-    async def granular_planning(self, context: list[BaseMessage]) -> Tuple[GranularPlanningResponse, Optional[list[str]], Optional[str]]:
+    async def granular_planning(self, context: list[BaseMessage], user_integration_names: set[str]) -> Tuple[GranularPlanningResponse, Optional[list[str]], Optional[str]]:
         planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0, cached_content=PLANNING_CACHE_NAME)
 
         """
@@ -59,8 +59,8 @@ class AIService:
         This enables precise tool loading instead of all-or-nothing approach.
         """
         ### we now use caching for this. this further reduces latency of this call, as well as its cost.
-        
-        
+
+
 
 
         from src.utils.file_msg_utils import replace_media_with_placeholders
@@ -70,18 +70,40 @@ class AIService:
         # sys_message = SystemMessage(content=planning_prompt)
         # messages = [sys_message] + msgs_with_placeholders
         messages = msgs_with_placeholders
+        messages.append(HumanMessage(content='We know that the user has the following tools available to them: \n' + '\n'.join(list(user_integration_names))))
         logger.info('Calling granular_planning for precise tool selection')
-        
+
         # structured_llm = planning_llm.with_structured_output(GranularPlanningResponse)
         response_raw = await planning_llm.ainvoke(messages)
 
         ## now, we must cast it
+        planning = None
         for tool in response_raw.tool_calls:
             if tool['name'] == 'Create_Granular_Planning_Response':
                 planning = GranularPlanningResponse(**tool['args'])
                 break
+
+        # Validate the planning response
+        if planning and planning.tooling_need and (not planning.required_tools or len(planning.required_tools) == 0):
+            logger.warning(f"Malformed planning response detected: tooling_need=True but required_tools is empty. Retrying with hint.")
+            logger.warning(f"Original planning response: {planning}")
+
+            # Add a hint message and retry
+            retry_hint = HumanMessage(content="IMPORTANT: The previous planning response indicated that tools are needed (tooling_need=True) but did not specify which tools in the required_tools list. Please provide the specific tool IDs that are needed for this task in the required_tools field. Be precise and list the exact tools required.")
+            messages.append(retry_hint)
+
+            # Retry the planning call, with a stronger llm.
+            planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, cached_content=PLANNING_CACHE_NAME)
+            planning_llm = planning_llm.with_structured_output(GranularPlanningResponse)
+            response_raw = await planning_llm.ainvoke(messages)
+            for tool in response_raw.tool_calls:
+                if tool['name'] == 'Create_Granular_Planning_Response':
+                    planning = GranularPlanningResponse(**tool['args'])
+                    break
+            logger.info(f"Retry planning response: {planning}")
+
         logger.info(f"Granular planning response: {planning}")
-        logger.info(f"Required tools: {[tool.value for tool in planning.required_tools]}")
+        logger.info(f"Required tools: {[tool.value for tool in planning.required_tools] if planning and planning.required_tools else []}")
         ### this is fire and forget, we don't want to await it
         try:
             asyncio.create_task(update_cache_ttl())
@@ -93,6 +115,14 @@ class AIService:
         if planning:
             # Extract required tool IDs from enum to string list
             required_tool_ids = [tool.value for tool in planning.required_tools] if planning.required_tools else []
+
+            # Filter out send_intermediate_message if it's the only tool
+            if required_tool_ids == ["send_intermediate_message"]:
+                logger.info("send_intermediate_message is the only tool selected. Removing it as output suffices for this case.")
+                required_tool_ids = []
+                planning.tooling_need = False
+                planning.query_type = "conversational"
+
             logger.info('required tool ids are: ' + str(required_tool_ids))
             # Build plan string if plan/steps are provided
             plan_str = ""

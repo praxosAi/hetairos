@@ -395,7 +395,7 @@ def replace_media_with_placeholders(messages: List) -> List:
                 # Create new content list with placeholders for non-text items
                 new_content = []
                 for item in content:
-                    if isinstance(item, dict) and item.get('type') != 'text':
+                    if isinstance(item, dict) and item.get('type') not in ['media','text']:
                         # Replace media with placeholder
                         media_type = item.get('type', 'media').upper()
                         new_content.append({'type': 'text', 'text': f"[{media_type}]"})
@@ -425,3 +425,38 @@ def replace_media_with_placeholders(messages: List) -> List:
 
 
 
+async def update_history( conversation_manager: Any, new_messages: List[BaseMessage], conversation_id: str, user_context: UserContext, final_state: Dict[str, Any]):
+    inserted_ct = 0
+    for msg in new_messages:
+        try:
+        # Skip the final AI message (will be added separately below)
+            if msg == final_state['messages'][-1]:
+                continue
+
+            if isinstance(msg, AIMessage) and msg.tool_calls:
+                # Persist AI messages with tool calls
+                tool_names = ', '.join([tc.get('name', 'unknown') for tc in msg.tool_calls])
+                content = msg.content if msg.content else f"[Calling tools: {tool_names}]"
+                await conversation_manager.add_assistant_message(
+                    user_context.user_id,
+                    conversation_id,
+                    content,
+                    metadata={"tool_calls": [tc.get('name') for tc in msg.tool_calls]}
+                )
+            elif isinstance(msg, ToolMessage):
+                # Persist tool results
+                content = str(msg.content)
+                await conversation_manager.add_assistant_message(
+                    user_context.user_id,
+                    conversation_id,
+                    f"[Tool: {msg.name}] {content}",
+                    metadata={
+                        "tool_name": msg.name,
+                        "message_type": "tool_result",
+                        "tool_call_id": msg.tool_call_id if hasattr(msg, 'tool_call_id') else ""
+                    }
+                )
+            inserted_ct += 1
+        except Exception as e:
+            logger.error(f"Error persisting intermediate message: {e}", exc_info=True)
+    logger.info(f"Persisted {inserted_ct} new intermediate messages to conversation log")

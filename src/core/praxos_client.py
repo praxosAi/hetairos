@@ -363,6 +363,7 @@ class PraxosClient:
             
             return {"error": str(e)}
     
+    
     async def get_user_integrations(self, user_id: str):
         """Get user's active integrations using anchor search"""
         if not self.env:
@@ -428,20 +429,20 @@ class PraxosClient:
             log_praxos_query_failed(user_id, query, e, duration, "query_memory")
             raise
     
-    async def search_memory(self, query: str, top_k: int = 5, search_modality: str = "node_vec"):
+    async def search_memory(self, query: str, top_k: int = 5, search_modality: str = "node_vec", exclude_seen: List[str] = None):
         """Direct search using Praxos search method with score filtering and sentence extraction"""
         if not self.env:
             return {"error": "Environment not initialized"}
-        
+
         start_time = time.time()
         log_praxos_query_started("system", query, "search_memory")
-        
+
         try:
             # Use direct search method as specified by user
-            results = self.env.search(query=query, top_k=top_k, search_modality=search_modality)
-        
+            results = self.env.search(query=query, top_k=top_k, search_modality=search_modality, exclude_nodes=exclude_seen)
+
             duration = time.time() - start_time
-            
+
             # Filter results by score > 0.8 and extract sentences
             qualified_results = []
             extracted_sentences = []
@@ -457,12 +458,12 @@ class PraxosClient:
                         source_ids.add(result.get('source_id', ''))
                         if sentence:
                             extracted_sentences.append(sentence)
-            
+
             results_count = len(qualified_results)
             sentences_count = len(extracted_sentences)
-            
+
             log_praxos_query_completed("system", query, results_count, duration, "search_memory")
-            
+
             # Return formatted results with extracted sentences for LLM processing
             return {
                 "success": True,
@@ -473,12 +474,64 @@ class PraxosClient:
                 "sentences_count": sentences_count,
                 "raw_results": results  # Keep original results for debugging
             }
-            
+
         except Exception as e:
             duration = time.time() - start_time
             log_praxos_query_failed("system", query, e, duration, "search_memory")
             if hasattr(e, 'status_code'):
                 log_praxos_api_error("search_memory", e.status_code, str(e), getattr(e, 'details', None))
+            return {"error": str(e)}
+
+    async def extract_intelligent(self, query: str, strategy: str = 'entity_extraction', max_results: int = 20):
+        """Extract entities or literals using intelligent extraction with forced strategy"""
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        start_time = time.time()
+        praxos_logger.info(f"Starting intelligent extraction: query='{query}', strategy={strategy}")
+
+        try:
+            result = self.env.extract_intelligent(
+                query=query,
+                strategy=strategy,
+                max_results=max_results
+            )
+
+            duration = time.time() - start_time
+            hits_count = len(result.get('hits', []))
+
+            praxos_logger.info(f"Intelligent extraction completed in {duration:.2f}s, found {hits_count} items")
+
+            return result
+
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(f"Intelligent extraction failed: {e} (Duration: {duration:.2f}s)")
+            return {"error": str(e)}
+
+    async def get_nodes_by_type(self, type_name: str, include_literals: bool = True, max_results: int = 100):
+        """Get all nodes of a specific type"""
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        start_time = time.time()
+        praxos_logger.info(f"Getting nodes by type: {type_name}")
+
+        try:
+            results = self.env.get_nodes_by_type(
+                type_name=type_name,
+                include_literals=include_literals,
+                max_results=max_results
+            )
+
+            duration = time.time() - start_time
+            praxos_logger.info(f"Found {len(results)} nodes of type {type_name} in {duration:.2f}s")
+
+            return results
+
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(f"Get nodes by type failed: {e} (Duration: {duration:.2f}s)")
             return {"error": str(e)}
         
     async def enrich_nodes(self, node_ids: list, k_hops: int = 2):
@@ -532,6 +585,99 @@ class PraxosClient:
         except Exception as e:
             duration = time.time() - start_time
             praxos_logger.error(f"Error evaluating event {event_json} of type {event_type}: {e}")
+            return {"error": str(e)}
+
+    async def create_entity_in_kg(self, entity_type: str, label: str, properties: List[Dict[str, Any]], nested_entities: Dict = None):
+        """Create a new entity in the knowledge graph"""
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        start_time = time.time()
+        praxos_logger.info(f"Creating entity in KG: type={entity_type}, label={label}")
+
+        try:
+            result = self.env.create_entity(
+                entity_type=entity_type,
+                label=label,
+                properties=properties,
+                nested_entities=nested_entities,
+                auto_type=True
+            )
+
+            duration = time.time() - start_time
+            nodes_created = result.get('nodes_created', 0)
+            praxos_logger.info(f"Created entity '{label}' with {nodes_created} nodes in {duration:.2f}s")
+
+            return result
+
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(f"Failed to create entity: {e} (Duration: {duration:.2f}s)")
+            return {"error": str(e)}
+
+    async def update_literal_value(self, node_id: str, new_value: Any, new_type: str = None):
+        """Update a literal value in the knowledge graph"""
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        start_time = time.time()
+        praxos_logger.info(f"Updating literal {node_id} to value: {new_value}")
+
+        try:
+            result = self.env.update_literal(node_id, new_value, new_type)
+
+            duration = time.time() - start_time
+            praxos_logger.info(f"Updated literal {node_id} in {duration:.2f}s")
+
+            return result
+
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(f"Failed to update literal: {e} (Duration: {duration:.2f}s)")
+            return {"error": str(e)}
+
+    async def update_entity_properties(self, node_id: str, properties: List[Dict[str, Any]], replace_all: bool = False):
+        """Update an entity's properties in the knowledge graph"""
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        start_time = time.time()
+        praxos_logger.info(f"Updating entity {node_id} with {len(properties)} properties (replace_all={replace_all})")
+
+        try:
+            result = self.env.update_entity_properties(node_id, properties, replace_all)
+
+            duration = time.time() - start_time
+            nodes_modified = result.get('nodes_modified', 0)
+            praxos_logger.info(f"Updated entity {node_id}, modified {nodes_modified} nodes in {duration:.2f}s")
+
+            return result
+
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(f"Failed to update entity: {e} (Duration: {duration:.2f}s)")
+            return {"error": str(e)}
+
+    async def delete_node_from_kg(self, node_id: str, cascade: bool = True, force: bool = False):
+        """Delete a node from the knowledge graph"""
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        start_time = time.time()
+        praxos_logger.info(f"Deleting node {node_id} (cascade={cascade}, force={force})")
+
+        try:
+            result = self.env.delete_node(node_id, cascade, force)
+
+            duration = time.time() - start_time
+            nodes_deleted = result.get('nodes_deleted', 0)
+            praxos_logger.info(f"Deleted node {node_id}, removed {nodes_deleted} nodes in {duration:.2f}s")
+
+            return result
+
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(f"Failed to delete node: {e} (Duration: {duration:.2f}s)")
             return {"error": str(e)}
     async def add_business_data(self, data: Dict[str, Any], name: str = None, description: str = None, root_entity_type: str = "schema:Thing", metadata: Dict[str, Any] = None):
       

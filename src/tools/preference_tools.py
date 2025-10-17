@@ -3,6 +3,8 @@ from typing import List, Dict, Any
 import pytz
 from src.utils.logging import setup_logger
 from langchain_core.tools import tool
+from src.tools.tool_types import ToolExecutionResponse
+from src.tools.error_helpers import ErrorResponseBuilder
 from src.services.user_service import user_service  # uses the global instance you showed
 
 # Optional: restrict to languages you plan to support (expand as needed)
@@ -87,7 +89,12 @@ def create_preference_tools(user_id: str) -> list:
                 "updated": {"annotations": merged, "updated_at": payload["updated_at"]},
             }
         except Exception as e:
-            return {"ok": False, "message": f"Failed to add annotations"}
+            logger.error(f"Failed to add annotations: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="add_user_preference_annotation",
+                exception=e,
+                integration="user_preferences"
+            )
 
     @tool
     def set_assistant_name(assistant_name: str) -> Dict[str, Any]:
@@ -110,7 +117,13 @@ def create_preference_tools(user_id: str) -> list:
                 "updated": {"assistant_name": name, "updated_at": payload["updated_at"]},
             }
         except Exception as e:
-            return {"ok": False, "message": f"Failed to update assistant name: {e}"}
+            logger.error(f"Failed to update assistant name: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="set_assistant_name",
+                exception=e,
+                integration="user_preferences",
+                context={"assistant_name": assistant_name}
+            )
 
     @tool
     def set_timezone(timezone_name: str) -> Dict[str, Any]:
@@ -133,7 +146,13 @@ def create_preference_tools(user_id: str) -> list:
                 "updated": {"timezone": tz, "updated_at": payload["updated_at"]},
             }
         except Exception as e:
-            return {"ok": False, "message": f"Failed to update timezone: {e}"}
+            logger.error(f"Failed to update timezone: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="set_timezone",
+                exception=e,
+                integration="user_preferences",
+                context={"timezone_name": timezone_name}
+            )
 
     @tool
     def set_language_response(language_code: str) -> Dict[str, Any]:
@@ -156,7 +175,13 @@ def create_preference_tools(user_id: str) -> list:
                 "updated": {"language_responses": code, "updated_at": payload["updated_at"]},
             }
         except Exception as e:
-            return {"ok": False, "message": f"Failed to update language: {e}"}
+            logger.error(f"Failed to update language: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="set_language_response",
+                exception=e,
+                integration="user_preferences",
+                context={"language_code": language_code}
+            )
 
     @tool
     def delete_user_preference_annotations(annotations_to_delete: List[str]) -> Dict[str, Any]:
@@ -190,7 +215,11 @@ def create_preference_tools(user_id: str) -> list:
             }
         except Exception as e:
             logger.error(f"Failed to delete annotations: {str(e)}", exc_info=True)
-            return {"ok": False, "message": f"Failed to delete annotations: {e}"}
+            return ErrorResponseBuilder.from_exception(
+                operation="delete_user_preference_annotations",
+                exception=e,
+                integration="user_preferences"
+            )
     return [
         add_user_preference_annotation,
         set_assistant_name,

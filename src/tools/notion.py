@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional
 from langchain_core.tools import tool
 from src.integrations.notion.notion_client import NotionIntegration
 from src.tools.tool_types import ToolExecutionResponse
+from src.tools.error_helpers import ErrorResponseBuilder
 from src.utils.logging import setup_logger
 
 logger = setup_logger(__name__)
@@ -23,7 +24,11 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
                 result=json.dumps({"workspaces": accounts})
             )
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="list_notion_workspaces",
+                exception=e,
+                integration="Notion"
+            )
 
     @tool
     async def list_databases(account: Optional[str] = None) -> ToolExecutionResponse:
@@ -47,10 +52,18 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             return response
         except ValueError as e:
             # Multi-account error
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation="list_databases",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error listing Notion workspace content: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="list_databases",
+                exception=e,
+                integration="Notion"
+            )
 
     @tool
     async def list_notion_pages(account: Optional[str] = None) -> ToolExecutionResponse:
@@ -66,10 +79,18 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             response = ToolExecutionResponse(status="success", result=json.dumps(pages))
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "notion_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error listing Notion top-level pages: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="list_notion_pages",
+                exception=e,
+                integration="Notion"
+            )
 
     @tool
     async def query_notion_database(database_id: str, filter: Dict = None, sorts: List[Dict] = None, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -90,10 +111,19 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             logger.info(f"Notion database query response: {response.result}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "notion_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error querying Notion database: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="query_notion_database",
+                exception=e,
+                integration="Notion",
+                context={"database_id": database_id}
+            )
 
     @tool
     async def get_all_workspace_entries(account: Optional[str] = None) -> ToolExecutionResponse:
@@ -111,10 +141,18 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             logger.info(f"All Notion workspace entries response: {response.result}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "notion_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error retrieving all Notion workspace entries: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="get_all_workspace_entries",
+                exception=e,
+                integration="Notion"
+            )
 
     @tool
     async def search_notion_pages_by_keyword(query: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -133,10 +171,19 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             logger.info(f"Notion keyword search response: {response.result}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "notion_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error searching Notion pages by keyword: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="search_notion_pages_by_keyword",
+                exception=e,
+                integration="Notion",
+                context={"query": query}
+            )
 
     @tool
     async def create_notion_page(
@@ -165,10 +212,19 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             logger.info(f"Create Notion page response: {response.result}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "notion_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error creating Notion page: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="create_notion_page",
+                exception=e,
+                integration="Notion",
+                context={"title": title}
+            )
 
     @tool
     async def create_notion_database_entry(
@@ -199,10 +255,19 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             logger.info(f"Create Notion database entry response: {response.result}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "notion_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error creating Notion database entry: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="create_notion_database_entry",
+                exception=e,
+                integration="Notion",
+                context={"database_id": database_id, "title": title}
+            )
 
     @tool
     async def create_notion_database(
@@ -232,10 +297,19 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             logger.info(f"Create Notion database response: {response.result}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "notion_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error creating Notion database: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="create_notion_database",
+                exception=e,
+                integration="Notion",
+                context={"title": title}
+            )
 
     @tool
     async def append_to_notion_page(page_id: str, content: List[Dict[str, Any]], account: Optional[str] = None) -> ToolExecutionResponse:
@@ -254,10 +328,19 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             logger.info(f"Append to Notion page response: {response.result}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "notion_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error appending to Notion page: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="append_to_notion_page",
+                exception=e,
+                integration="Notion",
+                context={"page_id": page_id}
+            )
 
     @tool
     async def update_notion_page_properties(page_id: str, properties: Dict[str, Any], account: Optional[str] = None) -> ToolExecutionResponse:
@@ -276,10 +359,19 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             logger.info(f"Update Notion page properties response: {response.result}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "notion_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error updating Notion page properties: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="update_notion_page_properties",
+                exception=e,
+                integration="Notion",
+                context={"page_id": page_id}
+            )
 
     @tool
     async def get_notion_page_content(page_id: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -297,10 +389,19 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
             logger.info(f"Get Notion page content response: {response.result}")
             return response
         except ValueError as e:
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            return ErrorResponseBuilder.missing_parameter(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "notion_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             logger.error(f"Error getting Notion page content: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="get_notion_page_content",
+                exception=e,
+                integration="Notion",
+                context={"page_id": page_id}
+            )
 
     return [
         list_notion_workspaces,

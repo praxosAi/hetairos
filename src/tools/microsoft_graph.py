@@ -2,6 +2,7 @@ from typing import List
 from langchain_core.tools import tool
 from src.integrations.microsoft.graph_client import MicrosoftGraphIntegration
 from src.tools.tool_types import ToolExecutionResponse
+from src.tools.error_helpers import ErrorResponseBuilder
 from src.utils.logging import setup_logger
 
 logger = setup_logger(__name__)
@@ -16,7 +17,12 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration) -> List:
             await outlook_client.send_email(recipient, subject, body)
             return ToolExecutionResponse(status="success", result="Email sent successfully.")
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="send_outlook_email",
+                exception=e,
+                integration="Microsoft Outlook",
+                context={"recipient": recipient}
+            )
     
     @tool 
     async def fetch_outlook_calendar_events(time_min: str, time_max: str) -> ToolExecutionResponse:
@@ -25,7 +31,11 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration) -> List:
             events = await outlook_client.get_calendar_events(time_min, time_max)
             return ToolExecutionResponse(status="success", result=events)
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="fetch_outlook_calendar_events",
+                exception=e,
+                integration="Microsoft Outlook"
+            )
 
     @tool
     async def get_outlook_emails_from_sender(sender_email: str, max_results: int = 10) -> ToolExecutionResponse:
@@ -34,7 +44,12 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration) -> List:
             emails = await outlook_client.get_emails_from_sender(sender_email, max_results)
             return ToolExecutionResponse(status="success", result=emails)
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message=f"An error occurred while fetching emails from {sender_email}.")
+            return ErrorResponseBuilder.from_exception(
+                operation="get_outlook_emails_from_sender",
+                exception=e,
+                integration="Microsoft Outlook",
+                context={"sender_email": sender_email}
+            )
 
     @tool
     async def find_outlook_contact_email(name: str) -> ToolExecutionResponse:
@@ -45,6 +60,11 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration) -> List:
                 return ToolExecutionResponse(status="success", result=f"No contacts found matching the name '{name}'.")
             return ToolExecutionResponse(status="success", result=contacts)
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message=f"An error occurred while searching for the contact '{name}'.")
+            return ErrorResponseBuilder.from_exception(
+                operation="find_outlook_contact_email",
+                exception=e,
+                integration="Microsoft Outlook",
+                context={"contact_name": name}
+            )
 
     return [send_outlook_email, fetch_outlook_calendar_events, get_outlook_emails_from_sender, find_outlook_contact_email]

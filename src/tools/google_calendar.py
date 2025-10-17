@@ -3,6 +3,7 @@ from typing import List, Optional
 from langchain_core.tools import tool
 from src.integrations.calendar.google_calendar import GoogleCalendarIntegration
 from src.tools.tool_types import ToolExecutionResponse
+from src.tools.error_helpers import ErrorResponseBuilder
 from src.utils.logging import setup_logger
 from src.utils.timezone_utils import nyc_to_utc,to_rfc3339
 logger = setup_logger(__name__)
@@ -37,7 +38,12 @@ def create_calendar_tools(gcal_integration: GoogleCalendarIntegration,user_time_
             return ToolExecutionResponse(status="success", result=events)
         except Exception as e:
             logger.error(f"Error fetching calendar events: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="There was an error fetching calendar events.")
+            return ErrorResponseBuilder.from_exception(
+                operation="get_calendar_events",
+                exception=e,
+                integration="Google Calendar",
+                context={"calendar_id": calendar_id, "account": account}
+            )
     
     @tool
     async def create_calendar_event(
@@ -73,7 +79,12 @@ def create_calendar_tools(gcal_integration: GoogleCalendarIntegration,user_time_
             return ToolExecutionResponse(status="success", result=created_event)
         except Exception as e:
             logger.error(f"Error creating calendar event: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e), user_message="There was an error creating the calendar event.")
+            return ErrorResponseBuilder.from_exception(
+                operation="create_calendar_event",
+                exception=e,
+                integration="Google Calendar",
+                context={"title": title, "calendar_id": calendar_id, "account": account}
+            )
     
     # --- Dynamically configure tool descriptions ---
     

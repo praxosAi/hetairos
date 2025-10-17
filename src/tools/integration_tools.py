@@ -2,6 +2,8 @@ import secrets
 from src.utils.logging.base_logger import setup_logger
 from typing import Dict, Optional
 from langchain_core.tools import tool
+from src.tools.tool_types import ToolExecutionResponse
+from src.tools.error_helpers import ErrorResponseBuilder
 
 from src.utils.redis_client import redis_client
 from src.config.settings import settings
@@ -44,28 +46,38 @@ def create_integration_tools(user_id: str) -> list:
         provider = INTEGRATION_NAME_TO_PROVIDER_MAP.get(integration_name)
         if not provider:
             logger.error(f"Invalid or unsupported integration_name: {integration_name}")
-            return None
+            return ErrorResponseBuilder.invalid_parameter(
+                operation="get_oauth_initiation_url",
+                param_name="integration_name",
+                param_value=integration_name,
+                expected_format=f"One of: {', '.join(INTEGRATION_NAME_TO_PROVIDER_MAP.keys())}"
+            )
 
         try:
             # Generate a secure, random token that is safe to include in a URL.
             login_token = secrets.token_urlsafe(32)
-            
+
             # Store the token in Redis with the user's ID. Set a 5-minute expiry
             # to limit the time window for authentication.
             await redis_client.set(f"login_token:{login_token}", str(user_id), ex=300)
-            
+
             # Construct the full URL pointing to the backend's messaging OAuth endpoint.
             oauth_url = (
                 f"{settings.PRAXOS_BASE_URL}/api/auth/initiate-messaging-oauth/{provider}?"
                 f"integration_name={integration_name}&login_token={login_token}&redirect_url=https://api.mypraxos.com/api/auth/messaging-oauth-callback"
             )
-            
+
             logger.info(f"Generated OAuth URL for user {user_id} and integration {integration_name}")
-            
-            return {"oauth_url": oauth_url}
+
+            return ToolExecutionResponse(status="success", result={"oauth_url": oauth_url})
 
         except Exception as e:
             logger.error(f"Failed to generate OAuth URL for user {user_id}: {e}", exc_info=True)
-            return None
+            return ErrorResponseBuilder.from_exception(
+                operation="get_oauth_initiation_url",
+                exception=e,
+                integration="OAuth",
+                context={"integration_name": integration_name}
+            )
 
     return [get_oauth_initiation_url]

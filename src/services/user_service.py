@@ -245,5 +245,89 @@ class UserService:
 
         return result.modified_count > 0
 
+    async def get_user_id_from_api_key(self, api_key: str) -> Optional[str]:
+        """
+        Validate API key and return associated user_id.
+        Checks both mcp_api_key and api_key fields.
+
+        Args:
+            api_key: The API key to validate
+
+        Returns:
+            user_id string if valid, None if invalid
+        """
+        try:
+            db = self._get_database()
+            users_collection = db.users
+
+            # Look up user by API key - try both fields
+            user = users_collection.find_one({
+                "$or": [
+                    {"mcp_api_key": api_key},
+                    {"api_key": api_key}
+                ]
+            })
+
+            if not user:
+                logger.warning("No user found for provided API key")
+                return None
+
+            user_id = str(user.get('_id'))
+            logger.info(f"Validated API key for user {user_id}")
+            return user_id
+
+        except Exception as e:
+            logger.error(f"Error validating API key: {e}", exc_info=True)
+            return None
+
+    async def initialize_user_knowledge_graph(self, user_id: str, user_email: str = None, user_data: Dict = None):
+        """
+        Initialize knowledge graph for a new user with their profile entity.
+        Should be called during user registration/onboarding.
+
+        Args:
+            user_id: User ID
+            user_email: User's email address
+            user_data: Optional additional user data (first_name, last_name, etc.)
+        """
+        try:
+            from src.core.praxos_client import PraxosClient
+
+            praxos_client = PraxosClient(
+                environment_name=f"user_{user_id}",
+                api_key=settings.PRAXOS_API_KEY
+            )
+
+            # Build user profile properties
+            properties = [
+                {"key": "user_id", "value": user_id, "type": "UniqueIdentifierType"},
+                {"key": "created_at", "value": datetime.now(timezone.utc).isoformat(), "type": "DateTimeType"}
+            ]
+
+            if user_email:
+                properties.append({"key": "email", "value": user_email, "type": "EmailType"})
+
+            if user_data:
+                if user_data.get('first_name'):
+                    properties.append({"key": "first_name", "value": user_data['first_name'], "type": "FirstNameType"})
+                if user_data.get('last_name'):
+                    properties.append({"key": "last_name", "value": user_data['last_name'], "type": "LastNameType"})
+                if user_data.get('phone_number'):
+                    properties.append({"key": "phone", "value": user_data['phone_number'], "type": "PhoneNumberType"})
+
+            # Create user profile entity in KG
+            result = await praxos_client.create_entity_in_kg(
+                entity_type="schema:Person",
+                label=f"User Profile",
+                properties=properties
+            )
+
+            logger.info(f"Successfully initialized KG for user {user_id}: {result.get('nodes_created', 0)} nodes created")
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to initialize KG for user {user_id}: {e}", exc_info=True)
+            return {"error": str(e)}
+
 # Global instance
 user_service = UserService()

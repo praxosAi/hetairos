@@ -155,7 +155,7 @@ class ExecutionWorker:
                 #     event_details=event["payload"]
                 # )
 
-            elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram",'imessage','triggered','slack','discord']:
+            elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram",'imessage','triggered','slack','discord','mcp']:
                 # --- Handle Agent Task ---
 
                 if source in ['scheduled', 'recurring']:

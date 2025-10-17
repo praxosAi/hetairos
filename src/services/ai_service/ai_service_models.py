@@ -16,7 +16,9 @@ class ToolFunctionID(str, Enum):
     GET_SCHEDULED_TASKS = "get_scheduled_tasks"
     CANCEL_SCHEDULED_TASK = "cancel_scheduled_task"
     UPDATE_SCHEDULED_TASK = "update_scheduled_task"
-
+    CREATE_IMAGE_TOOL = "create_image_tool"
+    CREATE_AUDIO_TOOL = "create_audio_tool"
+    CREATE_VIDEO_TOOL = "create_video_tool"
     # Basic tools
     GET_CURRENT_TIME = "get_current_time"
     GET_CURRENT_TASK_PLAN_AND_STEP = "get_current_task_plan_and_step"
@@ -85,6 +87,21 @@ class ToolFunctionID(str, Enum):
     LIST_TRELLO_CARDS = "list_trello_cards"
     CREATE_TRELLO_CARD = "create_trello_card"
     UPDATE_TRELLO_CARD = "update_trello_card"
+    MOVE_TRELLO_CARD = "move_trello_card"
+    ADD_TRELLO_COMMENT = "add_trello_comment"  # Corrected from add_comment_to_trello_card
+    SEARCH_TRELLO = "search_trello"
+
+    # Newly added to complete the list
+    LIST_TRELLO_ACCOUNTS = "list_trello_accounts"
+    GET_TRELLO_CARD = "get_trello_card"
+    CREATE_TRELLO_BOARD = "create_trello_board"
+    SHARE_TRELLO_BOARD = "share_trello_board"
+    CREATE_TRELLO_LIST = "create_trello_list"
+    CREATE_TRELLO_CHECKLIST = "create_trello_checklist"
+    GET_BOARD_MEMBERS = "get_board_members"
+    GET_CARD_MEMBERS = "get_card_members"
+    ASSIGN_MEMBER_TO_CARD = "assign_member_to_card"
+    UNASSIGN_MEMBER_FROM_CARD = "unassign_member_from_card"
 
     # Web tools
     READ_WEBPAGE_CONTENT = "read_webpage_content"

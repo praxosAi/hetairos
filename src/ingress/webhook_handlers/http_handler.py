@@ -284,7 +284,7 @@ async def handle_file_upload_request(
         payload["files"] = []
         for f in request_obj.files:
             logger.info(f"Processing uploaded file: {f.filename} of type {f.content_type} and size {f.size}")
-            blob_name = f"{user_id}/telegram/{f.filename.replace(' ', '_')}"
+            blob_name = f"{user_id}/imported_files/{f.filename.replace(' ', '_')}"
             blob_name = await upload_bytes_to_blob_storage(f.content, blob_name)
             doc_entry = {
                 'user_id': ObjectId(request_obj.user_id),

@@ -2,6 +2,7 @@ from typing import List, Dict, Optional
 from langchain_core.tools import tool
 from src.egress.service import egress_service
 from src.tools.tool_types import ToolExecutionResponse
+from src.tools.error_helpers import ErrorResponseBuilder
 
 def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str = None) -> List:
     """Creates tools for the bot to communicate with users on different platforms."""
@@ -36,7 +37,11 @@ def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str
             )
             return ToolExecutionResponse(status="success", result="Intermediate message sent successfully.")
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="send_intermediate_message",
+                exception=e,
+                integration="messaging_service"
+            )
 
     @tool
     async def reply_to_user_via_email(body: str) -> ToolExecutionResponse:
@@ -47,8 +52,12 @@ def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str
             await egress_service.send_response({"source": "email", "output_type": "email", "email_type": "reply","original_message": metadata.get("original_message")}, {"response": body})
             return ToolExecutionResponse(status="success", result="Email sent successfully.")
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
-        
+            return ErrorResponseBuilder.from_exception(
+                operation="reply_to_user_via_email",
+                exception=e,
+                integration="email_service"
+            )
+
     @tool
     async def send_new_email_as_praxos_bot(recipients: List[str], subject: str, body: str) -> ToolExecutionResponse:
         """
@@ -58,7 +67,12 @@ def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str
             await egress_service.send_response({"source": "email", "output_type": "email", "email_type": "new","original_message": metadata.get("original_message"),"new_email_message": {"recipients": recipients, "subject": subject, "body": body}}, {"response": body})
             return ToolExecutionResponse(status="success", result="Email sent successfully.")
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="send_new_email_as_praxos_bot",
+                exception=e,
+                integration="email_service",
+                context={"recipients": recipients}
+            )
 
     @tool
     async def report_bug_to_developers(bug_description: str, additional_context: Optional[str] = None) -> ToolExecutionResponse:
@@ -110,7 +124,11 @@ def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str
                 result=f"Bug report sent successfully to {', '.join(dev_emails)}."
             )
         except Exception as e:
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation="report_bug_to_developers",
+                exception=e,
+                integration="email_service"
+            )
     
     # @tool
     # async def send_whatsapp_message_as_praxos_bot(message: str) -> ToolExecutionResponse:

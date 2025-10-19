@@ -79,7 +79,7 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
         )
     """
 
-    @tool(description=tool_description)
+    @tool(name_or_callable=f"reply_to_user_on_{platform_lower}", description=tool_description)
     async def reply_to_user_on_platform(
         message: str,
         media_urls: Optional[List[str]] = None,
@@ -118,7 +118,13 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
 
             media_msg = f" with {len(file_links)} media attachment(s)" if file_links else ""
             logger.info(f"Successfully sent {platform} message to user{media_msg}")
-
+            if final_message:
+                logger.info(f"This was marked as the final message to be sent to the user on {platform}")
+                return ToolExecutionResponse(
+                    status="success",
+                    result=f"Final message sent successfully to user on {platform}{media_msg}",
+                    final_message=True,
+                )
             return ToolExecutionResponse(
                 status="success",
                 result=f"Message sent successfully to user on {platform}{media_msg}"
@@ -129,9 +135,7 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
             # Per user spec: throw exception (robust error handling system will catch it)
             raise Exception(f"Failed to send message to user on {platform}: {str(e)}")
 
-    # Dynamically set function name (description already set via @tool decorator)
-    reply_to_user_on_platform.__name__ = f"reply_to_user_on_{platform_lower}"
-
+    # Tool name and description already set via @tool decorator
     return reply_to_user_on_platform
 
 

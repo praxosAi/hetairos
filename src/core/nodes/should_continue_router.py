@@ -80,12 +80,7 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
         last_message = state['messages'][-1] if state['messages'] else None
         logger.info(f"last message: {json.dumps(last_message.to_json()) if last_message else 'None'}")
         # --- Early exit conditions and specific routing ---
-        if last_message is isinstance(last_message,AIMessage) and last_message.tool_calls:
-            for tool_call in last_message.tool_calls:
-                logger.info(f"tool call detected: {json.dumps(tool_call)}")
-                if 'reply_to_user_on_' in tool_call.get('name') and tool_call.get('args', {}).get('final_message', True):
-                    logger.info("Detected a final message sent to user; proceeding to finalize.")
-                    return Command(goto="finalize")
+
                 # Special case: Scheduled/recurring/triggered note detected
         if isinstance(last_message, AIMessage) and last_message.content and "NOTE: This command was previously" in last_message.content:
             logger.info("Detected scheduled/recurring/triggered note; proceeding to action.")
@@ -93,7 +88,17 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
 
         if isinstance(last_message, ToolMessage):
             # Check if the last tool call resulted in an error and if we can retry
+
             tool_response = last_message.content
+            logger.info(f"Last tool response: {tool_response}")
+            if isinstance(tool_response, ToolExecutionResponse) and tool_response.final_message:
+                logger.info("Tool execution provided a final message; proceeding to finalize.")
+                appended_msg = AIMessage(content=tool_response.final_message)
+                return Command(
+                    goto="finalize",
+                    update={"messages": state["messages"] + [appended_msg],'reply_sent': True}
+                )
+                
             if isinstance(tool_response, ToolExecutionResponse) and tool_response.status == "error":
                 error_details = tool_response.error_details
 
@@ -153,7 +158,7 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
                     logger.warning(f"Retrying without error_details. Attempt {next_count}/{config.MAX_TOOL_ITERS}")
 
                 return Command(
-                    goto="action",
+                    goto="agent",
                     update={"messages": state["messages"] + [AIMessage(content=retry_msg)], "tool_iter_counter": next_count},
                 )
 
@@ -178,7 +183,7 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
                     return Command(goto="finalize", update={"messages": state["messages"] + [appended_msg], "tool_iter_counter": next_count})
                 
                 logger.info("No tool call detected when one was expected; forcing action.")
-                return Command(goto="action", update={"messages": state["messages"] + [appended_msg], "tool_iter_counter": next_count})
+                return Command(goto="agent", update={"messages": state["messages"] + [appended_msg], "tool_iter_counter": next_count})
 
     except Exception as e:
         logger.error(f"Error during router evaluation: {e}", exc_info=True)
@@ -191,4 +196,4 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
         logger.info("No more tool calls in the last message; proceeding to finalize.")
         return Command(goto="finalize")
     
-    return Command(goto="action")
+    return Command(goto="agent")

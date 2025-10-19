@@ -275,7 +275,7 @@ class LangGraphAgentRunner:
             workflow.set_entry_point("agent")
             workflow.add_edge("agent", "router")
             workflow.add_edge("obtain_data", "action")  # obtain_data always drives a single tool turn
-            workflow.add_edge("action", "agent")
+            workflow.add_edge("action", "router")
             workflow.add_edge("finalize", END)
 
 

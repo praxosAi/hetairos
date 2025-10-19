@@ -35,7 +35,7 @@ def create_media_generation_tools(
     prefix = f"{user_id}/{source}/{conversation_id}/"
 
     @tool
-    async def generate_image(prompt: str) -> Dict[str, str]:
+    async def generate_image(prompt: str, media_ids: list = []) -> Dict[str, str]:
         """Generate an image using AI based on a text description.
 
         This tool uses Gemini 2.5 Flash to generate images from text descriptions.
@@ -45,7 +45,8 @@ def create_media_generation_tools(
             prompt: Detailed description of the image to generate. Be specific about
                    style, content, colors, composition, mood, etc. Better prompts
                    produce better images.
-
+            media_ids: Optional list of media IDs to reference for style or content.
+                     
         Returns:
             Dictionary with 'url', 'file_name', and 'file_type' keys
 
@@ -71,8 +72,9 @@ def create_media_generation_tools(
         """
         try:
             logger.info(f"Generating image with prompt: {prompt[:100]}...")
+            
 
-            image_url, file_name = await output_generator.generate_image(prompt, prefix)
+            image_url, file_name = await output_generator.generate_image(prompt, prefix,media_ids=media_ids)
 
             if not image_url:
                 raise Exception("Image generation returned no URL")

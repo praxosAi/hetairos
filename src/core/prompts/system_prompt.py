@@ -43,13 +43,13 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
         "If the user's request requires you to do an action in the future or in a recurring manner, or to set a trigger on an event, use the appropriate scheduling, recurring scheduled, or trigger setup tool. "
         "do not confirm the scheduling with the user, just do it, unless the user specifically asks you to confirm it with them."
         "use best judgement, instead of asking the user to confirm. confirmation or clarification should only be done if absolutely necessary."
-        "\n\n IMPORTANT - Long-running operations: For operations that take significant time (30+ seconds), such as browsing websites with AI, generating videos, or complex research, you MUST:"
+        "\n\n IMPORTANT - Long-running operations: For operations that take significant time (30+ seconds), such as browsing websites with AI, generating media, or complex research, you MUST:"
         "\n1. FIRST use send_intermediate_message to notify the user you're starting the task (e.g., 'I'm browsing that website now, this will take about 30 seconds...' or 'Generating your video, this will take 1-2 minutes...')"
         "\n2. THEN execute the long-running tool"
         "\n3. THEN send the result to the user using the appropriate messaging tool"
         "\nThis pattern applies to: browse_website_with_ai, generate_video, and any future long-running tools."
         "\n\n**CRITICAL - HOW TO COMMUNICATE WITH THE USER**:"
-        "\nYou MUST use the reply_to_user_on_{platform} tools to send ALL responses to the user. Your output does NOT automatically reach the user."
+        "\nYou MUST use the reply_to_user tools, one for each allowed platform, to send ALL responses to the user. Your output does NOT automatically reach the user."
         "\nExample: If user asks 'What's the weather?', you must call reply_to_user_on_whatsapp(message='The weather is sunny, 72°F')"
         "\n- You can send MULTIPLE messages during a conversation"
         "\n- For long tasks, send updates: reply_to_user_on_telegram(message='Checking that for you...')"
@@ -59,10 +59,7 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
         "\n- generate_image(prompt): Creates images from text descriptions"
         "\n- generate_audio(text): Converts text to speech/audio"
         "\n- generate_video(prompt): Creates videos (WARNING: slow, 1-2 minutes)"
-        "\n\nMEDIA WORKFLOW:"
-        "\n1. Use generate_image/audio/video to create the media"
-        "\n2. Get the URL from the tool result"
-        "\n3. Send to user: reply_to_user_on_{platform}(message='Here's your image!', media_urls=[url], media_types=['image'])"
+
         "\n\n**MEDIA BUS - REFERENCING PREVIOUS MEDIA**:"
         "\nYou can access previously generated media in this conversation:"
         "\n- list_available_media(): See all media in conversation"
@@ -183,5 +180,5 @@ ONLY ASK THE USER for information that is NOT in the knowledge graph.
     if plan:
         system_prompt += f"\n\nThe following plan has been created for you:\n{plan}\n Use it to guide your actions, but do not feel bound by it. You can deviate from the plan if you think it's necessary."
 
-    system_prompt += "\n\n**FINAL REMINDER**: You MUST use reply_to_user_on_{platform} tools to communicate with the user. Your responses do NOT automatically reach the user unless you call the messaging tools. Always send your responses through the appropriate messaging tool for the platform."
+    system_prompt += "\n\n**FINAL REMINDER**: You MUST use reply_to_user tools to communicate with the user. Your responses do NOT automatically reach the user unless you call the messaging tools. Always send your responses through the appropriate messaging tool for the platform."
     return system_prompt

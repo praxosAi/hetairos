@@ -97,7 +97,7 @@ class ToolExecutionResponse(BaseModel):
 
     # Private field for backwards compatibility
     _system_error: Optional[str] = None
-
+    final_message: Optional[bool] = False
     @property
     def system_error(self) -> Optional[str]:
         """Backwards compatible system_error property"""

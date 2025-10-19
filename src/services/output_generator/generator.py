@@ -14,7 +14,7 @@ class OutputGenerator:
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
-    async def generate_image(self, prompt: str, prefix: str) -> str:
+    async def generate_image(self, prompt: str, prefix: str, media_ids: list=[]) -> str:
         """
         Generates an image based on a text prompt using the Gemini API.
         """

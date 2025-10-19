@@ -1,3 +1,4 @@
+import json
 from typing import Literal
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.types import Command
@@ -77,9 +78,15 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
         # Determine new messages by slicing based on the initial history length from config
         new_messages = state['messages'][config.initial_state_len:]
         last_message = state['messages'][-1] if state['messages'] else None
-
+        logger.info(f"last message: {json.dumps(last_message.to_json()) if last_message else 'None'}")
         # --- Early exit conditions and specific routing ---
-
+        if last_message is isinstance(last_message,AIMessage) and last_message.tool_calls:
+            for tool_call in last_message.tool_calls:
+                logger.info(f"tool call detected: {json.dumps(tool_call)}")
+                if 'reply_to_user_on_' in tool_call.get('name') and tool_call.get('args', {}).get('final_message', True):
+                    logger.info("Detected a final message sent to user; proceeding to finalize.")
+                    return Command(goto="finalize")
+                # Special case: Scheduled/recurring/triggered note detected
         if isinstance(last_message, AIMessage) and last_message.content and "NOTE: This command was previously" in last_message.content:
             logger.info("Detected scheduled/recurring/triggered note; proceeding to action.")
             return Command(goto="action")

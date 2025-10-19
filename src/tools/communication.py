@@ -57,7 +57,7 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
         message: The text message to send to the user
         media_urls: Optional list of media URLs to attach (from generate_image/generate_audio/generate_video)
         media_types: Optional list of media types corresponding to URLs (image, audio, video, document)
-
+        final_message: Whether this is the final message in the conversation (default True). if you think you will send more messages later, set to False.
     Returns:
         Success confirmation or raises exception on failure
 
@@ -83,7 +83,8 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
     async def reply_to_user_on_platform(
         message: str,
         media_urls: Optional[List[str]] = None,
-        media_types: Optional[List[str]] = None
+        media_types: Optional[List[str]] = None,
+        final_message: bool = True
     ) -> ToolExecutionResponse:
         try:
             # Build file_links from media

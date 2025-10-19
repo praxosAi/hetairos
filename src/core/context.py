@@ -7,8 +7,8 @@ class UserContext:
     """Holds all necessary information for the agent to operate on behalf of a user."""
     user_id: str
     user_record: Dict[str, Any]
-    authenticated_clients: Dict[str, Any] = field(default_factory=dict)
-    available_integrations: List[str] = field(default_factory=list)
+    # authenticated_clients: Dict[str, Any] = field(default_factory=dict)
+    # available_integrations: List[str] = field(default_factory=list)
 
 async def create_user_context(user_id: str) -> UserContext:
     """
@@ -23,14 +23,18 @@ async def create_user_context(user_id: str) -> UserContext:
         return None
 
     # Get all authenticated clients (e.g., Google Calendar service, Gmail service)
-    auth_clients = await integration_service.get_authenticated_clients(user_id)
+    # auth_clients = await integration_service.get_authenticated_clients(user_id)
     
-    # Get the names of the available integrations
-    avail_integrations = list(auth_clients.keys())
-    
+    # # Get the names of the available integrations
+    # avail_integrations = list(auth_clients.keys())
+    # available_integrations_raw = await integration_service.get_user_integrations(user_id)
+    # available_integrations = []
+    # for integration in available_integrations_raw:
+    #     if integration.get('name'):
+    #         available_integrations.append(integration.get('name'))
     return UserContext(
         user_id=user_id,
         user_record=user_record,
-        authenticated_clients=auth_clients,
-        available_integrations=avail_integrations
+        # authenticated_clients=auth_clients,
+        # available_integrations=available_integrations
     )

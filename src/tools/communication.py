@@ -3,6 +3,136 @@ from langchain_core.tools import tool
 from src.egress.service import egress_service
 from src.tools.tool_types import ToolExecutionResponse
 from src.tools.error_helpers import ErrorResponseBuilder
+from src.utils.logging import setup_logger
+
+logger = setup_logger(__name__)
+
+def create_platform_messaging_tools(
+    source: str,
+    user_id: str,
+    metadata: Optional[Dict] = None,
+    available_platforms: Optional[List[str]] = None
+) -> List:
+    """
+    Create platform-specific messaging tools for communicating with the user.
+
+    Args:
+        source: The source platform (whatsapp, telegram, imessage, etc.)
+        user_id: The user's ID
+        metadata: Event metadata for routing
+        available_platforms: List of platforms the user has connected (optional)
+
+    Returns:
+        List of messaging tools including source platform and optionally others
+    """
+    tools = []
+
+    # Always create tool for source platform
+    source_tool = _create_reply_tool(source, user_id, metadata)
+    tools.append(source_tool)
+
+    # Optionally create tools for other connected platforms
+    if available_platforms:
+        for platform in available_platforms:
+            if platform.lower() != source.lower() and platform.lower() not in ['email']:
+                platform_tool = _create_reply_tool(platform.lower(), user_id, metadata)
+                tools.append(platform_tool)
+
+    logger.info(f"Created {len(tools)} platform messaging tools for source={source}")
+    return tools
+
+
+def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = None):
+    """Factory to create a platform-specific reply tool."""
+
+    platform_lower = platform.lower()
+
+    # Build description outside function to avoid f-string docstring issues
+    tool_description = f"""Send a {platform} message to the user.
+
+    This tool sends messages directly to the user's {platform} account. Use this to communicate
+    ALL responses to the user. You can send multiple messages during a conversation.
+
+    Args:
+        message: The text message to send to the user
+        media_urls: Optional list of media URLs to attach (from generate_image/generate_audio/generate_video)
+        media_types: Optional list of media types corresponding to URLs (image, audio, video, document)
+
+    Returns:
+        Success confirmation or raises exception on failure
+
+    Important:
+        - For media, first generate it using generate_image/generate_audio/generate_video tools
+        - Then pass the returned URLs to this tool via media_urls and media_types parameters
+        - You can send text-only messages or messages with media attachments
+        - This is NOT optional - you MUST use this tool to communicate responses to the user
+
+    Examples:
+        reply_to_user_on_{platform_lower}(message="Hello! How can I help you?")
+
+        # With media:
+        result = generate_image("sunset over mountains")
+        reply_to_user_on_{platform_lower}(
+            message="Here's your image!",
+            media_urls=[result['url']],
+            media_types=['image']
+        )
+    """
+
+    @tool(description=tool_description)
+    async def reply_to_user_on_platform(
+        message: str,
+        media_urls: Optional[List[str]] = None,
+        media_types: Optional[List[str]] = None
+    ) -> ToolExecutionResponse:
+        try:
+            # Build file_links from media
+            file_links = []
+            if media_urls and media_types:
+                if len(media_urls) != len(media_types):
+                    raise ValueError(f"media_urls and media_types must have same length (got {len(media_urls)} and {len(media_types)})")
+
+                for url, media_type in zip(media_urls, media_types):
+                    file_name = url.split('/')[-1] if '/' in url else "media_file"
+                    file_links.append({
+                        "url": url,
+                        "file_type": media_type,
+                        "file_name": file_name
+                    })
+                logger.info(f"Prepared {len(file_links)} media attachments for {platform}")
+
+            # Build event structure for egress
+            event = {
+                "source": metadata.get("source") if metadata else platform_lower,
+                "output_type": platform_lower,
+                "user_id": str(user_id),
+                "metadata": metadata or {}
+            }
+
+            # Send via egress service
+            await egress_service.send_response(
+                event=event,
+                result={"response": message, "file_links": file_links}
+            )
+
+            media_msg = f" with {len(file_links)} media attachment(s)" if file_links else ""
+            logger.info(f"Successfully sent {platform} message to user{media_msg}")
+
+            return ToolExecutionResponse(
+                status="success",
+                result=f"Message sent successfully to user on {platform}{media_msg}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to send {platform} message: {e}", exc_info=True)
+            # Per user spec: throw exception (robust error handling system will catch it)
+            raise Exception(f"Failed to send message to user on {platform}: {str(e)}")
+
+    # Dynamically set function name (description already set via @tool decorator)
+    reply_to_user_on_platform.__name__ = f"reply_to_user_on_{platform_lower}"
+
+    return reply_to_user_on_platform
+
 
 def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str = None) -> List:
     """Creates tools for the bot to communicate with users on different platforms."""

@@ -6,13 +6,51 @@ from src.core.models.agent_runner_models import AgentState
 from src.tools.tool_types import ToolExecutionResponse
 from src.utils.logging import setup_logger
 import json
-logger = setup_logger('should_continue_router')
+logger = setup_logger('generate_final_response')
 
 
 async def generate_final_response(state: AgentState):
-    final_message = state['messages'][-2:] # Last message should be AI's final response
+    """Generate final response with fallback logic for cases where agent didn't use messaging tools."""
 
     config = state['config']
+    source = config.source
+    source_to_use = source
+    system_prompt = config.system_prompt
+    input_text = config.input_text
+
+    # Check if agent used messaging tools (reply_to_user_on_{platform})
+    messaging_tool_calls = []
+    for msg in state['messages']:
+        if isinstance(msg, AIMessage) and hasattr(msg, 'tool_calls') and msg.tool_calls:
+            for tool_call in msg.tool_calls:
+                tool_name = tool_call.get('name', '')
+                if tool_name.startswith('reply_to_user_on_'):
+                    messaging_tool_calls.append(tool_name)
+
+    # If agent sent messages via tools, skip fallback
+    if messaging_tool_calls:
+        logger.info(f"Agent sent {len(messaging_tool_calls)} message(s) via tools: {messaging_tool_calls}")
+        logger.info("Skipping fallback - agent handled messaging directly")
+
+        # Create minimal response (no message to send)
+        from src.core.models.agent_runner_models import AgentFinalResponse
+        return {
+            "final_response": AgentFinalResponse(
+                response="",  # Empty - agent already sent messages
+                execution_notes=f"Agent sent {len(messaging_tool_calls)} message(s) via communication tools: {', '.join(messaging_tool_calls)}",
+                delivery_platform=source_to_use,
+                output_modality="text",
+                generation_instructions=None,
+                file_links=[]
+            ),
+            "reply_sent": True,
+            "reply_count": len(messaging_tool_calls)
+        }
+
+    # Agent DID NOT use messaging tools - use fallback system
+    logger.warning("Agent did not use messaging tools - using fallback response generation")
+
+    final_message = state['messages'][-2:] # Last message should be AI's final response
     final_message_history = []
     ### iterate in reverse until the first HumanMessage
     for msg in reversed(state['messages']):
@@ -21,13 +59,7 @@ async def generate_final_response(state: AgentState):
             final_message_history.insert(0,msg)
             break
 
-
     # logger.info(f"final_message {str(state['messages'][-1])}")
-    source = config.source
-    source_to_use = source
-    system_prompt = config.system_prompt
-    input_text = config.input_text
-    # logger.info(f"Final agent message before formatting: {str(final_message)}")
     logger.info(f"Source channel: {source}, metadata: {state['metadata']}")
     if source in ['scheduled','recurring'] and state.get('metadata') and state['metadata'].get('output_type'):
         source_to_use = state['metadata']['output_type']
@@ -46,4 +78,11 @@ async def generate_final_response(state: AgentState):
     msgs = [SystemMessage(content=prompt)] + final_message_history
 
     response = await config.structured_llm.ainvoke(msgs)
-    return {"final_response": response}
+
+    # Mark that fallback was used (reply_sent remains False)
+    logger.info("Generated fallback response - will be sent via egress service")
+    return {
+        "final_response": response,
+        "reply_sent": False,  # Fallback used, not direct tool call
+        "reply_count": 0
+    }

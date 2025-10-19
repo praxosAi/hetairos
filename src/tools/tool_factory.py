@@ -23,7 +23,9 @@ from src.tools.microsoft_graph import create_outlook_tools
 from src.tools.notion import create_notion_tools
 from src.tools.trello import create_trello_tools
 from src.tools.praxos import create_praxos_memory_tool
-from src.tools.communication import create_bot_communication_tools
+from src.tools.communication import create_bot_communication_tools, create_platform_messaging_tools
+from src.tools.media_generation import create_media_generation_tools
+from src.tools.media_bus_tools import create_media_bus_tools
 from src.tools.scheduling import create_scheduling_tools
 from src.tools.basic import create_basic_tools
 from src.tools.web import create_web_tools
@@ -82,12 +84,90 @@ class AgentToolsFactory:
             if required_tool_ids is None:
                 return True
             return any(tool_name in required_tool_ids for tool_name in tool_names)
-        # Communication tools
+
+        # Get source from metadata for platform messaging tools
+        source = metadata.get('source', 'websocket') if metadata else 'websocket'
+        conversation_id = str(metadata.get('conversation_id', '')) if metadata else ''
+
+        # Platform Messaging Tools - Create based on planning + source
+        # Per implementation plan: Always include source, plus any requested by planner
+        try:
+            # Find platform messaging tools requested by planner
+            requested_platform_tools = []
+            if required_tool_ids:
+                requested_platform_tools = [
+                    tid for tid in required_tool_ids
+                    if tid.startswith('reply_to_user_on_')
+                ]
+
+            # Extract platform names from tool IDs
+            requested_platforms = [
+                tid.replace('reply_to_user_on_', '')
+                for tid in requested_platform_tools
+            ]
+
+            # Always ensure source platform is included
+            if source not in requested_platforms:
+                requested_platforms.insert(0, source)
+
+            logger.info(f"Creating platform messaging tools for: {requested_platforms}")
+
+            # Create a tool for each requested platform
+            for platform in requested_platforms:
+                try:
+                    platform_tool = create_platform_messaging_tools(
+                        source=platform,  # Use the requested platform as "source" for tool creation
+                        user_id=user_id,
+                        metadata=metadata,
+                        available_platforms=None
+                    )
+                    tools.extend(platform_tool)
+                except Exception as e:
+                    logger.warning(f"Could not create tool for platform '{platform}': {e}")
+                    # Continue - user might not have access to this platform
+
+            logger.info(f"Added {len([t for t in tools if 'reply_to_user_on_' in getattr(t, 'name', '')])} platform messaging tools")
+        except Exception as e:
+            logger.error(f"Error creating platform messaging tools: {e}", exc_info=True)
+
+        # Legacy Communication tools (intermediate messages, email, etc.)
         if needs_category(['send_intermediate_message', 'reply_to_user_via_email', 'send_new_email_as_praxos_bot', 'report_bug_to_developers']):
             try:
                 tools.extend(create_bot_communication_tools(metadata, user_id))
             except Exception as e:
                 logger.error(f"Error creating bot communication tools: {e}", exc_info=True)
+
+        # Media Generation Tools - Conditionally included based on planning
+        # Per implementation plan: Planning decides if these are needed
+        if needs_category(['generate_image', 'generate_audio', 'generate_video']):
+            try:
+                if conversation_id:  # Need conversation_id for blob storage organization
+                    media_tools = create_media_generation_tools(
+                        user_id=user_id,
+                        source=source,
+                        conversation_id=conversation_id
+                    )
+                    tools.extend(media_tools)
+                    logger.info(f"Added media generation tools for user={user_id}")
+                else:
+                    logger.warning("Conversation ID not available, skipping media generation tools")
+            except Exception as e:
+                logger.error(f"Error creating media generation tools: {e}", exc_info=True)
+
+        # Media Bus Tools - ALWAYS included (per implementation plan)
+        # Allows agent to reference and build on media
+        if conversation_id:  # Only add if we have a conversation context
+            try:
+                media_bus_tools = create_media_bus_tools(
+                    conversation_id=conversation_id,
+                    user_id=user_id
+                )
+                tools.extend(media_bus_tools)
+                logger.info(f"Added media bus tools for conversation={conversation_id}")
+            except Exception as e:
+                logger.error(f"Error creating media bus tools: {e}", exc_info=True)
+        else:
+            logger.debug("Conversation ID not available, skipping media bus tools")
 
         # Scheduling tools
         if needs_category(['schedule_task', 'create_recurring_future_task', 'get_scheduled_tasks', 'cancel_scheduled_task', 'update_scheduled_task']):

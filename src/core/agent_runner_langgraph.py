@@ -191,7 +191,7 @@ class LangGraphAgentRunner:
             except Exception as e:
                 logger.error(f"Error during granular planning call: {e}", exc_info=True)
                 required_tool_ids = None  # Fallback to loading all tools
-
+             
             tools = await self.tools_factory.create_tools(
                 user_context,
                 metadata,
@@ -230,7 +230,7 @@ class LangGraphAgentRunner:
             # Determine minimal_tools correctly based on planning outcome
             # If planning indicates tooling_need=True (conversational=False) or specific tools were required, it's not minimal
             minimal_tools = True
-            if required_tool_ids is not None and len(required_tool_ids) > 0:
+            if required_tool_ids and len(required_tool_ids) > 0:
                 minimal_tools = False
             # Also check if planning indicated this is a command (not conversational)
             # even if no tools were specified after filtering (e.g., send_intermediate_message was removed)
@@ -242,6 +242,9 @@ class LangGraphAgentRunner:
             if minimal_tools and conversational:
                 ### this is a basic query
                 self.llm = self.fast_llm
+
+            if required_tool_ids is None and conversational:
+                required_tool_ids = ['reply_to_user_on_' + source.lower()]  # Auto-insert platform messaging tool
             llm_with_tools = self.llm.bind_tools(tools)
             tool_descriptions = ""
             for i, tool in enumerate(tools):
@@ -253,12 +256,12 @@ class LangGraphAgentRunner:
 
             # Add resolution guidance to system prompt if available
             resolution_guidance = ""
-            if resolution_context:
-                resolution_guidance = "\n\n**KNOWLEDGE GRAPH PARAMETER RESOLUTION:**\n"
-                resolution_guidance += "Some tool parameters can be auto-filled from the knowledge graph:\n\n"
-                for tool_name, tool_resolution in resolution_context.items():
-                    if tool_resolution["analysis"]["kg_resolvable_count"] > 0:
-                        resolution_guidance += tool_resolution["guidance"] + "\n"
+            # if resolution_context:
+            #     resolution_guidance = "\n\n**KNOWLEDGE GRAPH PARAMETER RESOLUTION:**\n"
+            #     resolution_guidance += "Some tool parameters can be auto-filled from the knowledge graph:\n\n"
+            #     for tool_name, tool_resolution in resolution_context.items():
+            #         if tool_resolution["analysis"]["kg_resolvable_count"] > 0:
+            #             resolution_guidance += tool_resolution["guidance"] + "\n"
 
             system_prompt = create_system_prompt(user_context, source, metadata, tool_descriptions, plan, resolution_guidance)
 
@@ -300,6 +303,8 @@ class LangGraphAgentRunner:
                 "data_iter_counter": 0,
                 "param_probe_done": False,
                 "config": graph_config,
+                "reply_sent": False,  # Track if agent used messaging tools
+                "reply_count": 0,  # Track number of messages sent
             }
             # --- END Graph Definition ---
 
@@ -348,3 +353,12 @@ class LangGraphAgentRunner:
                 {"execution_id": execution_id},
                 {"$set": execution_record}
             )
+
+            # Clean up media bus for this conversation
+            try:
+                from src.core.media_bus import media_bus
+                cleared_count = media_bus.clear_conversation(conversation_id)
+                if cleared_count > 0:
+                    logger.info(f"Cleared {cleared_count} media references from bus for conversation {conversation_id}")
+            except Exception as e:
+                logger.error(f"Error clearing media bus: {e}", exc_info=True)

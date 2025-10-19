@@ -1,5 +1,13 @@
 
-### NOTE: WE ARE NOT USING THIS IN THIS FORM, INSTEAD USING A CACHED TOOL. THIS IMPROVES LATENCY. NOTE THAT EDITTING THIS DOES EXACTLY NOTHING, but you may cache it for yourself and change the cache name in the adjacent caches.py file. 
+### NOTE: WE ARE NOT USING THIS IN THIS FORM, INSTEAD USING A CACHED TOOL. THIS IMPROVES LATENCY. NOTE THAT EDITTING THIS DOES EXACTLY NOTHING, but you may cache it for yourself and change the cache name in the adjacent caches.py file.
+### IMPORTANT UPDATE (Phase 1-3 Implementation):
+### This file has been updated with new tools:
+###  - Platform messaging tools (reply_to_user_on_whatsapp, reply_to_user_on_telegram, reply_to_user_on_imessage)
+###  - Media generation tools (generate_image, generate_audio, generate_video)
+###  - Media bus tools (list_available_media, get_media_by_id, get_recent_images)
+### THE GOOGLE GEMINI CACHE MUST BE REGENERATED FOR THESE CHANGES TO TAKE EFFECT!
+### After regeneration, update the cache ID in caches.py: PLANNING_CACHE_NAME
+
 """
 Granular tooling capabilities with specific function IDs and descriptions.
 Used by the granular planning agent to select precise tools needed for each task.
@@ -13,7 +21,125 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 
 
 **IMPORTANT**: we do not consider capabilities such as "Transcribing the contents" of an image, 'Translating the contents' of an email, 'transcribing an audio file', or 'summarizing a document' as separate tools. These are capabilities that are part of the core AI functionality, and do not require a separate tool. The tools listed here are for external integrations, or for specific actions that require a distinct function call. Such capabilities can be handled by the AI directly, without needing to invoke a separate tool.
-**IMPORTANT**: Generating a video, image or audio is not a tool functionality. the model simply has to return the correct result. if this is requested, you do not need to select a tool. the system will handle it automatically. 
+
+**IMPORTANT - MEDIA GENERATION**: Generating videos, images, or audio IS now available as explicit tool functionality. When the user requests media generation, you MUST include the appropriate generation tools (generate_image, generate_audio, generate_video) in your planning. The agent will use these tools to create media and send it to the user.
+
+**IMPORTANT - MESSAGING**: The agent now has direct messaging tools for each platform (reply_to_user_on_whatsapp, reply_to_user_on_telegram, etc.). These tools are ALWAYS available for the source platform and allow the agent to send messages directly during execution. The agent MUST use these tools to communicate responses to the user.
+
+---
+
+### Platform Messaging Tools
+
+**reply_to_user_on_whatsapp**
+- Send WhatsApp messages to the user with optional media attachments
+- Args: message (str), media_urls (optional list), media_types (optional list)
+- Use this for responses to users on WhatsApp
+- Can send multiple messages during execution
+- Supports text-only or text with media (images, audio, video, documents)
+
+**reply_to_user_on_telegram**
+- Send Telegram messages to the user with optional media attachments
+- Args: message (str), media_urls (optional list), media_types (optional list)
+- Use this for responses to users on Telegram
+- Can send multiple messages during execution
+- Supports text-only or text with media
+
+**reply_to_user_on_imessage**
+- Send iMessages to the user with optional media attachments
+- Args: message (str), media_urls (optional list), media_types (optional list)
+- Use this for responses to users via iMessage
+- Can send multiple messages during execution
+- Supports text-only or text with media
+
+**reply_to_user_on_discord**
+- Send Discord messages to the user with optional media attachments
+- Args: message (str), media_urls (optional list), media_types (optional list)
+- Use this for responses to users on Discord
+- Can send multiple messages during execution
+- Supports text-only or text with media
+
+**reply_to_user_on_slack**
+- Send Slack messages to the user with optional media attachments
+- Args: message (str), media_urls (optional list), media_types (optional list)
+- Use this for responses to users on Slack
+- Can send multiple messages during execution
+- Supports text-only or text with media
+
+**reply_to_user_on_websocket**
+- Send messages to the user via websocket connection
+- Args: message (str), media_urls (optional list), media_types (optional list)
+- Use this for responses to users connected via websocket
+- Can send multiple messages during execution
+- Supports text-only or text with media
+
+**NOTE**: These platform messaging tools are always available. The system will automatically filter out tools for platforms the user cannot access. Always include the appropriate platform tool for the user's source channel in your required_tools list.
+
+---
+
+### Media Generation Tools
+
+**generate_image**
+- Generates images from text descriptions using Gemini 2.5 Flash
+- Args: prompt (detailed description)
+- Use when: User requests image creation or visual content
+- Returns: URL, file_name, file_type, media_id
+- Generated image is automatically added to media bus
+- Example: "Generate an image of a sunset over mountains"
+- Tips: Be specific about style, colors, composition, mood
+
+**generate_audio**
+- Generates audio/speech from text using Gemini 2.5 Flash TTS
+- Args: text (content to convert), voice (optional, reserved for future)
+- Use when: User requests audio/voice output or TTS
+- Returns: URL, file_name, file_type, media_id
+- Audio format automatically adapted for platform (CAF for iMessage, OGG for others)
+- Generated audio is automatically added to media bus
+
+**generate_video**
+- Generates videos from text descriptions using Veo 3.0
+- Args: prompt (detailed scene description)
+- Use when: User requests video generation
+- WARNING: SLOW operation (1-2 minutes)
+- ALWAYS use send_intermediate_message BEFORE calling this tool
+- Returns: URL, file_name, file_type, media_id
+- Generated video is automatically added to media bus
+- Example: "Generate a video of a time-lapse flower blooming"
+
+**MEDIA WORKFLOW**:
+1. Use generate_image/audio/video to create media
+2. Get URL from tool result
+3. Use reply_to_user_on_platform with media_urls and media_types to send to user
+4. Media is also added to media bus for future reference
+
+---
+
+### Media Bus Tools (ALWAYS AVAILABLE)
+
+**list_available_media**
+- Lists media generated or received during current conversation
+- Args: media_type (optional: image/audio/video/document), limit (default 10)
+- Use when: Need to see what media exists in conversation
+- Returns: Formatted list with IDs, descriptions, file names, URLs
+- Helps agent reference previous media
+
+**get_media_by_id**
+- Retrieves specific media by ID and loads into conversation context
+- Args: media_id (from list_available_media)
+- Use when: Need to reference or analyze previously generated media
+- For images: Loads into visual context so agent can "see" it
+- For audio/video: Provides description
+- Returns: URL, file_name, file_type, description for sending to user
+- IMPORTANT: This allows agent to see media and create variations
+
+**get_recent_images**
+- Quick access to recently generated/uploaded images
+- Args: limit (default 5)
+- Use when: Need to reference recent images without full list
+- Returns: Image IDs, descriptions, URLs
+- Useful for creating variations or referencing previous generations
+
+**NOTE**: Media bus tools are ALWAYS included automatically. Do not explicitly list them in required_tools.
+
 ---
 
 ### Communication Tools
@@ -637,18 +763,33 @@ Generally, the idea is : If the missing information for this command is somethin
 When planning, consider:
 
 1. **Be Minimal**: Only include tools you will ACTUALLY use
-2. **Check Dependencies**:
+2. **Platform Messaging Tools**:
+   - ALWAYS include the messaging tool matching the user's source platform, for sending a final response.
+   - Available tools: reply_to_user_on_whatsapp, reply_to_user_on_telegram, reply_to_user_on_imessage, reply_to_user_on_discord, reply_to_user_on_slack, reply_to_user_on_websocket
+   - System will filter out tools for platforms user cannot access
+   - These are REQUIRED for agent to send responses to the user. 
+3. **Media Bus Tools**:
+   - These are always available, do NOT list in required_tools
+   - Tools: list_available_media, get_media_by_id, get_recent_images
+4. **Media Generation Workflow**:
+   - User requests image? → Include `generate_image` + appropriate platform messaging tool
+   - User requests audio/voice? → Include `generate_audio` + appropriate platform messaging tool
+   - User requests video? → Include  `send_intermediate_message` + `generate_video` + appropriate platform messaging tool
+   - Agent will use these tools, get URLs, then send via reply_to_user_on_[platform]
+4. **Check Dependencies**:
    - Need to send email from Gmail? Include both `find_contact_email` (if name provided) and `send_email`
-   - Using `browse_website_with_ai`? Also include `send_intermediate_message`
+   - Using `browse_website_with_ai`? First include `send_intermediate_message`
+   - Generating video? First include `send_intermediate_message` (videos are slow)
    - Need to schedule with specific platform? Include `schedule_task`
-3. **Integration Requirements**:
+5. **Integration Requirements**:
    - Gmail/Calendar/Drive tools require Google integration
    - Outlook tools require Microsoft integration
    - Notion/Trello/Dropbox tools require respective integrations
    - Use `get_oauth_initiation_url` if integration is missing
-4. **Long Operations** (30+ seconds):
-   - `browse_website_with_ai` → ALWAYS include `send_intermediate_message`
-   - `identify_product_in_image` → ALWAYS include `send_intermediate_message`
+6. **Long Operations** (30+ seconds):
+   - `browse_website_with_ai` → ALWAYS include `send_intermediate_message` as a first step.
+   - `identify_product_in_image` → ALWAYS include `send_intermediate_message` as a first step.
+   - `generate_video` → ALWAYS include `send_intermediate_message` as a first step.
 
 ## Task Type Examples
 
@@ -657,18 +798,30 @@ When planning, consider:
 - "Thanks!"
 - "What's 2+2?"
 - "Tell me about Paris"
+- NOTE: Platform messaging tools are auto-included but agent uses them for responses
 
 **Simple Searches (1-2 tools)**:
 - "Find emails from John" → [`search_gmail`]
 - "What's the weather?" → [`google_search`]
 - "When's my next meeting?" → [`get_calendar_events`]
 
+**Media Generation Tasks**:
+- message on whatsapp, "Generate an image of a sunset" → [`send_intermediate_message`, `generate_image`, `reply_to_user_on_whatsapp`]
+- message on telegram: "Create an audio version of this text" → [`send_intermediate_message`, `generate_audio`, `reply_to_user_on_telegram`]
+- message on imessage: "Generate a video of waves" → [`send_intermediate_message`, `generate_video`, `reply_to_user_on_imessage`]
+- Message on websocket: "Generate 3 different landscape images" → [`send_intermediate_message`, `generate_image`, `generate_image`, `generate_image`, `reply_to_user_on_websocket`]
+- "Create an image like the last one but darker" → [`send_intermediate_message`, `generate_image`, `reply_to_user_on_websocket`] (agent can reference via media bus)
+
 **Multi-step Tasks (multiple tools)**:
 - "Schedule meeting with Sarah tomorrow at 3pm" → [`find_contact_email`, `create_calendar_event`]
 - "Email my boss about the report" → [`find_contact_email`, `send_email`]
 - "Browse this website and email me the pricing" → [`send_intermediate_message`, `browse_website_with_ai`, `send_email`]
+- "Generate an infographic and email it to my team" → [`send_intermediate_message`, `generate_image`, `send_email`]
 
 **Remember**: Only include tools that are NECESSARY. Don't include tools "just in case."
+- Platform messaging tools: Automatically included (don't list)
+- Media bus tools: Automatically included (don't list)
+- Media generation: Include when user requests it
 
 
 NOTES:

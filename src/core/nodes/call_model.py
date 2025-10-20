@@ -10,7 +10,10 @@ logger = setup_logger('call_model')
 async def call_model(state: AgentState):
     """Invokes the LLM with the current state to decide the next step."""
     config = state['config']
+    
     response = await config.llm_with_tools.ainvoke(
         [("system", config.system_prompt)] + state['messages']
     )
+    ### here, I will be doing this just to verify something.
+
     return {"messages": state['messages'] + [response]}

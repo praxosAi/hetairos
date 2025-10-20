@@ -10,15 +10,31 @@ class ToolFunctionID(str, Enum):
     SEND_NEW_EMAIL_AS_PRAXOS_BOT = "send_new_email_as_praxos_bot"
     REPORT_BUG_TO_DEVELOPERS = "report_bug_to_developers"
 
+    # Platform messaging tools (dynamically generated per platform)
+    REPLY_TO_USER_ON_WHATSAPP = "reply_to_user_on_whatsapp"
+    REPLY_TO_USER_ON_TELEGRAM = "reply_to_user_on_telegram"
+    REPLY_TO_USER_ON_IMESSAGE = "reply_to_user_on_imessage"
+    REPLY_TO_USER_ON_DISCORD = "reply_to_user_on_discord"
+    REPLY_TO_USER_ON_SLACK = "reply_to_user_on_slack"
+    REPLY_TO_USER_ON_WEBSOCKET = "reply_to_user_on_websocket"
+
+    # Media generation tools
+    GENERATE_IMAGE = "generate_image"
+    GENERATE_AUDIO = "generate_audio"
+    GENERATE_VIDEO = "generate_video"
+
+    # Media bus tools
+    LIST_AVAILABLE_MEDIA = "list_available_media"
+    GET_MEDIA_BY_ID = "get_media_by_id"
+    GET_RECENT_IMAGES = "get_recent_images"
+
     # Scheduling tools
     SCHEDULE_TASK = "schedule_task"
     CREATE_RECURRING_FUTURE_TASK = "create_recurring_future_task"
     GET_SCHEDULED_TASKS = "get_scheduled_tasks"
     CANCEL_SCHEDULED_TASK = "cancel_scheduled_task"
     UPDATE_SCHEDULED_TASK = "update_scheduled_task"
-    CREATE_IMAGE_TOOL = "create_image_tool"
-    CREATE_AUDIO_TOOL = "create_audio_tool"
-    CREATE_VIDEO_TOOL = "create_video_tool"
+
     # Basic tools
     GET_CURRENT_TIME = "get_current_time"
     GET_CURRENT_TASK_PLAN_AND_STEP = "get_current_task_plan_and_step"

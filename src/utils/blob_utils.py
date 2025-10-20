@@ -106,15 +106,16 @@ async def download_from_blob_storage_and_encode_to_base64(blob_name: str, contai
 
         # Encode to base64
         return base64.b64encode(data).decode("utf-8")
-async def download_from_blob_storage(blob_name: str) -> str:
+async def download_from_blob_storage(blob_name: str, container_name: str = None) -> str:
     """Downloads a file from Azure Blob Storage and encodes it to base64."""
+    if container_name is None:
+        container_name = settings.AZURE_BLOB_CONTAINER_NAME
+
     blob_service_client = BlobServiceClient.from_connection_string(
         settings.AZURE_STORAGE_CONNECTION_STRING
     )
     async with blob_service_client:
-        container_client = blob_service_client.get_container_client(
-            settings.AZURE_BLOB_CONTAINER_NAME
-        )
+        container_client = blob_service_client.get_container_client(container_name)
         blob_client = container_client.get_blob_client(blob_name)
         
         # Download the blob as bytes

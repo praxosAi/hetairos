@@ -200,11 +200,20 @@ class ExecutionWorker:
             request_id_var.set('SYSTEM_LEVEL')
             modality_var.set('SYSTEM_LEVEL')
     async def post_process_langgraph_response(self, result: dict, event: dict, typing_task_id: Optional[str] = None):
-        # Stop typing indicator before sending actual response
+        """Post-process agent response, handling cases where agent used messaging tools directly."""
 
+        # Stop typing indicator
+        await egress_service.stop_typing_indicator(typing_task_id)
+
+        # Check if response is empty (agent used messaging tools)
+        if not result.response or result.response.strip() == "":
+            logger.info("No fallback response needed - agent used communication tools directly")
+            return
+
+        # Fallback was used - send via egress service
+        logger.info("Sending fallback response via egress service")
         event["output_type"] = result.delivery_platform
         await egress_service.send_response(event, {"response": result.response, "file_links": result.file_links})
-        await egress_service.stop_typing_indicator(typing_task_id)
 
 
     async def determine_media_presence(self, event: dict) -> bool:

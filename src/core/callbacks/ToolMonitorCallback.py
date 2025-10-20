@@ -1,5 +1,5 @@
 from src.utils.logging.base_logger import setup_logger
-from langchain.callbacks.base import AsyncCallbackHandler
+from langchain.tools import AsyncCallbackHandler
 logger = setup_logger(__name__)
 from typing import Any, Dict
 from datetime import datetime

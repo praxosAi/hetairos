@@ -1,5 +1,6 @@
 
 
+import json
 from langchain_google_genai import ChatGoogleGenerativeAI
 from src.config.settings import settings
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,SystemMessage
@@ -80,6 +81,7 @@ class AIService:
         planning = None
         for tool in response_raw.tool_calls:
             if tool['name'] == 'Create_Granular_Planning_Response':
+                logger.info(f"Granular planning response created: {json.dumps(tool['args'],indent=2)}")
                 planning = GranularPlanningResponse(**tool['args'])
                 break
 
@@ -123,6 +125,18 @@ class AIService:
                 planning.tooling_need = False
                 planning.query_type = "conversational"
 
+            # Auto-insert platform messaging tool for conversational queries
+            # If no tools selected or only non-messaging tools, add source platform tool
+            platform_tools = [tid for tid in required_tool_ids if tid.startswith('reply_to_user_on_')]
+            if not platform_tools and planning.query_type == "conversational":
+                # No platform tool selected - auto-insert based on source
+                # Note: source will be extracted from context in tool factory
+                logger.info("Conversational query with no platform tool - will auto-insert in tool factory")
+                # Don't add to required_tool_ids here - tool factory handles it
+
+            if platform_tools:
+                logger.info(f"Platform messaging tools selected: {platform_tools}")
+
             logger.info('required tool ids are: ' + str(required_tool_ids))
             # Build plan string if plan/steps are provided
             plan_str = ""
@@ -139,7 +153,7 @@ class AIService:
 
     async def multi_modal_by_doc_id(self, prompt: str, doc_id: str):
         logger.info(f"Fetching payload for doc_id: {doc_id}")
-        payload =   await build_payload_entry_from_inserted_id(doc_id)
+        payload,file_info =   await build_payload_entry_from_inserted_id(doc_id)
         if not payload:
             raise ValueError(f"Could not retrieve payload for doc_id: {doc_id}")
         logger.info(f"Retrieved payload for doc_id: {doc_id}, preparing messages for AI model.")

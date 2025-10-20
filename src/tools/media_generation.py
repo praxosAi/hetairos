@@ -19,7 +19,39 @@ from src.utils.database import db_manager
 from src.utils.blob_utils import download_from_blob_storage
 logger = setup_logger(__name__)
 from datetime import datetime
-
+from enum import Enum
+class GeminiVoice(str, Enum):
+    """Enumeration of available Gemini TTS voices."""
+    ZEPHYR = "Zephyr"
+    PUCK = "Puck"
+    CHARON = "Charon"
+    KORE = "Kore"
+    FENRIR = "Fenrir"
+    LEDA = "Leda"
+    ORUS = "Orus"
+    AOEDE = "Aoede"
+    CALLIRRHOE = "Callirrhoe"
+    AUTONOE = "Autonoe"
+    ENCELADUS = "Enceladus"
+    IAPETUS = "Iapetus"
+    UMBRIEL = "Umbriel"
+    ALGIEBA = "Algieba"
+    DESPINA = "Despina"
+    ERINOME = "Erinome"
+    ALGENIB = "Algenib"
+    RASALGETHI = "Rasalgethi"
+    LAOMEDEIA = "Laomedeia"
+    ACHERNAR = "Achernar"
+    ALNILAM = "Alnilam"
+    SCHEDAR = "Schedar"
+    GACRUX = "Gacrux"
+    PULCHERRIMA = "Pulcherrima"
+    ACHIRD = "Achird"
+    ZUBENELGENUBI = "Zubenelgenubi"
+    VINDEMIATRIX = "Vindemiatrix"
+    SADACHBIA = "Sadachbia"
+    SADALTAGER = "Sadaltager"
+    SULAFAT = "Sulafat"
 def create_media_generation_tools(
     user_id: str,
     source: str,
@@ -187,16 +219,16 @@ def create_media_generation_tools(
             )
 
     @tool
-    async def generate_audio(text: str, voice: Optional[str] = None) -> ToolExecutionResponse:
+    async def generate_audio(text: str, voice: Optional[GeminiVoice] = GeminiVoice.KORE) -> ToolExecutionResponse:
         """Generate audio/speech from text using AI text-to-speech.
-
         This tool uses Gemini 2.5 Flash TTS to convert text to natural-sounding speech.
         The audio format is automatically adapted for the platform (CAF for iMessage, OGG for others).
 
         Args:
             text: The text to convert to speech. Can be long-form content.
-            voice: Optional voice name (currently uses 'Kore' voice, parameter reserved for future)
+            voice: Optional voice name. try to fit it to the user's preferences for the assistant, as well as the name and persona. parameter defaults to 'Kore'.
 
+            
         Returns:
             ToolExecutionResponse with result containing url, file_name, file_type, media_id
 
@@ -217,6 +249,68 @@ def create_media_generation_tools(
         Platform compatibility:
             - iMessage: CAF format (automatically handled)
             - Other platforms: OGG format
+
+        list of available voices:
+                    - ZEPHYR (Female, Bright): 
+                A clear and optimistic female voice, suitable for positive announcements and engaging content.
+            - PUCK (Male, Upbeat): 
+                An energetic and enthusiastic male voice, perfect for motivational messages and dynamic narration.
+            - CHARON (Male, Informative): 
+                A steady and clear male voice with a neutral tone, ideal for delivering news and educational material.
+            - KORE (Female, Firm): 
+                A confident and direct female voice, well-suited for authoritative statements and clear directives.
+            - FENRIR (Male, Excitable): 
+                A lively and animated male voice, great for expressive storytelling and entertainment applications.
+            - LEDA (Female, Youthful): 
+                A light and young-sounding female voice, fitting for content aimed at younger audiences.
+            - ORUS (Male, Firm): 
+                A strong and resolute male voice that conveys authority and seriousness.
+            - AOEDE (Female, Breezy): 
+                A relaxed and casual female voice, creating a light and easy-going atmosphere.
+            - CALLIRRHOE (Female, Easy-going): 
+                A calm and pleasant female voice, perfect for conversational and friendly interactions.
+            - AUTONOE (Female, Bright): 
+                A cheerful and clear female voice, similar to Zephyr but with a slightly softer edge.
+            - ENCELADUS (Male, Breathy): 
+                A soft-spoken and gentle male voice, lending a sense of intimacy or calmness to the audio.
+            - IAPETUS (Male, Clear): 
+                A crisp and articulate male voice, excellent for applications requiring high intelligibility.
+            - UMBRIEL (Male, Easy-going): 
+                A laid-back and approachable male voice, suitable for casual narration and friendly guides.
+            - ALGIEBA (Male, Smooth): 
+                A fluid and polished male voice, lending a professional and sophisticated feel.
+            - DESPINA (Female, Smooth): 
+                A seamless and elegant female voice, ideal for premium content and luxurious branding.
+            - ERINOME (Female, Clear): 
+                A precise and easy-to-understand female voice, perfect for instructional content.
+            - ALGENIB (Male, Gravelly): 
+                A deep and resonant male voice with a slightly rough texture, adding character and weight.
+            - RASALGETHI (Male, Informative): 
+                A knowledgeable and trustworthy male voice, similar to Charon but with a warmer tone.
+            - LAOMEDEIA (Female, Upbeat): 
+                A positive and cheerful female voice, great for creating an optimistic user experience.
+            - ACHERNAR (Female, Soft): 
+                A gentle and soothing female voice, ideal for relaxation, meditation, or sensitive topics.
+            - ALNILAM (Male, Firm): 
+                A steady and assertive male voice that conveys confidence and reliability.
+            - SCHEDAR (Male, Even): 
+                A balanced and neutral male voice that provides clear and unbiased narration.
+            - GACRUX (Female, Mature): 
+                A poised and experienced-sounding female voice, adding a sense of wisdom and authority.
+            - PULCHERRIMA (Female, Forward): 
+                A direct and confident female voice that is clear and engaging for the listener.
+            - ACHIRD (Male, Friendly): 
+                A warm and approachable male voice, perfect for creating a welcoming and personal connection.
+            - ZUBENELGENUBI (Male, Casual): 
+                A relaxed and informal male voice, suitable for conversational AI and everyday interactions.
+            - VINDEMIATRIX (Female, Gentle): 
+                A soft and kind female voice that conveys empathy and care in its tone.
+            - SADACHBIA (Male, Lively): 
+                An animated and energetic male voice, great for grabbing attention and conveying excitement.
+            - SADALTAGER (Male, Knowledgeable): 
+                An intelligent and articulate male voice, ideal for expert commentary and educational content.
+            - SULAFAT (Female, Warm): 
+                A friendly and inviting female voice that makes listeners feel comfortable and engaged.
         """
         try:
             # Determine if iMessage scenario for format selection
@@ -224,7 +318,7 @@ def create_media_generation_tools(
 
             logger.info(f"Generating audio for text: {text[:100]}... (platform: {source}, iMessage: {is_imessage})")
 
-            audio_url, file_name, blob_path = await output_generator.generate_speech(text, prefix, is_imessage)
+            audio_url, file_name, blob_path = await output_generator.generate_speech(text, prefix, is_imessage, voice=voice)
 
             if not audio_url:
                 raise Exception("Audio generation returned no URL")

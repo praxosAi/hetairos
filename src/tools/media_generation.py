@@ -2,8 +2,6 @@
 Media generation tools for creating images, audio, and video using AI.
 These tools integrate with the OutputGenerator service and media bus.
 """
-
-from cgitb import text
 from typing import Dict, Optional, List
 from bson import ObjectId
 from langchain_core.tools import tool

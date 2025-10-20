@@ -14,7 +14,6 @@ import uuid
 from typing import Optional
 from enum import Enum
 class GeminiVoice(str, Enum):
-    """Enumeration of available Gemini TTS voices."""
     ZEPHYR = "Zephyr"
     PUCK = "Puck"
     CHARON = "Charon"
@@ -62,7 +61,7 @@ class OutputGenerator:
             prefix: Blob storage prefix for organization
             media_ids: Legacy parameter (deprecated, use reference_image_bytes)
             reference_image_bytes: List of (bytes, mime_type) tuples for reference images
-            
+
         Returns:
             Tuple of (url, file_name, blob_path)
         """

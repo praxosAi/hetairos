@@ -105,7 +105,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
         """Setup a trigger in Praxos memory. a trigger is a conditional statement, of form "If I receive an email from X, then do Y"
         Args:
             trigger_conditional_statement: The conditional statement to setup as a trigger. it should be complete and descriptive, in plain english. 
-            one_time: Whether the trigger should be one-time or persistent. Defaults to True (one-time). if the user wants a persistent trigger, set this to False. Try to guess from context and nature of the task, but if unsure, ask the user.
+            one_time: Whether the trigger should be one-time or persistent. Defaults to True (one-time). if the user wants a persistent trigger, set this to False. Try to guess from context and nature of the task, but if unsure, ask the user. If the user says 'any time' or 'whenever', set this to False.
         """
         try:
             logger.info(f"Setting up new trigger in Praxos memory: {trigger_conditional_statement}")

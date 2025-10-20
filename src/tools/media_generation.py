@@ -7,7 +7,6 @@ from cgitb import text
 from typing import Dict, Optional, List
 from bson import ObjectId
 from langchain_core.tools import tool
-from prompt_toolkit import prompt
 import requests
 from src.services.output_generator.generator import OutputGenerator
 from src.services.conversation_manager import ConversationManager

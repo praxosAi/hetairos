@@ -181,6 +181,8 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                     "metadata": {'message_id': message["message_id"],'chat_id': chat_id,'source':'Telegram', 'forwarded':forwarded,'forward_origin':forward_origin, 'timestamp': message.get("date")}
                 }
                 await event_queue.publish(event)
-
-    background_tasks.add_task(milestone_service.user_send_message, user_id)
+    try:
+        background_tasks.add_task(milestone_service.user_send_message, user_id_var.get())
+    except Exception as e:
+        logger.error(f"Failed to log milestone for user {user_id_var.get()}: {e}")
     return {"status": "ok"}

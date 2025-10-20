@@ -109,6 +109,26 @@ class ToolExecutionResponse(BaseModel):
     def system_error(self, value: str):
         """Allow legacy assignment"""
         self._system_error = value
-
+    def __str__(self) -> str:
+        """Provides a JSON string representation of the response."""
+        # .json() is a built-in Pydantic method that correctly handles
+        # nested models, enums, etc. `indent=2` makes it readable.
+        return self.model_dump_json(indent=2)
+        
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the response to a dictionary, including nested models."""
+        result = {
+            "status": self.status,
+            "result": self.result,
+            "user_message": self.user_message,
+            "final_message": self.final_message,
+        }
+        if self.error_details:
+            result["error_details"] = self.error_details.dict()
+        if self.partial_results:
+            result["partial_results"] = self.partial_results
+        if self.failed_operations:
+            result["failed_operations"] = self.failed_operations
+        return result
     class Config:
         arbitrary_types_allowed = True

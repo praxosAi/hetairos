@@ -39,11 +39,16 @@ class ConversationManager:
         """Add user media message to conversation"""
         return await self.db.add_message(user_id, conversation_id, 'user', content + f" PLACEHOLDER FOR {inserted_id}", message_type, metadata)
 
-    async def add_assistant_message(self, user_id: str, conversation_id: str, content: str, 
+    async def add_assistant_media_message(self, user_id:str, conversation_id: str, content: str, inserted_id: str, message_type: str = 'media', metadata: Dict = None) -> str:
+        """Add user media message to conversation"""
+        return await self.db.add_message(user_id, conversation_id, 'assistant', content + f" PLACEHOLDER FOR {inserted_id}", message_type, metadata)
+
+    async def add_assistant_message(self, user_id: str, conversation_id: str, content: str,
                              message_type: str = 'text', metadata: Dict = None) -> str:
         """Add assistant message to conversation"""
-        if not content or content.replace(' ', '').lower() == '':
+        if not content or (isinstance(content, str) and content.replace(' ', '').lower() == ''):
             content = "No response from the assistant."
+        
         return await self.db.add_message(user_id, conversation_id, 'assistant', content, message_type, metadata)
 
     async def add_system_message(self, user_id: str, conversation_id: str, content: str, metadata: Dict = None) -> str:

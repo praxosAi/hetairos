@@ -23,7 +23,7 @@ from bson import ObjectId
 from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64, upload_json_to_blob_storage,get_blob_sas_url
 from src.services.user_service import user_service
 from src.services.ai_service.ai_service import ai_service
-from src.core.callbacks.ToolMonitorCallback import ToolMonitorCallback
+# from src.core.callbacks.ToolMonitorCallback import ToolMonitorCallback
 from src.core.nodes import call_model, generate_final_response, obtain_data, should_continue_router
 from src.utils.file_msg_utils import generate_file_messages,get_conversation_history,process_media_output, generate_user_messages_parallel,update_history
 logger = setup_logger(__name__)
@@ -49,7 +49,7 @@ class LangGraphAgentRunner:
             api_key=settings.GEMINI_API_KEY,
             temperature=0.2,
             )
-        
+        # self.media_llm = self.llm
         self.fast_llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",
             api_key=settings.GEMINI_API_KEY,
@@ -309,10 +309,10 @@ class LangGraphAgentRunner:
             # --- END Graph Definition ---
 
             # Create tool monitoring callback
-            tool_monitor = ToolMonitorCallback(
-                user_id=user_context.user_id,
-                execution_id=execution_id
-            )
+            # tool_monitor = ToolMonitorCallback(
+            #     user_id=user_context.user_id,
+            #     execution_id=execution_id
+            # )
             ### for now, we remove it.
             final_state = await app.ainvoke(
                 initial_state,

@@ -29,6 +29,9 @@ class MediaReference:
     description: str  # Natural language description for agent
     timestamp: datetime
     source: str  # "generated", "uploaded", "fetched"
+    blob_path: Optional[str] = None  # Blob storage path for downloading
+    mime_type: Optional[str] = None  # MIME type (image/png, audio/ogg, etc.)
+    loaded_in_context: bool = False  # Track if already added to conversation context
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -56,6 +59,8 @@ class MediaBus:
         file_type: str,
         description: str,
         source: str = "generated",
+        blob_path: Optional[str] = None,
+        mime_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> str:
         """
@@ -68,6 +73,8 @@ class MediaBus:
             file_type: Type (image, audio, video, document)
             description: Natural language description for the agent to understand context
             source: How this media was obtained (generated/uploaded/fetched)
+            blob_path: Optional blob storage path (for downloading)
+            mime_type: Optional MIME type (image/png, audio/ogg, video/mp4, etc.)
             metadata: Additional metadata (prompts, generation params, etc.)
 
         Returns:
@@ -83,6 +90,9 @@ class MediaBus:
             description=description,
             timestamp=datetime.utcnow(),
             source=source,
+            blob_path=blob_path,
+            mime_type=mime_type,
+            loaded_in_context=False,
             metadata=metadata or {}
         )
 
@@ -199,6 +209,24 @@ class MediaBus:
     def has_media(self, conversation_id: str) -> bool:
         """Check if conversation has any media in the bus."""
         return conversation_id in self._storage and len(self._storage[conversation_id]) > 0
+
+    def mark_loaded_in_context(self, conversation_id: str, media_id: str) -> bool:
+        """
+        Mark a media item as loaded in conversation context.
+
+        Args:
+            conversation_id: The conversation ID
+            media_id: The media ID to mark
+
+        Returns:
+            True if marked successfully, False if media not found
+        """
+        ref = self.get_media(conversation_id, media_id)
+        if ref:
+            ref.loaded_in_context = True
+            logger.debug(f"Marked media {media_id} as loaded in context")
+            return True
+        return False
 
 
 # Global singleton instance (execution-scoped, cleared between runs)

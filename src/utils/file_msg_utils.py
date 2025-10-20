@@ -4,6 +4,8 @@ from ast import Dict
 
 from typing import Any, List, Optional,Dict, Tuple
 from datetime import datetime
+
+from bson import ObjectId
 from src.services.output_generator.generator import OutputGenerator
 from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64
 from src.utils.logging.base_logger import setup_logger
@@ -253,10 +255,30 @@ async def process_media_output(conversation_manager:Any,final_response:AgentFina
             prefix = f"{user_context.user_id}/{source}/{conversation_id}/"
             if final_response.output_modality == "image":
                 try:
-                    image_blob_url, image_file_name = await output_generator.generate_image(generation_instructions, prefix)
+                    image_blob_url, image_file_name, image_blob_name = await output_generator.generate_image(generation_instructions, prefix)
+
+                    
                     if image_blob_url:
+                        document_entry = {
+                            "user_id": ObjectId(user_context.user_id),
+                            "platform_file_id": image_file_name,
+                            "platform_message_id": image_file_name,
+                            "platform": source,
+                            'type': 'image',
+                            "blob_path": image_blob_name,
+                            "mime_type": "image/png",
+                            "caption": 'we generated an image for the user. this image was described as follows: ' + generation_instructions,
+                            'file_name':    image_file_name,
+                        }
+                        from src.utils.database import db_manager
+                        inserted_id = await db_manager.add_document(document_entry)
                         output_blobs.append({"url": image_blob_url, "file_type": "image", "file_name": image_file_name})
-                        await conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we generated an image for the user. this image was described as follows: " + generation_instructions)
+                        await conversation_manager.add_assistant_media_message(
+                            user_context.user_id,
+                            conversation_id, 'we generated an image for the user. this image was described as follows: " + generation_instructions', inserted_id,
+                            message_type='image',
+                            metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
+                        )
                 except Exception as e:
                     logger.info(f"Error generating image output: {e}", exc_info=True)
                     await conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we failed to generate an image for the user. there was an error: " + str(e) + " the image was described as follows: " + generation_instructions)
@@ -264,20 +286,57 @@ async def process_media_output(conversation_manager:Any,final_response:AgentFina
                 is_imessage = final_response.delivery_platform == "imessage"
                 logger.info(f"Generating audio with is_imessage={is_imessage}")
                 try:
-                    audio_blob_url, audio_file_name = await output_generator.generate_speech(generation_instructions, prefix, is_imessage)
+                    audio_blob_url, audio_file_name, audio_blob_name = await output_generator.generate_speech(generation_instructions, prefix, is_imessage)
                     if audio_blob_url:
+                        document_entry = {
+                            "user_id": ObjectId(user_context.user_id),
+                            "platform_file_id": audio_file_name,
+                            "platform_message_id": audio_file_name,
+                            "platform": source,
+                            'type': 'audio',
+                            "blob_path": audio_blob_name,
+                            "mime_type": 'audio/x-caf' if is_imessage else 'audio/ogg',
+                            "caption": 'we generated an audio for the user. this audio was described as follows: ' + generation_instructions,
+                            'file_name':    audio_file_name,
+                        }
+                        from src.utils.database import db_manager
+                        inserted_id = await db_manager.add_document(document_entry)
                         output_blobs.append({"url": audio_blob_url, "file_type": "audio", "file_name": audio_file_name})
-                        await conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we generated audio for the user. this audio was described as follows: " + generation_instructions)
+
+                        await conversation_manager.add_assistant_media_message(
+                            user_context.user_id,
+                            conversation_id, "we generated audio for the user. this audio was described as follows: " + generation_instructions, inserted_id,
+                            message_type='audio',
+                            metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
+                        )
                 except Exception as e:
                     logger.info(f"Error generating audio output: {e}", exc_info=True)
                     await conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we failed to generate audio for the user. there was an error: " + str(e) + " the audio was described as follows: " + generation_instructions)
 
             if final_response.output_modality == "video":
                 try:
-                    video_blob_url, video_file_name = await output_generator.generate_video(generation_instructions, prefix)
+                    video_blob_url, video_file_name, video_blob_name = await output_generator.generate_video(generation_instructions, prefix)
                     if video_blob_url:
+                        document_entry = {
+                            "user_id": ObjectId(user_context.user_id),
+                            "platform_file_id": video_file_name,
+                            "platform_message_id": video_file_name,
+                            "platform": source,
+                            'type': 'video',
+                            "blob_path": video_blob_name,
+                            "mime_type": 'video/mp4',
+                            "caption": 'we generated a video for the user. this video was described as follows: ' + generation_instructions,
+                            'file_name':    video_file_name,
+                        }
+                        from src.utils.database import db_manager
+                        inserted_id = await db_manager.add_document(document_entry)
                         output_blobs.append({"url": video_blob_url, "file_type": "video", "file_name": video_file_name})
-                        await conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we generated a video for the user. this video was described as follows: " + generation_instructions)
+                        await conversation_manager.add_assistant_media_message(
+                            user_context.user_id,
+                            conversation_id, "we generated video for the user. this video was described as follows: " + generation_instructions, inserted_id,
+                            message_type='video',
+                            metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
+                        )                
                 except Exception as e:
                     logger.info(f"Error generating video output: {e}", exc_info=True)
                     await conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we failed to generate a video for the user. there was an error: " + str(e) + " the video was described as follows: " + generation_instructions)
@@ -354,13 +413,49 @@ async def get_conversation_history(
     # Run all media fetches concurrently, keeping order by input task list
     results = await _gather_bounded(fetch_tasks, limit=max_concurrency)
 
-    # Place media messages back into the original positions
+    # Place media messages back into the original positions and populate media bus
+    from src.core.media_bus import media_bus
+
     for (i, role), payload in zip(task_meta, results):
         if isinstance(payload, Exception) or payload is None:
             logger.warning(f"Failed to build payload for message at index {i}")
             continue
+
         msg_obj = HumanMessage(content=[payload]) if role == "user" else AIMessage(content=[payload])
         history_slots[i] = msg_obj
+
+        # Add media to bus for agent reference
+        try:
+            raw_msg = raw_msgs[i]
+            msg_type = raw_msg.get("message_type")
+            inserted_id = (raw_msg.get("metadata") or {}).get("inserted_id")
+
+            # Try to extract URL from payload
+            media_url = None
+            if payload.get("type") == "image_url":
+                media_url = payload.get("image_url")
+
+            # Get file info from database if we have inserted_id
+            if inserted_id and media_url:
+                # Add to media bus
+                file_name = media_url.split('/')[-1] if '/' in media_url else "media_file"
+                caption = raw_msg.get("content", "")  # Use message content as description
+
+                media_bus.add_media(
+                    conversation_id=conversation_id,
+                    url=media_url,
+                    file_name=file_name,
+                    file_type=msg_type,
+                    description=f"User uploaded {msg_type}" + (f": {caption}" if caption else ""),
+                    source="uploaded",
+                    blob_path=None,  # Would need to extract from database
+                    mime_type=None,  # Would need to extract from database
+                    metadata={"inserted_id": inserted_id, "from_history": True}
+                )
+                logger.debug(f"Added historical media to bus: {msg_type} - {file_name}")
+        except Exception as e:
+            logger.warning(f"Could not add media to bus: {e}")
+
     logger.info(f"Fetched and reconstructed {len(fetch_tasks)} media messages")
     # Return in original order, skipping any None (e.g., malformed entries)
     return [m for m in history_slots if m is not None],has_media

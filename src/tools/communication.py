@@ -87,6 +87,7 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
         final_message: bool = True
     ) -> ToolExecutionResponse:
         try:
+            logger.info(f"Sending {platform_lower} message to user: {message}, with {len(media_urls) if media_urls else 0} media attachments")
             # Build file_links from media
             file_links = []
             if media_urls and media_types:

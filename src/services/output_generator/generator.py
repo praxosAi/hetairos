@@ -14,13 +14,35 @@ class OutputGenerator:
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
-    async def generate_image(self, prompt: str, prefix: str, media_ids: list=[]) -> str:
+    async def generate_image(self, prompt: str, prefix: str, media_ids: list=[], reference_image_bytes: list=[]) -> str:
         """
         Generates an image based on a text prompt using the Gemini API.
+
+        Args:
+            prompt: Text description of the image to generate
+            prefix: Blob storage prefix for organization
+            media_ids: Legacy parameter (deprecated, use reference_image_bytes)
+            reference_image_bytes: List of (bytes, mime_type) tuples for reference images
+
+        Returns:
+            Tuple of (url, file_name, blob_path)
         """
+        # Build contents list with prompt and optional reference images
+        contents = [prompt]
+
+        # Add reference images if provided
+        if reference_image_bytes:
+            for img_bytes, mime_type in reference_image_bytes:
+                try:
+                    image_part = types.Part.from_bytes(data=img_bytes, mime_type=mime_type)
+                    contents.append(image_part)
+                    logger.info(f"Added reference image ({mime_type}) to generation context")
+                except Exception as e:
+                    logger.warning(f"Could not add reference image: {e}")
+
         response = self.client.models.generate_content(
             model="gemini-2.5-flash-image-preview",
-            contents=[prompt],
+            contents=contents,
         )
         logger.info(f"image generated")
         for part in response.candidates[0].content.parts:
@@ -29,11 +51,11 @@ class OutputGenerator:
                 ### we will want to upload the bytes to blob storage and return the link
                 image_data = part.inline_data.data
                 file_name = f"{datetime.datetime.utcnow().isoformat()}_{uuid.uuid4()}.png"
-                image_blob_name = await upload_bytes_to_blob_storage(image_data, f"{prefix}/{file_name}", content_type="image/png")
-                image_blob_sas_url = await get_blob_sas_url(image_blob_name)
-                return image_blob_sas_url, file_name
+                image_blob_name = await upload_bytes_to_blob_storage(image_data, f"{prefix}/{file_name}", content_type="image/png", container_name="cdn-container")
+                image_blob_sas_url = await get_blob_sas_url(image_blob_name,container_name="cdn-container")
+                return image_blob_sas_url, file_name, image_blob_name  # Return blob_path too
 
-        return None
+        return None, None, None
 
     async def generate_speech(self, text: str, prefix: str, imessage_scenario: bool = False) -> str:
         """
@@ -65,13 +87,13 @@ class OutputGenerator:
                 file_name = f"{uuid.uuid4().hex}.caf"
                 audio_blob_name = await upload_bytes_to_blob_storage(caf_bytes,  f"{prefix}/generated_audio/{file_name}", content_type="audio/x-caf")
                 audio_blob_sas_url = await get_blob_sas_url(audio_blob_name)
-                return audio_blob_sas_url, file_name
-                
+                return audio_blob_sas_url, file_name, audio_blob_name  # Return blob_path too
+
             file_name = f"{datetime.datetime.utcnow().isoformat()}_{uuid.uuid4()}.ogg"
             audio_blob_name = await upload_bytes_to_blob_storage(ogg_bytes,  f"{prefix}/generated_audio/{file_name}", content_type="audio/ogg")
             audio_blob_sas_url = await get_blob_sas_url(audio_blob_name)
-            return audio_blob_sas_url, file_name
-        return None,None
+            return audio_blob_sas_url, file_name, audio_blob_name  # Return blob_path too
+        return None, None, None
     async def generate_video(self, prompt: str, prefix: str) -> str:
         """
         Generates a video based on a text prompt using the Gemini API.
@@ -94,4 +116,4 @@ class OutputGenerator:
         video_file_name = f"{datetime.datetime.utcnow().isoformat()}_{uuid.uuid4()}.mp4"
         video_blob_name = await upload_bytes_to_blob_storage(generated_video.video.video_bytes, f"{prefix}/generated_video/{video_file_name}", content_type="video/mp4")
         video_blob_sas_url = await get_blob_sas_url(video_blob_name)
-        return video_blob_sas_url, video_file_name
+        return video_blob_sas_url, video_file_name, video_blob_name  # Return blob_path too

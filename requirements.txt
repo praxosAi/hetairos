@@ -510,10 +510,6 @@ pymongo==4.15.3
     #   motor
 pynacl==1.6.0
     # via -r requirements.in
-pyobjc-core==11.1
-    # via pyobjc-framework-cocoa
-pyobjc-framework-cocoa==11.1
-    # via screeninfo
 pyotp==2.9.0
     # via browser-use
 pyparsing==3.2.5

@@ -92,7 +92,7 @@ async def handle_gmail_webhook(request: Request):
 
             logger.info(f"Processing new message {message.get('id')}")
             event_eval_result = await praxos_client.eval_event(message, 'gmail')
-            # logger.info(f"Event evaluation result: {event_eval_result}")
+            logger.info(f"Event evaluation result: {event_eval_result}")
             if event_eval_result.get('trigger'):
 
 
@@ -131,6 +131,7 @@ async def handle_gmail_webhook(request: Request):
                         },
                         "metadata": {
                             **normalized["metadata"],
+                            'source': 'triggered_gmail',
                             "subject": normalized["subject"],
                             "from": normalized["from"],
                             "to": normalized["to"],

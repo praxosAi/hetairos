@@ -78,7 +78,6 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
         # Determine new messages by slicing based on the initial history length from config
         new_messages = state['messages'][config.initial_state_len:]
         last_message = state['messages'][-1] if state['messages'] else None
-        logger.info(f"last message: {json.dumps(last_message.to_json()) if last_message else 'None'}")
         # --- Early exit conditions and specific routing ---
 
                 # Special case: Scheduled/recurring/triggered note detected
@@ -90,7 +89,7 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
             # Check if the last tool call resulted in an error and if we can retry
             logger.info("Last message is a ToolMessage; checking for errors. or final message")
             tool_response = last_message.content
-            logger.info(f"Last tool response: {tool_response}, ")
+            
             tool_response = ToolExecutionResponse(**json.loads(tool_response)) if isinstance(tool_response, str) else tool_response
             if isinstance(tool_response, ToolExecutionResponse) and tool_response.final_message:
                 logger.info("Tool execution provided a final message; proceeding to finalize.")

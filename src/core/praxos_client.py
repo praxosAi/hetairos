@@ -80,9 +80,9 @@ class PraxosClient:
                 if not isinstance(time_stamp_str, str):
                     time_stamp_str = time_stamp_str.isoformat()
                 if message['role'] == 'user':
-                    content_enriched = "Message sent at " + time_stamp_str + " by " + user_record.get('first_name', '') + " " + user_record.get('last_name', '') + ": " + message['content']
+                    content_enriched = "Message sent at " + time_stamp_str + " by " + user_record.get('first_name', '') + " " + user_record.get('last_name', '') + ": " + str(message['content'])
                 else:
-                    content_enriched = "Message sent at " + time_stamp_str + " by Praxos Assistant: " + message['content']
+                    content_enriched = "Message sent at " + time_stamp_str + " by Praxos Assistant: " + str(message['content'])
                 reformatted_messages.append(Message(content=content_enriched, role=message['role'], timestamp=message['timestamp']))
             # Create unique name to avoid conflicts
             import uuid
@@ -108,10 +108,10 @@ class PraxosClient:
             
         except Exception as e:
             duration = time.time() - start_time
-            praxos_logger.error(f"Error adding conversation for user {user_id} with source {source}: {e}")
+            praxos_logger.error(f"Error adding conversation for user {user_id} with source {source}: {e}",exc_info=True)
             # Also log API error if it's a specific API error
             if hasattr(e, 'status_code'):
-                praxos_logger.error(f"Error adding conversation for user {user_id} with source {source}: {e.status_code}")
+                praxos_logger.error(f"Error adding conversation for user {user_id} with source {source}: {e.status_code}",exc_info=True)
             return {"error": str(e)}
     
     # Backwards compatibility alias

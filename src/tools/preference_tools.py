@@ -178,6 +178,7 @@ def create_preference_tools(user_id: str) -> list:
                 "user_id": user_id,
             }
             ok = user_service.add_new_preference_annotations(user_id, payload)
+            
             return ToolExecutionResponse(
                 status="success",
                 result={

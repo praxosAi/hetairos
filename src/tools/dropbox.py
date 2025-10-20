@@ -106,8 +106,12 @@ def create_dropbox_tools(dropbox_integration: DropboxIntegration) -> list:
                 })
             )
         except ValueError as e:
-            # Multi-account error
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            # Multi-account error - need to specify account
+            return ErrorResponseBuilder.missing_parameter(
+                operation="dropbox_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             return ErrorResponseBuilder.from_exception(
                 operation="list_dropbox_accounts",
@@ -137,8 +141,12 @@ def create_dropbox_tools(dropbox_integration: DropboxIntegration) -> list:
                 })
             )
         except ValueError as e:
-            # Multi-account error
-            return ToolExecutionResponse(status="error", user_message=str(e))
+            # Multi-account error - need to specify account
+            return ErrorResponseBuilder.missing_parameter(
+                operation="dropbox_operation",
+                param_name="account",
+                technical_details=str(e)
+            )
         except Exception as e:
             return ErrorResponseBuilder.from_exception(
                 operation="list_dropbox_accounts",

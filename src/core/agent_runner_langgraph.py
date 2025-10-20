@@ -197,7 +197,8 @@ class LangGraphAgentRunner:
                 metadata,
                 timezone_name,
                 request_id=self.trace_id,
-                required_tool_ids=required_tool_ids
+                required_tool_ids=required_tool_ids,
+                conversation_manager=self.conversation_manager
             )
 
             # NEW: Type-driven parameter resolution

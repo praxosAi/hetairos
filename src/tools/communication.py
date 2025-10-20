@@ -11,7 +11,8 @@ def create_platform_messaging_tools(
     source: str,
     user_id: str,
     metadata: Optional[Dict] = None,
-    available_platforms: Optional[List[str]] = None
+    available_platforms: Optional[List[str]] = None,
+    conversation_manager: ConversationManager = None,
 ) -> List:
     """
     Create platform-specific messaging tools for communicating with the user.
@@ -26,9 +27,8 @@ def create_platform_messaging_tools(
         List of messaging tools including source platform and optionally others
     """
     tools = []
-    conv_manager = ConversationManager()
     # Always create tool for source platform
-    source_tool = _create_reply_tool(source, user_id, metadata, conv_manager)
+    source_tool = _create_reply_tool(source, user_id, metadata, conversation_manager)
     tools.append(source_tool)
 
     # Optionally create tools for other connected platforms

@@ -1,5 +1,6 @@
 from typing import List, Dict, Any, Optional
 from src.core.context import UserContext
+from src.services.conversation_manager import ConversationManager
 from src.utils.logging import setup_logger
 from langchain_core.tools import Tool
 from langchain_google_community import GoogleSearchAPIWrapper
@@ -52,7 +53,8 @@ class AgentToolsFactory:
         user_time_zone: str = 'America/New_York',
         request_id: str = None,
         minimal_tools: bool = False,
-        required_tool_ids: Optional[List[str]] = None
+        required_tool_ids: Optional[List[str]] = None,
+        conversation_manager: ConversationManager = None
     ) -> List:
         """Create tools based on agent configuration by instantiating integration clients.
 
@@ -119,7 +121,8 @@ class AgentToolsFactory:
                         source=platform,  # Use the requested platform as "source" for tool creation
                         user_id=user_id,
                         metadata=metadata,
-                        available_platforms=None
+                        available_platforms=None,
+                        conversation_manager=conversation_manager
                     )
                     tools.extend(platform_tool)
                 except Exception as e:

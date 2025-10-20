@@ -109,7 +109,7 @@ class AgentToolsFactory:
             # Always ensure source platform is included
             if source not in requested_platforms:
                 requested_platforms.insert(0, source)
-
+            requested_platforms = list(set([p.lower() for p in requested_platforms]))
             logger.info(f"Creating platform messaging tools for: {requested_platforms}")
 
             # Create a tool for each requested platform

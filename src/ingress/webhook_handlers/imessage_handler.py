@@ -155,7 +155,8 @@ async def handle_imessage_webhook(request: Request, background_tasks: Background
             await event_queue.publish(event)
 
     try:
-        background_tasks.add_task(milestone_service.user_send_message, user_id_var.get())
+        if user_id_var.get() != 'SYSTEM_LEVEL':
+            background_tasks.add_task(milestone_service.user_send_message, user_id_var.get())
     except Exception as e:
         logger.error(f"Failed to log milestone for user {user_id_var.get()}: {e}")
     return {"status": "ok"}

@@ -177,7 +177,8 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                     finally:
                                         os.unlink(file_path) # Clean up the local file
                         try:
-                            background_tasks.add_task(milestone_service.user_send_message, user_id_var.get())
+                            if user_id_var.get() != 'SYSTEM_LEVEL':
+                                background_tasks.add_task(milestone_service.user_send_message, user_id_var.get())
                         except Exception as e:
                             webhook_logger.error(f"Failed to log milestone for user {user_record['_id']}: {e}")
     return {"status": "ok"}

@@ -30,7 +30,7 @@ INTEGRATION_NAME_TO_PROVIDER_MAP = {
 
 def create_integration_tools(user_id: str) -> list:
     @tool
-    async def get_oauth_initiation_url(integration_name: str) -> Optional[Dict[str, str]]:
+    async def get_oauth_initiation_url(integration_name: str) -> ToolExecutionResponse:
         """
         Generates a secure, single-use URL for a user to initiate an OAuth2 flow
         for a specific integration. This is designed for messaging platforms where

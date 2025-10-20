@@ -61,10 +61,13 @@ async def build_payload_entry(file: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         }
     return None
 
-async def build_payload_entry_from_inserted_id(inserted_id: str) -> Optional[Dict[str, Any]]:
+async def build_payload_entry_from_inserted_id(inserted_id: str) -> Tuple[Optional[Dict[str, Any]],Optional[Dict[str, Any]]]:
     from src.utils.database import db_manager
     file = await db_manager.get_document_by_id(inserted_id)
-    return await build_payload_entry(file) if file else None
+    if file:
+        payload = await build_payload_entry(file)
+        return payload,file
+    return None,None
 
 
 
@@ -416,7 +419,7 @@ async def get_conversation_history(
     # Place media messages back into the original positions and populate media bus
     from src.core.media_bus import media_bus
 
-    for (i, role), payload in zip(task_meta, results):
+    for (i, role), (payload,file_info) in zip(task_meta, results):
         if isinstance(payload, Exception) or payload is None:
             logger.warning(f"Failed to build payload for message at index {i}")
             continue
@@ -440,7 +443,7 @@ async def get_conversation_history(
                 # Add to media bus
                 file_name = media_url.split('/')[-1] if '/' in media_url else "media_file"
                 caption = raw_msg.get("content", "")  # Use message content as description
-
+                
                 media_bus.add_media(
                     conversation_id=conversation_id,
                     url=media_url,
@@ -448,8 +451,8 @@ async def get_conversation_history(
                     file_type=msg_type,
                     description=f"User uploaded {msg_type}" + (f": {caption}" if caption else ""),
                     source="uploaded",
-                    blob_path=None,  # Would need to extract from database
-                    mime_type=None,  # Would need to extract from database
+                    blob_path=file_info.get('blob_path'),  # Would need to extract from database
+                    mime_type=file_info.get('mime_type'),  # Would need to extract from database
                     metadata={"inserted_id": inserted_id, "from_history": True}
                 )
                 logger.debug(f"Added historical media to bus: {msg_type} - {file_name}")

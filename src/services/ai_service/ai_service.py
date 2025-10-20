@@ -153,7 +153,7 @@ class AIService:
 
     async def multi_modal_by_doc_id(self, prompt: str, doc_id: str):
         logger.info(f"Fetching payload for doc_id: {doc_id}")
-        payload =   await build_payload_entry_from_inserted_id(doc_id)
+        payload,file_info =   await build_payload_entry_from_inserted_id(doc_id)
         if not payload:
             raise ValueError(f"Could not retrieve payload for doc_id: {doc_id}")
         logger.info(f"Retrieved payload for doc_id: {doc_id}, preparing messages for AI model.")

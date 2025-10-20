@@ -80,8 +80,9 @@ class MediaBus:
         Returns:
             media_id: Unique identifier for this media reference
         """
-        media_id = str(uuid.uuid4())
-
+        # media_id = str(uuid.uuid4())
+        media_id = str(len(self._storage.get(conversation_id, [])) + 1)  # Use index as media ID
+        ### simply use the index as media id to make it easier to reference multiple media in order
         ref = MediaReference(
             media_id=media_id,
             url=url,

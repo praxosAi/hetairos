@@ -295,7 +295,7 @@ def create_media_generation_tools(
             )
 
     @tool
-    async def generate_video(prompt: str) -> ToolExecutionResponse:
+    async def generate_video(prompt: str, media_ids: Optional[list[str]] = None) -> ToolExecutionResponse:
         """Generate a video using AI based on a text description.
 
         This tool uses Veo 3.0 to generate videos from text descriptions.
@@ -304,7 +304,7 @@ def create_media_generation_tools(
         Args:
             prompt: Detailed description of the video to generate, including
                    action, style, duration intent, camera movement, etc.
-
+            media_ids: Optional list of media IDs from media bus to use as visual references. we will only use the first one that is valid if multiple are provided.
         Returns:
             ToolExecutionResponse with result containing url, file_name, file_type, media_id
 
@@ -344,9 +344,25 @@ def create_media_generation_tools(
         try:
             logger.info(f"Generating video with prompt: {prompt[:100]}...")
             logger.warning("Video generation is a long-running operation (1-2+ minutes)")
-
+            reference_image_bytes = []
+            if media_ids and len(media_ids) > 0:
+                logger.info(f"Downloading {len(media_ids)} reference images from media bus")
+                for mid in media_ids:
+                    try:
+                        ref = media_bus.get_media(conversation_id, mid)
+                        logger.info(f"Fetched media {mid} from media bus: {ref}")
+                        if ref and ref.file_type in {"image", "photo"} and ref.url:
+                            # Download image bytes
+                            img_bytes = requests.get(ref.url).content
+                            mime_type = ref.mime_type or "image/png"
+                            reference_image_bytes.append({"img_bytes": img_bytes, "mime_type": mime_type})
+                            logger.info(f"Downloaded reference image: {ref.file_name}")
+                        else:
+                            logger.warning(f"Media {mid} not found or not an image, skipping")
+                    except Exception as e:
+                        logger.warning(f"Could not download reference image {mid}: {e}")
             # Video generation is synchronous and polls for completion
-            video_url, file_name, blob_path = await output_generator.generate_video(prompt, prefix)
+            video_url, file_name, blob_path = await output_generator.generate_video(prompt, prefix,reference_image_bytes=reference_image_bytes)
 
             if not video_url:
                 raise Exception("Video generation returned no URL")

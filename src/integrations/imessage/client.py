@@ -52,6 +52,27 @@ class IMessageClient:
             'media_url': 'https://mypraxospublic.blob.core.windows.net/static/praxos.vcf'
         }
         return await self._make_request("POST", f"{self.base_url}/send-message", payload)
+
+    async def send_location(self, to_number: str, latitude: float, longitude: float, location_name: Optional[str] = None):
+        """Send a location via iMessage (as Apple Maps URL)."""
+        # Format as Apple Maps URL
+        maps_url = f"https://maps.apple.com/?ll={latitude},{longitude}"
+        if location_name:
+            maps_url += f"&q={location_name}"
+
+        payload = {
+            "number": to_number,
+            "content": maps_url
+        }
+
+        self.logger.info(f"Sending location to {to_number}: {latitude}, {longitude} ({location_name or 'unnamed'})")
+        return await self._make_request("POST", f"{self.base_url}/send-message", payload)
+
+    async def request_location(self, to_number: str, message: str = "Please share your location"):
+        """Request location from user (iMessage doesn't support native location request buttons, so we just send a text message)."""
+        self.logger.info(f"Requesting location from {to_number} via text message")
+        return await self.send_message(to_number, message)
+
     async def send_media(self, to_number: str, file_obj):
         if not isinstance(file_obj, dict):
             if isinstance(file_obj, str):

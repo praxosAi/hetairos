@@ -432,6 +432,7 @@ class EgressService:
     async def send_response(self, event: dict, result: dict):
         """
         Routes the final response to the appropriate channel based on the event source.
+        Handles location requests and sending in addition to text/media responses.
         """
         source = event.get("source")
         ### cast to lower-case to avoid case sensitivity issues
@@ -440,6 +441,11 @@ class EgressService:
         response_text = result.get("response", "Sorry, something went wrong.")
         response_files = result.get("file_links", [])
         logger.info(f"the following response payload will be sent: text: {response_text}, files: {response_files}")
+
+        # Handle location functionality (request or send)
+        request_location = event.get("request_location", False)
+        send_location_data = event.get("send_location")
+
         if not source and not event.get('output_type'):
             logger.error(f"No source or output type found in event metadata. Cannot route response. Event: {event}")
             return
@@ -453,6 +459,100 @@ class EgressService:
 
         try:
             final_output_type = event.get("output_type", source)
+
+            # Handle location request
+            if request_location:
+                logger.info(f"Location request detected for platform: {final_output_type}")
+                if final_output_type == "telegram":
+                    chat_id = event.get("output_chat_id")
+                    if not chat_id:
+                        integration_record = await integration_service.get_integration_record_for_user_and_name(
+                            user_id=event.get("user_id"), name="telegram"
+                        )
+                        if integration_record:
+                            chat_id = integration_record.get("telegram_chat_id")
+                    if chat_id:
+                        await self.telegram_client.request_location(chat_id, response_text)
+                        logger.info(f"Location request sent via Telegram to chat {chat_id}")
+                        return  # Location request sent, no need to send regular message
+
+                elif final_output_type == "whatsapp":
+                    phone_number = event.get("output_phone_number")
+                    if not phone_number and event.get("user_id"):
+                        user_record = user_service.get_user_by_id(event.get("user_id"))
+                        if user_record:
+                            phone_number = user_record.get("phone_number")
+                    if phone_number:
+                        await self.whatsapp_client.request_location(phone_number, response_text)
+                        logger.info(f"Location request sent via WhatsApp to {phone_number}")
+                        return  # Location request sent
+
+                elif final_output_type == "imessage":
+                    phone_number = event.get("output_phone_number")
+                    if not phone_number and event.get("user_id"):
+                        user_record = user_service.get_user_by_id(event.get("user_id"))
+                        if user_record:
+                            phone_number = user_record.get("phone_number")
+                    if phone_number:
+                        await self.imessage_client.request_location(phone_number, response_text)
+                        logger.info(f"Location request sent via iMessage to {phone_number}")
+                        return  # Location request sent
+
+            # Handle location send
+            if send_location_data:
+                logger.info(f"Location send detected for platform: {final_output_type}")
+                latitude = send_location_data.get("latitude")
+                longitude = send_location_data.get("longitude")
+                location_name = send_location_data.get("name", "Location")
+
+                if final_output_type == "telegram":
+                    chat_id = event.get("output_chat_id")
+                    if not chat_id:
+                        integration_record = await integration_service.get_integration_record_for_user_and_name(
+                            user_id=event.get("user_id"), name="telegram"
+                        )
+                        if integration_record:
+                            chat_id = integration_record.get("telegram_chat_id")
+                    if chat_id:
+                        # Send text message first if present
+                        if response_text:
+                            await self.telegram_client.send_message(chat_id, response_text)
+                        # Then send location
+                        await self.telegram_client.send_location(chat_id, latitude, longitude, location_name)
+                        logger.info(f"Location sent via Telegram to chat {chat_id}")
+                        return  # Location sent
+
+                elif final_output_type == "whatsapp":
+                    phone_number = event.get("output_phone_number")
+                    if not phone_number and event.get("user_id"):
+                        user_record = user_service.get_user_by_id(event.get("user_id"))
+                        if user_record:
+                            phone_number = user_record.get("phone_number")
+                    if phone_number:
+                        # Send text message first if present
+                        if response_text:
+                            await self.whatsapp_client.send_message(phone_number, response_text)
+                        # Then send location
+                        await self.whatsapp_client.send_location(phone_number, latitude, longitude, location_name)
+                        logger.info(f"Location sent via WhatsApp to {phone_number}")
+                        return  # Location sent
+
+                elif final_output_type == "imessage":
+                    phone_number = event.get("output_phone_number")
+                    if not phone_number and event.get("user_id"):
+                        user_record = user_service.get_user_by_id(event.get("user_id"))
+                        if user_record:
+                            phone_number = user_record.get("phone_number")
+                    if phone_number:
+                        # Send text message first if present
+                        if response_text:
+                            await self.imessage_client.send_message(phone_number, response_text)
+                        # Then send location
+                        await self.imessage_client.send_location(phone_number, latitude, longitude, location_name)
+                        logger.info(f"Location sent via iMessage to {phone_number}")
+                        return  # Location sent
+
+            # Normal text/media response handling (if no location was involved or in addition to it)
             if final_output_type == "email":
                 await self._send_email_response(event, response_text)
 

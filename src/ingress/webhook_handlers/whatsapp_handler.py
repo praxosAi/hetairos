@@ -176,6 +176,48 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                         webhook_logger.info(f"Queued transcription job {job_id} for user {user_record['_id']}")
                                     finally:
                                         os.unlink(file_path) # Clean up the local file
+
+                        elif message_type == "location":
+                            location_data = message.get("location", {})
+                            latitude = location_data.get("latitude")
+                            longitude = location_data.get("longitude")
+
+                            webhook_logger.info(f"Received location from WhatsApp user {user_record['_id']}: lat={latitude}, lng={longitude}")
+
+                            # Store location in user preferences
+                            try:
+                                user_service.save_user_location(
+                                    user_id=str(user_record["_id"]),
+                                    latitude=latitude,
+                                    longitude=longitude,
+                                    platform="whatsapp"
+                                )
+                                webhook_logger.info(f"Saved location for user {user_record['_id']}")
+                            except Exception as e:
+                                webhook_logger.error(f"Failed to save location for user {user_record['_id']}: {e}")
+
+                            # Create event for location
+                            event = {
+                                "user_id": str(user_record["_id"]),
+                                'output_type': 'whatsapp',
+                                'output_phone_number': phone_number,
+                                "source": "whatsapp",
+                                "logging_context": {'user_id': str(user_record["_id"]), 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
+                                "payload": {
+                                    "location": {
+                                        "latitude": latitude,
+                                        "longitude": longitude
+                                    }
+                                },
+                                "metadata": {
+                                    "message_id": message["id"],
+                                    'source': 'whatsapp',
+                                    'timestamp': message.get('timestamp'),
+                                    'type': 'location'
+                                }
+                            }
+                            await event_queue.publish(event)
+
                         try:
                             if user_id_var.get() != 'SYSTEM_LEVEL':
                                 background_tasks.add_task(milestone_service.user_send_message, user_id_var.get())

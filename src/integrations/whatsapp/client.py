@@ -432,3 +432,82 @@ class WhatsAppClient:
         except aiohttp.ClientError as e:
             self.logger.error(f"WhatsApp send_praxos_contact_card error: {e}")
             return {"error": str(e)}
+
+    async def send_location(self, to_phone: str, latitude: float, longitude: float, location_name: Optional[str] = None, address: Optional[str] = None):
+        """Send a location via WhatsApp Business API."""
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        location_payload = {
+            "latitude": latitude,
+            "longitude": longitude
+        }
+        if location_name:
+            location_payload["name"] = location_name
+        if address:
+            location_payload["address"] = address
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to_phone,
+            "type": "location",
+            "location": location_payload
+        }
+
+        timeout = aiohttp.ClientTimeout(total=10)
+
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    f"{self.base_url}/messages",
+                    headers=headers,
+                    json=payload
+                ) as response:
+                    response.raise_for_status()
+                    self.logger.info(f"Successfully sent location to {to_phone}: {latitude}, {longitude}")
+                    return await response.json()
+        except aiohttp.ClientError as e:
+            self.logger.error(f"WhatsApp send_location error: {e}")
+            return {"error": str(e)}
+
+    async def request_location(self, to_phone: str, message: str = "Please share your location"):
+        """Request location from user via WhatsApp's interactive location request message."""
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "type": "interactive",
+            "to": to_phone,
+            "interactive": {
+                "type": "location_request_message",
+                "body": {
+                    "text": message
+                },
+                "action": {
+                    "name": "send_location"
+                }
+            }
+        }
+
+        timeout = aiohttp.ClientTimeout(total=10)
+
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    f"{self.base_url}/messages",
+                    headers=headers,
+                    json=payload
+                ) as response:
+                    response.raise_for_status()
+                    self.logger.info(f"Successfully sent location request to {to_phone}")
+                    return await response.json()
+        except aiohttp.ClientError as e:
+            self.logger.error(f"WhatsApp request_location error: {e}")
+            return {"error": str(e)}

@@ -709,6 +709,13 @@ class DatabaseManager:
         cursor = self.agent_triggers.find({"user_id": ObjectId(user_id), 'status': 'active'})
         triggers = await cursor.to_list(length=1000)
         return triggers
+    
+    async def deactivate_trigger(self, rule_id: str):
+        """Deactivate a trigger by setting its status to inactive."""
+        await self.agent_triggers.update_one(
+            {"rule_id": rule_id},
+            {"$set": {"status": "inactive", "updated_at": datetime.utcnow()}}
+        )
     async def get_existing_tool_milestone(self, user_id: str, tool_name: str) -> Optional[Dict]:
         """Get existing tool milestone for a user and tool."""
         return await self.tool_monitor_collection.find_one({

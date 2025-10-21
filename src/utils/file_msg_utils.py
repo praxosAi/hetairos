@@ -465,7 +465,7 @@ async def get_conversation_history(
             raw_msg = raw_msgs[i]
             msg_type = raw_msg.get("message_type")
             inserted_id = (raw_msg.get("metadata") or {}).get("inserted_id")
-
+            container_name = 'cdn-container' if msg_type in {'image', 'photo'} else settings.AZURE_BLOB_CONTAINER_NAME
             # Try to extract URL from payload
             media_url = None
             if payload.get("type") == "image_url":
@@ -486,7 +486,8 @@ async def get_conversation_history(
                     source="uploaded",
                     blob_path=file_info.get('blob_path'),  # Would need to extract from database
                     mime_type=file_info.get('mime_type'),  # Would need to extract from database
-                    metadata={"inserted_id": inserted_id, "from_history": True}
+                    metadata={"inserted_id": inserted_id, "from_history": True},
+                    container_name=container_name,
                 )
                 logger.debug(f"Added historical media to bus: {msg_type} - {file_name}")
         except Exception as e:

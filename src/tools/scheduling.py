@@ -186,4 +186,18 @@ def create_scheduling_tools(user_id: str,source:str,conversation_id:str) -> List
                 integration="scheduling_service"
             )
 
-    return [schedule_task, create_recurring_future_task, get_scheduled_tasks, cancel_scheduled_task, update_scheduled_task]
+    @tool
+    async def cancel_trigger(rule_id: str) -> ToolExecutionResponse:
+        """Cancels an active trigger by its rule ID."""
+        try:
+            result = await scheduling_service.cancel_trigger(rule_id)
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            logger.error(f"Error cancelling trigger: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="cancel_trigger",
+                exception=e,
+                integration="scheduling_service"
+            )
+
+    return [schedule_task, create_recurring_future_task, get_scheduled_tasks, cancel_scheduled_task, update_scheduled_task, cancel_trigger]

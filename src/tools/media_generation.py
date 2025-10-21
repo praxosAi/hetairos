@@ -184,7 +184,8 @@ def create_media_generation_tools(
                 source="generated",
                 blob_path=blob_path,
                 mime_type="image/png",
-                metadata={"prompt": prompt, "tool": "generate_image"}
+                metadata={"prompt": prompt, "tool": "generate_image"},
+                container_name='cdn-container'
             )
 
             logger.info(f"Successfully generated image: {file_name} (media_id={media_id})")

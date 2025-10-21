@@ -61,7 +61,8 @@ class MediaBus:
         source: str = "generated",
         blob_path: Optional[str] = None,
         mime_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        container_name: Optional[str] = settings.AZURE_BLOB_CONTAINER_NAME
     ) -> str:
         """
         Add a media reference to the bus.
@@ -94,7 +95,8 @@ class MediaBus:
             blob_path=blob_path,
             mime_type=mime_type,
             loaded_in_context=False,
-            metadata=metadata or {}
+            metadata=metadata or {},
+            container_name=container_name
         )
 
         if conversation_id not in self._storage:

@@ -220,6 +220,15 @@ class SchedulingService:
             logger.error(f"Failed to get triggers for user {user_id}: {e}")
             return []
 
+    async def cancel_trigger(self, rule_id: str) -> str:
+        """Cancels a trigger by its rule_id."""
+        try:
+            await db_manager.deactivate_trigger(rule_id)
+            return f"Trigger {rule_id} cancelled successfully."
+        except Exception as e:
+            logger.error(f"Failed to cancel trigger {rule_id}: {e}")
+            return "Failed to cancel trigger."
+
     async def cancel_task(self, task_id: str) -> str:
         """Cancels a scheduled task."""
         try:

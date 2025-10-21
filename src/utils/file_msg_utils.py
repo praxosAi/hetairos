@@ -92,11 +92,11 @@ async def build_payload_entry(file: Dict[str, Any], add_to_media_bus=False, conv
             logger.error(f"Error adding media to media bus: {e}", exc_info=True)
     return payload
 
-async def build_payload_entry_from_inserted_id(inserted_id: str) -> Tuple[Optional[Dict[str, Any]],Optional[Dict[str, Any]]]:
+async def build_payload_entry_from_inserted_id(inserted_id: str,add_to_media_bus:bool=False, conversation_id: str = None) -> Tuple[Optional[Dict[str, Any]],Optional[Dict[str, Any]]]:
     from src.utils.database import db_manager
     file = await db_manager.get_document_by_id(inserted_id)
     if file:
-        payload = await build_payload_entry(file)
+        payload = await build_payload_entry(file, add_to_media_bus=add_to_media_bus, conversation_id=conversation_id)
         return payload,file
     return None,None
 
@@ -437,7 +437,7 @@ async def get_conversation_history(
             # De-duplicate downloads for the same inserted_id
             task = cache.get(inserted_id)
             if task is None:
-                task = build_payload_entry_from_inserted_id(inserted_id)
+                task = build_payload_entry_from_inserted_id(inserted_id, add_to_media_bus=True, conversation_id=conversation_id)
                 cache[inserted_id] = task
 
             fetch_tasks.append(task)
@@ -477,18 +477,18 @@ async def get_conversation_history(
                 file_name = media_url.split('/')[-1] if '/' in media_url else "media_file"
                 caption = raw_msg.get("content", "")  # Use message content as description
                 
-                media_bus.add_media(
-                    conversation_id=conversation_id,
-                    url=media_url,
-                    file_name=file_name,
-                    file_type=msg_type,
-                    description=f"User uploaded {msg_type}" + (f": {caption}" if caption else ""),
-                    source="uploaded",
-                    blob_path=file_info.get('blob_path'),  # Would need to extract from database
-                    mime_type=file_info.get('mime_type'),  # Would need to extract from database
-                    metadata={"inserted_id": inserted_id, "from_history": True},
-                    container_name=container_name,
-                )
+                # media_bus.add_media(
+                #     conversation_id=conversation_id,
+                #     url=media_url,
+                #     file_name=file_name,
+                #     file_type=msg_type,
+                #     description=f"User uploaded {msg_type}" + (f": {caption}" if caption else ""),
+                #     source="uploaded",
+                #     blob_path=file_info.get('blob_path'),  # Would need to extract from database
+                #     mime_type=file_info.get('mime_type'),  # Would need to extract from database
+                #     metadata={"inserted_id": inserted_id, "from_history": True},
+                #     container_name=container_name,
+                # )
                 logger.debug(f"Added historical media to bus: {msg_type} - {file_name}")
         except Exception as e:
             logger.warning(f"Could not add media to bus: {e}")

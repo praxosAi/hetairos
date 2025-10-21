@@ -85,6 +85,14 @@ class MediaBus:
         if file_type in {'image','photo'}:
             container_name = 'cdn-container'
         media_id = str(len(self._storage.get(conversation_id, [])) + 1)  # Use index as media ID
+
+        if url is None and blob_path is not None:
+            ### generate SAS URL from blob path
+            try:
+                from src.utils.blob_utils import get_blob_sas_url
+                url = get_blob_sas_url(blob_path, container_name=container_name)
+            except Exception as e:
+                logger.warning(f"Failed to generate SAS URL for blob_path {blob_path}: {e}")
         ### simply use the index as media id to make it easier to reference multiple media in order
         ref = MediaReference(
             media_id=media_id,

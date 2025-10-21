@@ -83,7 +83,8 @@ def create_media_generation_tools(
                    produce better images.
             media_ids: Optional list of media IDs from media bus to use as visual references.
                       Use get_recent_images() or list_available_media() to find media IDs.
-                      The reference images will be shown to the AI for style/content inspiration.
+                      The reference images will be shown to the AI for style/content inspiration. 
+                      To have this, you must always use the get_recent_images() tool to get media IDs first.
 
         Returns:
             ToolExecutionResponse with result containing url, file_name, file_type, media_id

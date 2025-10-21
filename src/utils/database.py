@@ -484,6 +484,30 @@ class DatabaseManager:
             "is_active": True
         }).sort("next_run")
         return await cursor.to_list(length=1000)
+    async def get_future_tasks(self, user_id: str, name_filter: Optional[List[str]] = None) -> List[Dict]:
+        """Gets all future scheduled tasks for a user.
+
+        Optional name_filter can be provided to restrict results to tasks whose
+        'name' field is one of the provided values (e.g. ["recurring"] or ["scheduled"]).
+        A single string may also be passed (it will be treated as a single-element list).
+        """
+        now = datetime.utcnow()
+        query = {
+            "user_id": ObjectId(user_id),
+            "is_active": True,
+            "next_run": {"$gt": now}
+        }
+
+        if name_filter:
+            # allow passing a single string as well
+            if isinstance(name_filter, str):
+                names = [name_filter]
+            else:
+                names = name_filter
+            query["name"] = {"$in": names}
+
+        cursor = self.agent_schedules.find(query).sort("next_run")
+        return await cursor.to_list(length=1000)
 
     async def update_task(self, task_id: str, update_data: Dict):
         """Updates a scheduled task with the given data."""
@@ -679,6 +703,12 @@ class DatabaseManager:
         if trigger:
             return trigger
         return None
+    
+    async def get_user_triggers(self, user_id: str) -> List[Dict]:
+        """Get all active triggers for a user."""
+        cursor = self.agent_triggers.find({"user_id": ObjectId(user_id), 'status': 'active'})
+        triggers = await cursor.to_list(length=1000)
+        return triggers
     async def get_existing_tool_milestone(self, user_id: str, tool_name: str) -> Optional[Dict]:
         """Get existing tool milestone for a user and tool."""
         return await self.tool_monitor_collection.find_one({

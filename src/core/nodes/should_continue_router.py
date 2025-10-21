@@ -177,7 +177,7 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
             tool_called = any(isinstance(m, AIMessage) and getattr(m, "tool_calls", None) for m in new_messages)
             if not tool_called:
                 next_count = state.get("tool_iter_counter", 0) + 1
-                appended_msg = AIMessage(content=f"I need to use a tool to proceed. Consulting the plan and using the appropriate tool. Original plan:\n\n{config.plan_str}")
+                appended_msg = AIMessage(content=f"I need to use a tool to proceed. Consulting the plan and using the appropriate tool. Original plan:\n\n{config.plan_str}. If there is an issue preventing me from proceeding, I should use the reply tools to reply to the user and inform them, or ask for clarification.")
                 
                 if next_count > config.MAX_TOOL_ITERS:
                     logger.error("Too many iterations without tool usage; finalizing.")

@@ -146,25 +146,28 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                 logger.error(f"Failed to save location for user {user_id}: {e}")
 
             # Create event for location
+            location_text = f"User shared location: {latitude}, {longitude}"
+            if horizontal_accuracy:
+                location_text += f" (accuracy: {horizontal_accuracy}m)"
+
             event = {
                 "user_id": user_id,
                 'output_type': 'telegram',
                 'output_chat_id': chat_id,
                 "source": "telegram",
                 'logging_context': {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
-                "payload": {
-                    "location": {
-                        "latitude": latitude,
-                        "longitude": longitude,
-                        "accuracy": horizontal_accuracy
-                    }
-                },
+                "payload": {"text": location_text},
                 "metadata": {
                     'message_id': message["message_id"],
                     'chat_id': chat_id,
                     'source': 'telegram',
                     'timestamp': message.get("date"),
-                    'type': 'location'
+                    'type': 'text',
+                    'location': {
+                        "latitude": latitude,
+                        "longitude": longitude,
+                        "accuracy": horizontal_accuracy
+                    }
                 }
             }
             await event_queue.publish(event)

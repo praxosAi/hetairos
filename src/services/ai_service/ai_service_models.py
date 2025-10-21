@@ -47,6 +47,8 @@ class ToolFunctionID(str, Enum):
     SET_TIMEZONE = "set_timezone"
     SET_LANGUAGE_RESPONSE = "set_language_response"
     DELETE_USER_PREFERENCE_ANNOTATIONS = "delete_user_preference_annotations"
+    GET_USER_LOCATION = "get_user_location"
+    GET_USER_LOCATION_HISTORY = "get_user_location_history"
 
     # Integration tools
     GET_OAUTH_INITIATION_URL = "get_oauth_initiation_url"

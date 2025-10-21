@@ -115,6 +115,7 @@ class EgressService:
         try:
             for sending_counter in range(12):  # Limit to 12 sends (2 minutes) to avoid infinite loops
                 try:
+                    logger.info("Sending iMessage typing indicator to %s", phone_number)
                     # Send typing indicator
                     await self.imessage_client.set_typing_indicator(phone_number)
                 except Exception as e:
@@ -178,9 +179,12 @@ class EgressService:
         phone_number = event.get("output_phone_number")
         if not phone_number:
             try:
-                user_record = user_service.get_user_by_id(event.get("user_id"))
-                if user_record:
-                    phone_number = user_record.get("phone_number")
+                integration_record = await integration_service.get_integration_record_for_user_and_name(
+                    user_id=event.get("user_id"),
+                    name="imessage"
+                )
+                if integration_record:
+                    phone_number = integration_record.get("connected_account")
             except Exception as e:
                 logger.error(f"Failed to get phone_number for typing indicator: {e}")
                 return None
@@ -220,14 +224,17 @@ class EgressService:
         phone_number = event.get("output_phone_number")
         if not phone_number and event.get("user_id"):
             try:
-                user_record = user_service.get_user_by_id(event.get("user_id"))
-                if user_record:
-                    phone_number = user_record.get("phone_number")
+                integration_record = await integration_service.get_integration_record_for_user_and_name(
+                    user_id=event.get("user_id"),
+                    name="whatsapp"
+                )
+                if integration_record:
+                    phone_number = integration_record.get("connected_account")
                 else:
-                    logger.error(f"No user record found for WhatsApp message. Event: {event}")
+                    logger.error(f"No integration record found for WhatsApp message. Event: {event}")
                     return
                 if not phone_number:
-                    logger.error(f"No phone_number in user record for WhatsApp message. Event: {event}")
+                    logger.error(f"No phone_number in integration record for WhatsApp message. Event: {event}")
                     return
             except Exception as e:
                 logger.error(f"no phone number found for WhatsApp output type. Event: {event}", exc_info=True)
@@ -243,14 +250,17 @@ class EgressService:
         phone_number = event.get("output_phone_number")
         if not phone_number and event.get("user_id"):
             try:
-                user_record = user_service.get_user_by_id(event.get("user_id"))
-                if user_record:
-                    phone_number = user_record.get("phone_number")
+                integration_record = await integration_service.get_integration_record_for_user_and_name(
+                    user_id=event.get("user_id"),
+                    name="imessage"
+                )
+                if integration_record:
+                    phone_number = integration_record.get("connected_account")
                 else:
-                    logger.error(f"No user record found for iMessage message. Event: {event}")
+                    logger.error(f"No integration record found for iMessage message. Event: {event}")
                     return
                 if not phone_number:
-                    logger.error(f"No phone_number in user record for iMessage message. Event: {event}")
+                    logger.error(f"No phone_number in integration record for iMessage message. Event: {event}")
                     return
             except Exception as e:
                 logger.error(f"no phone number found for iMessage output type. Event: {event}", exc_info=True)

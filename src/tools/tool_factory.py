@@ -4,7 +4,6 @@ from src.services.conversation_manager import ConversationManager
 from src.utils.logging import setup_logger
 from langchain_core.tools import Tool
 from langchain_google_community import GoogleSearchAPIWrapper
-from langchain_community.tools import GooglePlacesTool
 import asyncio
 # Integration Clients
 from src.integrations.notion.notion_client import NotionIntegration
@@ -35,6 +34,7 @@ from src.tools.preference_tools import create_preference_tools
 from src.tools.integration_tools import create_integration_tools
 from src.tools.database_tools import create_database_access_tools
 from src.tools.google_lens import create_google_lens_tools
+from src.tools.google_places import create_google_places_tools
 import src.tools.mock_tools as mock_tools
 
 logger = setup_logger(__name__)
@@ -219,7 +219,8 @@ class AgentToolsFactory:
         # Google Places
         if is_tool_required('GooglePlacesTool'):
             try:
-                tools.append(GooglePlacesTool())
+                tools.extend(create_google_places_tools())
+                logger.info("Google Places tool created successfully.")
             except Exception as e:
                 logger.error(f"Error creating Google places tool: {e}", exc_info=True)
 

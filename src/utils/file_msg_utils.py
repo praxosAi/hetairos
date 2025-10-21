@@ -573,7 +573,7 @@ async def update_history( conversation_manager: Any, new_messages: List[BaseMess
                     user_context.user_id,
                     conversation_id,
                     content,
-                    metadata={"tool_calls": [tc.get('name') for tc in msg.tool_calls]}
+                    metadata={"tool_calls": [tc for tc in msg.tool_calls]}
                 )
             elif isinstance(msg, ToolMessage):
                 # Persist tool results

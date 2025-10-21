@@ -181,6 +181,8 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                             location_data = message.get("location", {})
                             latitude = location_data.get("latitude")
                             longitude = location_data.get("longitude")
+                            location_name = location_data.get("name")
+                            location_address = location_data.get("address")
 
                             webhook_logger.info(f"Received location from WhatsApp user {user_record['_id']}: lat={latitude}, lng={longitude}")
 
@@ -190,30 +192,38 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                     user_id=str(user_record["_id"]),
                                     latitude=latitude,
                                     longitude=longitude,
-                                    platform="whatsapp"
+                                    platform="whatsapp",
+                                    location_name=location_name
                                 )
                                 webhook_logger.info(f"Saved location for user {user_record['_id']}")
                             except Exception as e:
                                 webhook_logger.error(f"Failed to save location for user {user_record['_id']}: {e}")
 
                             # Create event for location
+                            location_text = f"User shared location: {latitude}, {longitude}"
+                            if location_name:
+                                location_text += f" ({location_name})"
+                            if location_address:
+                                location_text += f" - {location_address}"
+
                             event = {
                                 "user_id": str(user_record["_id"]),
                                 'output_type': 'whatsapp',
                                 'output_phone_number': phone_number,
                                 "source": "whatsapp",
                                 "logging_context": {'user_id': str(user_record["_id"]), 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
-                                "payload": {
-                                    "location": {
-                                        "latitude": latitude,
-                                        "longitude": longitude
-                                    }
-                                },
+                                "payload": {"text": location_text},
                                 "metadata": {
                                     "message_id": message["id"],
                                     'source': 'whatsapp',
                                     'timestamp': message.get('timestamp'),
-                                    'type': 'location'
+                                    'type': 'text',
+                                    'location': {
+                                        "latitude": latitude,
+                                        "longitude": longitude,
+                                        "name": location_name,
+                                        "address": location_address
+                                    }
                                 }
                             }
                             await event_queue.publish(event)

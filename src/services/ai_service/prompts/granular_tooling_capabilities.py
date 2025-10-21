@@ -35,21 +35,23 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 - Args: message (str), media_urls (optional list), media_types (optional list)
 - Use this for responses to users on WhatsApp
 - Can send multiple messages during execution
-- Supports text-only or text with media (images, audio, video, documents)
-
+- Supports text-only or text with media (images, audio, video, documents) or a location pin
+- Supports requesting location from user, via an interactive button
 **reply_to_user_on_telegram**
 - Send Telegram messages to the user with optional media attachments
 - Args: message (str), media_urls (optional list), media_types (optional list)
 - Use this for responses to users on Telegram
 - Can send multiple messages during execution
-- Supports text-only or text with media
+- Supports text-only or text with media or a location pin
+- Supports requesting location from user, via an interactive button
 
 **reply_to_user_on_imessage**
 - Send iMessages to the user with optional media attachments
 - Args: message (str), media_urls (optional list), media_types (optional list)
 - Use this for responses to users via iMessage
 - Can send multiple messages during execution
-- Supports text-only or text with media
+- Supports text-only or text with media or a location pin
+- Supports requesting location from user, via sending a text message prompt.
 
 **reply_to_user_on_discord**
 - Send Discord messages to the user with optional media attachments
@@ -260,6 +262,21 @@ Generally, the idea is : If the missing information for this command is somethin
 - Removes specific user preference annotations
 - Args: annotations_to_delete (list of strings to remove)
 - Use when: User wants to remove saved preferences
+
+**get_user_location**
+- Gets the user's last shared location
+- Returns: latitude, longitude, name (optional), platform, timestamp
+- Use when: User asks "Where am I?", need location for context (weather, nearby places, etc.)
+- If no location: Tool suggests requesting it via request_location parameter in reply tool
+- Examples: "What's the weather here?", "Find restaurants near me", "Where was I last?"
+
+**get_user_location_history**
+- Gets user's location history (most recent first)
+- Args: limit (default 10, max 100)
+- Returns: Array of locations with coordinates, names, platforms, timestamps
+- Use when: User asks about location history, tracking movement, "where have I been?"
+- If no history: Tool suggests requesting location via request_location parameter in reply tool
+- Examples: "Show me my location history", "Where have I been today?", "Track my locations"
 
 ---
 

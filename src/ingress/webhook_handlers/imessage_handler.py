@@ -141,24 +141,27 @@ async def handle_imessage_webhook(request: Request, background_tasks: Background
                 logger.error(f"Failed to save location for user {user_id}: {e}")
 
             # Create event for location
+            location_text = f"User shared location: {latitude}, {longitude}"
+            if location_name:
+                location_text += f" ({location_name})"
+
             event = {
                 "user_id": user_id,
                 'output_type': 'imessage',
                 'output_phone_number': phone_number,
                 "source": "imessage",
                 "logging_context": {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
-                "payload": {
-                    "location": {
-                        "latitude": latitude,
-                        "longitude": longitude,
-                        "name": location_name
-                    }
-                },
+                "payload": {"text": location_text},
                 "metadata": {
                     'message_id': data.get("message_handle"),
                     'source': 'iMessage',
                     'timestamp': data.get("date_sent"),
-                    'type': 'location'
+                    'type': 'text',
+                    'location': {
+                        "latitude": latitude,
+                        "longitude": longitude,
+                        "name": location_name
+                    }
                 }
             }
             await event_queue.publish(event)

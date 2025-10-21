@@ -81,7 +81,7 @@ def create_media_generation_tools(
             prompt: Detailed description of the image to generate. Be specific about
                    style, content, colors, composition, mood, etc. Better prompts
                    produce better images.
-            media_ids: Optional list of media IDs from media bus to use as visual references.
+            media_ids: Optional list of media IDs from media bus to use as visual references. media ids are indexes, starting from 0, representing the order in which media were added to the media bus. do not use the filename here.
                       Use get_recent_images() or list_available_media() to find media IDs.
                       The reference images will be shown to the AI for style/content inspiration. 
                       To have this, you must always use the get_recent_images() tool to get media IDs first.
@@ -124,6 +124,7 @@ def create_media_generation_tools(
             - Describe composition and perspective
             - Mention important elements and their relationships
         """
+        ### actually, we should fail here if media_ids are provided but invalid, returning to the ai so it can rectify itself.
         try:
             logger.info(f"Generating image with prompt: {prompt[:100]}...")
 
@@ -143,6 +144,13 @@ def create_media_generation_tools(
                             logger.info(f"Downloaded reference image: {ref.file_name}")
                         else:
                             logger.warning(f"Media {mid} not found or not an image, skipping")
+                            return ErrorResponseBuilder.invalid_parameter(
+                                operation="generate_image",
+                                param_name="media_ids",
+                                param_value=mid,
+                                expected_format="ensure that the media id is the media bus index. use the get_recent_images() tool to get valid media ids.",
+
+                            )
                     except Exception as e:
                         logger.warning(f"Could not download reference image {mid}: {e}")
 

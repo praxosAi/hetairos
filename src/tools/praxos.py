@@ -29,7 +29,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
             contexts = await praxos_client.search_memory(query, search_modality='node_vec', top_k=top_k, exclude_seen=exclude_seen_node_ids)
             
             if not contexts:
-                return json.dumps(ToolExecutionResponse(status="success", result=[]).dict(),indent=4)
+                return ToolExecutionResponse(status="success", result=[])
             response = []
             formatted_context = "\n".join([ctx for ctx in contexts.get('sentences', [])])
             if not formatted_context:
@@ -37,7 +37,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
             else:
                 response = contexts.get('results')
 
-            return json.dumps(ToolExecutionResponse(status="success", result=response).dict(),indent=4)
+            return ToolExecutionResponse(status="success", result=response)
 
         except Exception as e:
             logger.error(f"Error querying Praxos memory: {e}", exc_info=True)
@@ -62,7 +62,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
             contexts = await praxos_client.search_memory(query, search_modality='intelligent', top_k=top_k)
             
             if not contexts:
-                return json.dumps(ToolExecutionResponse(status="success", result=[]).dict(),indent=4)
+                return ToolExecutionResponse(status="success", result=[])
             response = []
             formatted_context = "\n".join([ctx for ctx in contexts.get('sentences', [])])
             if not formatted_context:
@@ -70,7 +70,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
             else:
                 response = contexts.get('results')
 
-            return json.dumps(ToolExecutionResponse(status="success", result=response).dict(),indent=4)
+            return ToolExecutionResponse(status="success", result=response)
 
         except Exception as e:
             logger.error(f"Error querying Praxos memory: {e}", exc_info=True)
@@ -91,7 +91,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
         try:
             logger.info(f"Enriching Praxos memory entries: {node_ids}")
             enriched_entries = await praxos_client.enrich_nodes(node_ids)
-            return json.dumps(ToolExecutionResponse(status="success", result=enriched_entries).dict(),indent=4)
+            return ToolExecutionResponse(status="success", result=enriched_entries)
         except Exception as e:
             logger.error(f"Error enriching Praxos memory entries: {e}", exc_info=True)
             return ErrorResponseBuilder.from_exception(
@@ -105,14 +105,14 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
         """Setup a trigger in Praxos memory. a trigger is a conditional statement, of form "If I receive an email from X, then do Y"
         Args:
             trigger_conditional_statement: The conditional statement to setup as a trigger. it should be complete and descriptive, in plain english. 
-            one_time: Whether the trigger should be one-time or persistent. Defaults to True (one-time). if the user wants a persistent trigger, set this to False. Try to guess from context and nature of the task, but if unsure, ask the user.
+            one_time: Whether the trigger should be one-time or persistent. Defaults to True (one-time). if the user wants a persistent trigger, set this to False. Try to guess from context and nature of the task, but if unsure, ask the user. If the user says 'any time' or 'whenever', set this to False.
         """
         try:
             logger.info(f"Setting up new trigger in Praxos memory: {trigger_conditional_statement}")
             trigger_setup_response = await praxos_client.setup_trigger(trigger_conditional_statement)
             if 'rule_id' in trigger_setup_response:
-                await db_manager.insert_new_trigger(trigger_setup_response['rule_id'], conversation_id,trigger_conditional_statement, user_id, one_time,)
-            return json.dumps(ToolExecutionResponse(status="success", result=trigger_setup_response).dict(),indent=4)
+                await db_manager.insert_new_trigger(trigger_setup_response['rule_id'], conversation_id, trigger_conditional_statement, user_id, one_time)
+            return ToolExecutionResponse(status="success", result=trigger_setup_response)
         except Exception as e:
             logger.error(f"Error setting up new trigger in Praxos memory: {e}", exc_info=True)
             return ErrorResponseBuilder.from_exception(
@@ -153,7 +153,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
                     integration="Praxos"
                 )
 
-            return json.dumps(ToolExecutionResponse(status="success", result=result['hits']).dict(), indent=4)
+            return ToolExecutionResponse(status="success", result=result['hits'])
 
         except Exception as e:
             logger.error(f"Error extracting entities: {e}", exc_info=True)
@@ -195,7 +195,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
                     integration="Praxos"
                 )
 
-            return json.dumps(ToolExecutionResponse(status="success", result=result['hits']).dict(), indent=4)
+            return ToolExecutionResponse(status="success", result=result['hits'])
 
         except Exception as e:
             logger.error(f"Error extracting literals: {e}", exc_info=True)
@@ -237,7 +237,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
                     integration="Praxos"
                 )
 
-            return json.dumps(ToolExecutionResponse(status="success", result=results).dict(), indent=4)
+            return ToolExecutionResponse(status="success", result=results)
 
         except Exception as e:
             logger.error(f"Error getting entities by type: {e}", exc_info=True)
@@ -541,14 +541,14 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
                     "account": properties.get('account', 'N/A')
                 })
 
-            return json.dumps(ToolExecutionResponse(
+            return ToolExecutionResponse(
                 status="success",
                 result={
                     "integrations": integration_summary,
                     "count": len(integration_summary),
                     "connected": [i['type'] for i in integration_summary if i['status'] == 'active']
                 }
-            ).dict(), indent=4)
+            )
 
         except Exception as e:
             logger.error(f"Error checking integrations: {e}", exc_info=True)

@@ -91,7 +91,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error listing Trello boards: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def get_trello_board_details(board_id: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -125,7 +129,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error getting Trello board details: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def list_trello_cards(board_id: str = None, list_id: str = None, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -155,7 +163,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error listing Trello cards: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def get_trello_card(card_id: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -189,7 +201,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error getting Trello card: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def create_trello_card(
@@ -235,7 +251,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error creating Trello card: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def update_trello_card(
@@ -284,7 +304,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error updating Trello card: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def move_trello_card(card_id: str, list_id: str, pos: str = "bottom", account: Optional[str] = None) -> ToolExecutionResponse:
@@ -319,7 +343,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error moving Trello card: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def add_trello_comment(card_id: str, text: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -348,7 +376,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error adding Trello comment: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def search_trello(query: str, model_types: str = "cards,boards", organization_ids: Optional[str] = None, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -380,7 +412,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error searching Trello: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def create_trello_checklist(card_id: str, checklist_name: str, items: Optional[List[str]] = None, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -416,7 +452,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error creating Trello checklist: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def create_trello_board(name: str, description: str = "", organization_id: Optional[str] = None, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -446,7 +486,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error creating Trello board: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def create_trello_list(board_id: str, list_name: str, pos: str = "bottom", account: Optional[str] = None) -> ToolExecutionResponse:
@@ -476,7 +520,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error creating Trello list: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def get_board_members(board_id: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -504,7 +552,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error getting board members: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def assign_member_to_card(card_id: str, member_id: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -533,7 +585,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error assigning member to card: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def unassign_member_from_card(card_id: str, member_id: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -562,7 +618,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error removing member from card: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def get_card_members(card_id: str, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -590,7 +650,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error getting card members: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     @tool
     async def share_trello_board(board_id: str, email: str, full_name: Optional[str] = None, account: Optional[str] = None) -> ToolExecutionResponse:
@@ -621,7 +685,11 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
             )
         except Exception as e:
             logger.error(f"Error sharing board: {e}", exc_info=True)
-            return ToolExecutionResponse(status="error", system_error=str(e))
+            return ErrorResponseBuilder.from_exception(
+                operation=e.__traceback__.tb_frame.f_code.co_name if e.__traceback__ else "trello_operation",
+                exception=e,
+                integration="Trello"
+            )
 
     return [
         list_trello_accounts,

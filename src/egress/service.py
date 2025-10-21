@@ -440,8 +440,8 @@ class EgressService:
         response_text = result.get("response", "Sorry, something went wrong.")
         response_files = result.get("file_links", [])
         logger.info(f"the following response payload will be sent: text: {response_text}, files: {response_files}")
-        if not source:
-            logger.error(f"No source found in event metadata. Cannot route response. Event: {event}")
+        if not source and not event.get('output_type'):
+            logger.error(f"No source or output type found in event metadata. Cannot route response. Event: {event}")
             return
 
         logger.info(f"Routing response for source: {source}, output_type: {event.get('output_type')}")

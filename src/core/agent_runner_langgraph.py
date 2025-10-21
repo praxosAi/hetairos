@@ -197,7 +197,8 @@ class LangGraphAgentRunner:
                 metadata,
                 timezone_name,
                 request_id=self.trace_id,
-                required_tool_ids=required_tool_ids
+                required_tool_ids=required_tool_ids,
+                conversation_manager=self.conversation_manager
             )
 
             # NEW: Type-driven parameter resolution
@@ -329,7 +330,9 @@ class LangGraphAgentRunner:
             await update_history( conversation_manager=self.conversation_manager, new_messages=new_messages, conversation_id=conversation_id, user_context=user_context, final_state=final_state)
             final_response = final_state['final_response']
             output_blobs = []
-            await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, final_response.response)
+            ### this actually should be handled directly now.
+            if not final_state.get('reply_sent'):
+                await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, final_response.response)
             logger.info(f"Final response generated for execution {execution_id}: {final_response.model_dump_json(indent=2)}")
             final_response = await process_media_output(conversation_manager=self.conversation_manager, final_response=final_response, user_context=user_context, source=source, conversation_id=conversation_id)
             execution_record["status"] = "completed"

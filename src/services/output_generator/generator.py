@@ -7,9 +7,46 @@ from src.utils.blob_utils import upload_bytes_to_blob_storage,get_blob_sas_url
 from src.utils.audio import wave_file, wav_bytes_to_ogg_bytes, ogg_bytes_to_caf_bytes
 logger = setup_logger(__name__)
 
+
 import datetime
 import time
 import uuid
+from typing import Optional
+from enum import Enum
+class GeminiVoice(str, Enum):
+    ZEPHYR = "Zephyr"
+    PUCK = "Puck"
+    CHARON = "Charon"
+    KORE = "Kore"
+    FENRIR = "Fenrir"
+    LEDA = "Leda"
+    ORUS = "Orus"
+    AOEDE = "Aoede"
+    CALLIRRHOE = "Callirrhoe"
+    AUTONOE = "Autonoe"
+    ENCELADUS = "Enceladus"
+    IAPETUS = "Iapetus"
+    UMBRIEL = "Umbriel"
+    ALGIEBA = "Algieba"
+    DESPINA = "Despina"
+    ERINOME = "Erinome"
+    ALGENIB = "Algenib"
+    RASALGETHI = "Rasalgethi"
+    LAOMEDEIA = "Laomedeia"
+    ACHERNAR = "Achernar"
+    ALNILAM = "Alnilam"
+    SCHEDAR = "Schedar"
+    GACRUX = "Gacrux"
+    PULCHERRIMA = "Pulcherrima"
+    ACHIRD = "Achird"
+    ZUBENELGENUBI = "Zubenelgenubi"
+    VINDEMIATRIX = "Vindemiatrix"
+    SADACHBIA = "Sadachbia"
+    SADALTAGER = "Sadaltager"
+    SULAFAT = "Sulafat"
+
+
+
 class OutputGenerator:
     def __init__(self):
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
@@ -58,23 +95,23 @@ class OutputGenerator:
 
         return None, None, None
 
-    async def generate_speech(self, text: str, prefix: str, imessage_scenario: bool = False) -> str:
+    async def generate_speech(self, text: str, prefix: str, imessage_scenario: bool = False, voice: Optional[GeminiVoice] = GeminiVoice.KORE) -> str:
         """
         Generates speech from text using the Gemini API.
         """
         response = self.client.models.generate_content(
-        model="gemini-2.5-flash-preview-tts",
-        contents=[text],
-        config=types.GenerateContentConfig(
-            response_modalities=["AUDIO"],
-            speech_config=types.SpeechConfig(
-                voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                    voice_name='Kore',
+            model="gemini-2.5-flash-preview-tts",
+            contents=[text],
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                        voice_name=voice.value,
+                        )
                     )
-                )
+                ),
             ),
-        )
         )
         logger.info(f"speech generated")
         data = response.candidates[0].content.parts[0].inline_data

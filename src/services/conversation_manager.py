@@ -48,7 +48,9 @@ class ConversationManager:
         """Add assistant message to conversation"""
         if not content or (isinstance(content, str) and content.replace(' ', '').lower() == ''):
             content = "No response from the assistant."
-        
+        if not isinstance(content, str):
+            logger.warning('we are casting content to str in add_assistant_message. this is strange, and must be investigated')
+            content = str(content)
         return await self.db.add_message(user_id, conversation_id, 'assistant', content, message_type, metadata)
 
     async def add_system_message(self, user_id: str, conversation_id: str, content: str, metadata: Dict = None) -> str:

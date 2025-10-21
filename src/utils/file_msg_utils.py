@@ -12,7 +12,8 @@ from src.utils.logging.base_logger import setup_logger
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,ToolMessage
 from src.core.context import UserContext
 import asyncio
-
+from src.core.media_bus import media_bus
+from src.config.settings import settings
 from src.core.models.agent_runner_models import AgentFinalResponse
 logger = setup_logger(__name__)
 
@@ -30,10 +31,14 @@ async def _gather_bounded(coros: List[Any], limit: int = 8):
     return await asyncio.gather(*(_run(c) for c in coros), return_exceptions=True)
 
 
-async def build_payload_entry(file: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+async def build_payload_entry(file: Dict[str, Any], add_to_media_bus=False, conversation_id: str = None) -> Optional[Dict[str, Any]]:
     """Create a single payload dict for a file entry."""
+    payload = None
+    url = None
+    container_name = None
     ftype = file.get("type")
     mime_type = file.get("mime_type")
+    ### need unification here, case in point.
     if not mime_type:
         mime_type = file.get("mimetype")
 
@@ -45,21 +50,47 @@ async def build_payload_entry(file: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         # Images are in CDN container - use public CDN URL instead of SAS URL
         from src.utils.blob_utils import get_cdn_url
         image_url = await get_cdn_url(blob_path, container_name="cdn-container")
-        return {"type": "image_url", "image_url": image_url}
+        container_name = "cdn-container"
+        url = image_url
+        payload = {"type": "image_url", "image_url": image_url}
 
     # Download non-image files from default container
-    data_b64 = await download_from_blob_storage_and_encode_to_base64(blob_path)
+    else:
+        
+        data_b64 = await download_from_blob_storage_and_encode_to_base64(blob_path)
 
-    if ftype in {"voice", "audio", "video"}:
-        return {"type": "media", "data": data_b64, "mime_type": mime_type}
-    if ftype in {"document", "file"}:
-        return {
-            "type": "file",
-            "source_type": "base64",
-            "mime_type": mime_type,
-            "data": data_b64,
-        }
-    return None
+        if ftype in {"voice", "audio", "video"}:
+            payload = {"type": "media", "data": data_b64, "mime_type": mime_type}
+        if ftype in {"document", "file"}:
+            payload = {
+                "type": "file",
+                "source_type": "base64",
+                "mime_type": mime_type,
+                "data": data_b64,
+            }
+
+    ### now, we add to media bus.
+    if add_to_media_bus and conversation_id and payload:
+        try:
+            file_name = file.get("file_name")
+            if not file_name or file_name == 'Original filename not accessible':
+                file_name = blob_path.split('/')[-1]
+            caption = file.get("caption", "")
+            media_bus.add_media(
+                conversation_id=conversation_id,
+                url=url,
+                file_name=file_name,
+                file_type=ftype,
+                description=f"User uploaded {ftype}" + (f": {caption}" if caption else ""),
+                source="uploaded",
+                blob_path=blob_path,
+                mime_type=mime_type,  # Would need to extract from database
+                metadata= file.get("metadata", {}),
+                container_name = container_name if container_name else settings.AZURE_BLOB_CONTAINER_NAME,
+            )
+        except Exception as e:
+            logger.error(f"Error adding media to media bus: {e}", exc_info=True)
+    return payload
 
 async def build_payload_entry_from_inserted_id(inserted_id: str) -> Tuple[Optional[Dict[str, Any]],Optional[Dict[str, Any]]]:
     from src.utils.database import db_manager
@@ -113,8 +144,9 @@ async def generate_user_messages_parallel(
         }
         
         # Queue file tasks
+        ### TODO: Unify file interfaces into a pydantic object. it's annoying that I have to check.
         for file_info in files_content:
-            all_file_tasks.append(build_payload_entry(file_info))
+            all_file_tasks.append(build_payload_entry(file_info, add_to_media_bus=True, conversation_id=conversation_id))
         
         message_structure.append(structure_entry)
     
@@ -123,6 +155,8 @@ async def generate_user_messages_parallel(
     if all_file_tasks:
         logger.info(f"Executing {len(all_file_tasks)} file tasks in parallel")
         file_payloads = await _gather_bounded(all_file_tasks, limit=max_concurrency)
+    
+
     
     # Phase 3: Reconstruct in order
     for structure_entry in message_structure:
@@ -207,8 +241,7 @@ async def generate_file_messages(
     captions: List[Optional[str]] = [f.get("caption",'') for f in input_files]
     file_types: List[Optional[str]] = [f.get("type") for f in input_files]
     inserted_ids: List[Optional[str]] = [f.get("inserted_id") for f in input_files]
-
-    payload_tasks = [build_payload_entry(f) for f in input_files]
+    payload_tasks = [build_payload_entry(f,add_to_media_bus=True, conversation_id=conversation_id) for f in input_files]
     payloads = await _gather_bounded(payload_tasks, limit=max_concurrency)
 
     # Assemble messages & persist conversation log in order
@@ -417,7 +450,7 @@ async def get_conversation_history(
     results = await _gather_bounded(fetch_tasks, limit=max_concurrency)
 
     # Place media messages back into the original positions and populate media bus
-    from src.core.media_bus import media_bus
+    
 
     for (i, role), (payload,file_info) in zip(task_meta, results):
         if isinstance(payload, Exception) or payload is None:

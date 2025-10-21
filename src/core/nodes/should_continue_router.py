@@ -78,7 +78,6 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
         # Determine new messages by slicing based on the initial history length from config
         new_messages = state['messages'][config.initial_state_len:]
         last_message = state['messages'][-1] if state['messages'] else None
-        logger.info(f"last message: {json.dumps(last_message.to_json()) if last_message else 'None'}")
         # --- Early exit conditions and specific routing ---
 
                 # Special case: Scheduled/recurring/triggered note detected
@@ -90,7 +89,7 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
             # Check if the last tool call resulted in an error and if we can retry
             logger.info("Last message is a ToolMessage; checking for errors. or final message")
             tool_response = last_message.content
-            logger.info(f"Last tool response: {tool_response}, ")
+            logger.info(f"Tool response content: {tool_response}")
             tool_response = ToolExecutionResponse(**json.loads(tool_response)) if isinstance(tool_response, str) else tool_response
             if isinstance(tool_response, ToolExecutionResponse) and tool_response.final_message:
                 logger.info("Tool execution provided a final message; proceeding to finalize.")
@@ -178,7 +177,7 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
             tool_called = any(isinstance(m, AIMessage) and getattr(m, "tool_calls", None) for m in new_messages)
             if not tool_called:
                 next_count = state.get("tool_iter_counter", 0) + 1
-                appended_msg = AIMessage(content=f"I need to use a tool to proceed. Consulting the plan and using the appropriate tool. Original plan:\n\n{config.plan_str}")
+                appended_msg = AIMessage(content=f"I need to use a tool to proceed. Consulting the plan and using the appropriate tool. Original plan:\n\n{config.plan_str}. If there is an issue preventing me from proceeding, I should use the reply tools to reply to the user and inform them, or ask for clarification.")
                 
                 if next_count > config.MAX_TOOL_ITERS:
                     logger.error("Too many iterations without tool usage; finalizing.")

@@ -58,7 +58,7 @@ def create_preference_tools(user_id: str) -> list:
     """Create basic user preference tools bound to a specific user_id."""
     logger = setup_logger(f"preference_tools")
     @tool
-    def add_user_preference_annotation(new_preference_text: List[str]) -> Dict[str, Any]:
+    def add_user_preference_annotation(new_preference_text: List[str]) -> ToolExecutionResponse:
         """
         Add one or more preference annotations for the user.
         this is for when the user mentions a new preference in conversation, and we want to remember it for future interactions.
@@ -67,7 +67,7 @@ def create_preference_tools(user_id: str) -> list:
         Args:
             new_preference_text: List of annotation strings to add.
         Returns:
-            { "ok": bool, "message": str, "updated": { ...preference doc subset... } }
+            ToolExecutionResponse with success status and updated preferences
         """
         try:
             to_add = _ensure_list_of_str(new_preference_text)
@@ -83,11 +83,14 @@ def create_preference_tools(user_id: str) -> list:
                 "updated_at": _utc_now_iso(),
             }
             ok = user_service.add_new_preference_annotations(user_id, payload,True)
-            return {
-                "ok": bool(ok),
-                "message": "Annotations updated.",
-                "updated": {"annotations": merged, "updated_at": payload["updated_at"]},
-            }
+            return ToolExecutionResponse(
+                status="success",
+                result={
+                    "ok": bool(ok),
+                    "message": "Annotations updated.",
+                    "updated": {"annotations": merged, "updated_at": payload["updated_at"]},
+                }
+            )
         except Exception as e:
             logger.error(f"Failed to add annotations: {e}", exc_info=True)
             return ErrorResponseBuilder.from_exception(
@@ -97,7 +100,7 @@ def create_preference_tools(user_id: str) -> list:
             )
 
     @tool
-    def set_assistant_name(assistant_name: str) -> Dict[str, Any]:
+    def set_assistant_name(assistant_name: str) -> ToolExecutionResponse:
         """
         Update the assistant's display name in user preferences.
         Args:
@@ -111,11 +114,14 @@ def create_preference_tools(user_id: str) -> list:
                 "user_id": user_id,
             }
             ok = user_service.add_new_preference_annotations(user_id, payload)
-            return {
-                "ok": bool(ok),
-                "message": "Assistant name updated.",
-                "updated": {"assistant_name": name, "updated_at": payload["updated_at"]},
-            }
+            return ToolExecutionResponse(
+                status="success",
+                result={
+                    "ok": bool(ok),
+                    "message": "Assistant name updated.",
+                    "updated": {"assistant_name": name, "updated_at": payload["updated_at"]},
+                }
+            )
         except Exception as e:
             logger.error(f"Failed to update assistant name: {e}", exc_info=True)
             return ErrorResponseBuilder.from_exception(
@@ -126,7 +132,7 @@ def create_preference_tools(user_id: str) -> list:
             )
 
     @tool
-    def set_timezone(timezone_name: str) -> Dict[str, Any]:
+    def set_timezone(timezone_name: str) -> ToolExecutionResponse:
         """
         Update the user's timezone (pytz name, e.g., 'US/Eastern' or 'America/New_York').
         Args:
@@ -140,11 +146,14 @@ def create_preference_tools(user_id: str) -> list:
                 "user_id": user_id,
             }
             ok = user_service.add_new_preference_annotations(user_id, payload)
-            return {
-                "ok": bool(ok),
-                "message": "Timezone updated.",
-                "updated": {"timezone": tz, "updated_at": payload["updated_at"]},
-            }
+            return ToolExecutionResponse(
+                status="success",
+                result={
+                    "ok": bool(ok),
+                    "message": "Timezone updated.",
+                    "updated": {"timezone": tz, "updated_at": payload["updated_at"]},
+                }
+            )
         except Exception as e:
             logger.error(f"Failed to update timezone: {e}", exc_info=True)
             return ErrorResponseBuilder.from_exception(
@@ -155,7 +164,7 @@ def create_preference_tools(user_id: str) -> list:
             )
 
     @tool
-    def set_language_response(language_code: str) -> Dict[str, Any]:
+    def set_language_response(language_code: str) -> ToolExecutionResponse:
         """
         Update the preferred response language.
         Args:
@@ -169,11 +178,15 @@ def create_preference_tools(user_id: str) -> list:
                 "user_id": user_id,
             }
             ok = user_service.add_new_preference_annotations(user_id, payload)
-            return {
-                "ok": bool(ok),
-                "message": "Language preference updated.",
-                "updated": {"language_responses": code, "updated_at": payload["updated_at"]},
-            }
+            
+            return ToolExecutionResponse(
+                status="success",
+                result={
+                    "ok": bool(ok),
+                    "message": "Language preference updated.",
+                    "updated": {"language_responses": code, "updated_at": payload["updated_at"]},
+                }
+            )
         except Exception as e:
             logger.error(f"Failed to update language: {e}", exc_info=True)
             return ErrorResponseBuilder.from_exception(
@@ -184,20 +197,23 @@ def create_preference_tools(user_id: str) -> list:
             )
 
     @tool
-    def delete_user_preference_annotations(annotations_to_delete: List[str]) -> Dict[str, Any]:
+    def delete_user_preference_annotations(annotations_to_delete: List[str]) -> ToolExecutionResponse:
         """
         Delete one or more annotations from the user's preferences.
         Only 'annotations' are affected—no other fields can be deleted.
         Args:
             annotations_to_delete: List of exact annotation strings to remove.
         Returns:
-            { "ok": bool, "message": str, "updated": { "annotations": [...], "updated_at": iso } }
+            ToolExecutionResponse with success status and updated annotations
         """
         try:
             # Reuse your validator to ensure list[str] with trimming & de-dupe
             to_delete = _ensure_list_of_str(annotations_to_delete)
             if not to_delete:
-                return {"ok": False, "message": "No annotations provided to delete."}
+                return ToolExecutionResponse(
+                    status="success",
+                    result={"ok": False, "message": "No annotations provided to delete."}
+                )
 
             ok = user_service.remove_preference_annotations(user_id, to_delete)
 
@@ -208,11 +224,14 @@ def create_preference_tools(user_id: str) -> list:
             if not isinstance(annotations, list):
                 annotations = []
 
-            return {
-                "ok": bool(ok),
-                "message": "Annotations deleted." if ok else "No matching annotations found.",
-                "updated": {"annotations": annotations, "updated_at": updated_at},
-            }
+            return ToolExecutionResponse(
+                status="success",
+                result={
+                    "ok": bool(ok),
+                    "message": "Annotations deleted." if ok else "No matching annotations found.",
+                    "updated": {"annotations": annotations, "updated_at": updated_at},
+                }
+            )
         except Exception as e:
             logger.error(f"Failed to delete annotations: {str(e)}", exc_info=True)
             return ErrorResponseBuilder.from_exception(

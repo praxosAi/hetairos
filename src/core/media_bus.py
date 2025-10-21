@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import uuid
 from src.utils.logging import setup_logger
-
+from src.config.settings import settings
 logger = setup_logger(__name__)
 
 
@@ -33,7 +33,7 @@ class MediaReference:
     mime_type: Optional[str] = None  # MIME type (image/png, audio/ogg, etc.)
     loaded_in_context: bool = False  # Track if already added to conversation context
     metadata: Dict[str, Any] = field(default_factory=dict)
-
+    container_name: Optional[str] = settings.AZURE_BLOB_CONTAINER_NAME  # Blob container name
 
 class MediaBus:
     """

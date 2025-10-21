@@ -2,7 +2,6 @@ import json
 from typing import Literal
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.types import Command
-
 from src.core.models.agent_runner_models import AgentState
 from src.tools.tool_types import ToolExecutionResponse
 from src.utils.logging import setup_logger
@@ -14,6 +13,5 @@ async def call_model(state: AgentState):
     response = await config.llm_with_tools.ainvoke(
         [("system", config.system_prompt)] + state['messages']
     )
-    ### here, I will be doing this just to verify something.
 
     return {"messages": state['messages'] + [response]}

@@ -4,14 +4,15 @@ from src.egress.service import egress_service
 from src.tools.tool_types import ToolExecutionResponse
 from src.tools.error_helpers import ErrorResponseBuilder
 from src.utils.logging import setup_logger
-
+from src.services.conversation_manager import ConversationManager
 logger = setup_logger(__name__)
 
 def create_platform_messaging_tools(
     source: str,
     user_id: str,
     metadata: Optional[Dict] = None,
-    available_platforms: Optional[List[str]] = None
+    available_platforms: Optional[List[str]] = None,
+    conversation_manager: ConversationManager = None,
 ) -> List:
     """
     Create platform-specific messaging tools for communicating with the user.
@@ -26,9 +27,8 @@ def create_platform_messaging_tools(
         List of messaging tools including source platform and optionally others
     """
     tools = []
-
     # Always create tool for source platform
-    source_tool = _create_reply_tool(source, user_id, metadata)
+    source_tool = _create_reply_tool(source, user_id, metadata, conversation_manager)
     tools.append(source_tool)
 
     # Optionally create tools for other connected platforms
@@ -42,7 +42,7 @@ def create_platform_messaging_tools(
     return tools
 
 
-def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = None):
+def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = None, conv_manager: ConversationManager = None):
     """Factory to create a platform-specific reply tool."""
 
     platform_lower = platform.lower()
@@ -110,13 +110,16 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
                 "user_id": str(user_id),
                 "metadata": metadata or {}
             }
-
+            ###
             # Send via egress service
             await egress_service.send_response(
                 event=event,
                 result={"response": message, "file_links": file_links}
             )
-
+            try:
+                await conv_manager.add_assistant_message(user_id, metadata['conversation_id'], message)
+            except Exception as e:
+                logger.error(f"Failed to log assistant message to conversation manager: {e}", exc_info=True)
             media_msg = f" with {len(file_links)} media attachment(s)" if file_links else ""
             logger.info(f"Successfully sent {platform} message to user{media_msg}")
             if final_message:

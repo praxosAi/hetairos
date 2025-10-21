@@ -119,7 +119,7 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                 "source": "telegram",
                 'logging_context': {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get() },
                 "payload": {"text": text},
-                "metadata": {'message_id': message["message_id"],'chat_id': chat_id, 'source':'Telegram','forwarded':forwarded,'forward_origin':forward_origin,'timestamp': message.get("date")}
+                "metadata": {'message_id': message["message_id"],'chat_id': chat_id, 'source':'telegram','forwarded':forwarded,'forward_origin':forward_origin,'timestamp': message.get("date")}
             }
             await event_queue.publish(event)
         for key in ['video','document','sticker','voice','audio','photo','image']:
@@ -178,11 +178,12 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                     'logging_context': {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get() },
                     "source": "telegram",
                     "payload": {"files": [{'type': type_to_use, 'blob_path': blob_name, 'mime_type': mime_type[0],'caption': caption,'inserted_id': str(inserted_id)}]},
-                    "metadata": {'message_id': message["message_id"],'chat_id': chat_id,'source':'Telegram', 'forwarded':forwarded,'forward_origin':forward_origin, 'timestamp': message.get("date")}
+                    "metadata": {'message_id': message["message_id"],'chat_id': chat_id,'source':'telegram', 'forwarded':forwarded,'forward_origin':forward_origin, 'timestamp': message.get("date")}
                 }
                 await event_queue.publish(event)
     try:
-        background_tasks.add_task(milestone_service.user_send_message, user_id_var.get())
+        if user_id_var.get() != 'SYSTEM_LEVEL':
+            background_tasks.add_task(milestone_service.user_send_message, user_id_var.get())
     except Exception as e:
         logger.error(f"Failed to log milestone for user {user_id_var.get()}: {e}")
     return {"status": "ok"}

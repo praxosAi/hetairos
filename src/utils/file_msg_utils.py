@@ -76,7 +76,7 @@ async def build_payload_entry(file: Dict[str, Any], add_to_media_bus=False, conv
             if not file_name or file_name == 'Original filename not accessible':
                 file_name = blob_path.split('/')[-1]
             caption = file.get("caption", "")
-            media_bus.add_media(
+            await media_bus.add_media(
                 conversation_id=conversation_id,
                 url=url,
                 file_name=file_name,

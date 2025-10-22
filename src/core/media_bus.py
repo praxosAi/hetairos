@@ -51,7 +51,7 @@ class MediaBus:
         self._storage: Dict[str, List[MediaReference]] = {}
         logger.info("MediaBus initialized")
 
-    def add_media(
+    async def add_media(
         self,
         conversation_id: str,
         url: str,
@@ -90,7 +90,7 @@ class MediaBus:
             ### generate SAS URL from blob path
             try:
                 from src.utils.blob_utils import get_blob_sas_url
-                url = get_blob_sas_url(blob_path, container_name=container_name)
+                url = await get_blob_sas_url(blob_path, container_name=container_name)
             except Exception as e:
                 logger.warning(f"Failed to generate SAS URL for blob_path {blob_path}: {e}")
         ### simply use the index as media id to make it easier to reference multiple media in order

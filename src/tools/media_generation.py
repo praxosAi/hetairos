@@ -184,7 +184,7 @@ def create_media_generation_tools(
                 message_type='image', metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
             )
             # Add to media bus for future reference
-            media_id = media_bus.add_media(
+            media_id = await media_bus.add_media(
                 conversation_id=conversation_id,
                 url=image_url,
                 file_name=file_name,
@@ -355,7 +355,7 @@ def create_media_generation_tools(
             )
 
             # Add to media bus for future reference
-            media_id = media_bus.add_media(
+            media_id = await media_bus.add_media(
                 conversation_id=conversation_id,
                 url=audio_url,
                 file_name=file_name,
@@ -489,7 +489,7 @@ def create_media_generation_tools(
             )
 
             # Add to media bus for future reference
-            media_id = media_bus.add_media(
+            media_id = await media_bus.add_media(
                 conversation_id=conversation_id,
                 url=video_url,
                 file_name=file_name,

@@ -34,6 +34,7 @@ class ToolFunctionID(str, Enum):
     GET_SCHEDULED_TASKS = "get_scheduled_tasks"
     CANCEL_SCHEDULED_TASK = "cancel_scheduled_task"
     UPDATE_SCHEDULED_TASK = "update_scheduled_task"
+    CANCEL_TRIGGER = "cancel_trigger"
 
     # Basic tools
     GET_CURRENT_TIME = "get_current_time"
@@ -127,7 +128,12 @@ class ToolFunctionID(str, Enum):
 
     # Search tools
     GOOGLE_SEARCH = "google_search"
-    GOOGLE_PLACES = "GooglePlacesTool"  # This uses a different tool format
+
+    # Google Places tools
+    GOOGLE_PLACES_TEXT_SEARCH = "google_places_text_search"
+    GOOGLE_PLACES_NEARBY_SEARCH = "google_places_nearby_search"
+    GOOGLE_PLACES_FIND_PLACE = "google_places_find_place"
+    GOOGLE_PLACES_GET_DETAILS = "google_places_get_details"
 
     # Google Lens tools
     IDENTIFY_PRODUCT_IN_IMAGE = "identify_product_in_image"

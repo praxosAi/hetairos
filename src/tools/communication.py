@@ -58,6 +58,11 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
         media_urls: Optional list of media URLs to attach (from generate_image/generate_audio/generate_video)
         media_types: Optional list of media types corresponding to URLs (image, audio, video, document)
         final_message: Whether this is the final message in the conversation (default True). if you think you will send more messages later, set to False.
+        request_location: Whether to request the user's location (default False). When True, sends a location request appropriate for the platform.
+        send_location_latitude: Latitude coordinate to send a location to the user (requires send_location_longitude)
+        send_location_longitude: Longitude coordinate to send a location to the user (requires send_location_latitude)
+        send_location_name: Optional name/label for the location being sent (e.g., "Office", "Meeting Point")
+
     Returns:
         Success confirmation or raises exception on failure
 
@@ -66,6 +71,9 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
         - Then pass the returned URLs to this tool via media_urls and media_types parameters
         - You can send text-only messages or messages with media attachments
         - This is NOT optional - you MUST use this tool to communicate responses to the user
+        - For locations: Use request_location to ask user for their location, or send_location_* parameters to send a location
+        - Location requests work on all platforms (Telegram/WhatsApp have native buttons, iMessage uses text prompt)
+        - Location sending works on all platforms (Telegram/WhatsApp native, iMessage as Apple Maps URL)
 
     Examples:
         reply_to_user_on_{platform_lower}(message="Hello! How can I help you?")
@@ -77,6 +85,20 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
             media_urls=[result['url']],
             media_types=['image']
         )
+
+        # Requesting location:
+        reply_to_user_on_{platform_lower}(
+            message="I'll need your location to help with that.",
+            request_location=True
+        )
+
+        # Sending location:
+        reply_to_user_on_{platform_lower}(
+            message="Meet me at this location!",
+            send_location_latitude=40.7128,
+            send_location_longitude=-74.0060,
+            send_location_name="Office"
+        )
     """
 
     @tool(name_or_callable=f"reply_to_user_on_{platform_lower}", description=tool_description)
@@ -84,7 +106,11 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
         message: str,
         media_urls: Optional[List[str]] = None,
         media_types: Optional[List[str]] = None,
-        final_message: bool = True
+        final_message: bool = True,
+        request_location: bool = False,
+        send_location_latitude: Optional[float] = None,
+        send_location_longitude: Optional[float] = None,
+        send_location_name: Optional[str] = None
     ) -> ToolExecutionResponse:
         try:
             logger.info(f"Sending {platform_lower} message to user: {message}, with {len(media_urls) if media_urls else 0} media attachments")
@@ -103,6 +129,24 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
                     })
                 logger.info(f"Prepared {len(file_links)} media attachments for {platform}")
 
+            # Validate and prepare location data
+            location_data = None
+            if send_location_latitude is not None and send_location_longitude is not None:
+                # Validate coordinates
+                if not (-90 <= send_location_latitude <= 90):
+                    raise ValueError(f"Invalid latitude: {send_location_latitude}. Must be between -90 and 90.")
+                if not (-180 <= send_location_longitude <= 180):
+                    raise ValueError(f"Invalid longitude: {send_location_longitude}. Must be between -180 and 180.")
+
+                location_data = {
+                    "latitude": send_location_latitude,
+                    "longitude": send_location_longitude,
+                    "name": send_location_name or "Location"
+                }
+                logger.info(f"Prepared location data: {location_data}")
+            elif send_location_latitude is not None or send_location_longitude is not None:
+                raise ValueError("Both send_location_latitude and send_location_longitude must be provided together.")
+
             # Build event structure for egress
             event = {
                 "source": metadata.get("source") if metadata else platform_lower,
@@ -110,6 +154,14 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
                 "user_id": str(user_id),
                 "metadata": metadata or {}
             }
+
+            # Add location flags to event
+            if request_location:
+                event["request_location"] = True
+                logger.info(f"Location request enabled for {platform}")
+            if location_data:
+                event["send_location"] = location_data
+                logger.info(f"Location send enabled for {platform}: {location_data}")
             ###
             # Send via egress service
             await egress_service.send_response(
@@ -120,18 +172,26 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
                 await conv_manager.add_assistant_message(user_id, metadata['conversation_id'], message)
             except Exception as e:
                 logger.error(f"Failed to log assistant message to conversation manager: {e}", exc_info=True)
+
+            # Build success message with all components
             media_msg = f" with {len(file_links)} media attachment(s)" if file_links else ""
-            logger.info(f"Successfully sent {platform} message to user{media_msg}")
+            location_msg = ""
+            if request_location:
+                location_msg += " (location requested)"
+            if location_data:
+                location_msg += f" (location sent: {location_data['name']})"
+
+            logger.info(f"Successfully sent {platform} message to user{media_msg}{location_msg}")
             if final_message:
                 logger.info(f"This was marked as the final message to be sent to the user on {platform}")
                 return ToolExecutionResponse(
                     status="success",
-                    result=f"Final message sent successfully to user on {platform}{media_msg}",
+                    result=f"Final message sent successfully to user on {platform}{media_msg}{location_msg}",
                     final_message=True,
                 )
             return ToolExecutionResponse(
                 status="success",
-                result=f"Message sent successfully to user on {platform}{media_msg}"
+                result=f"Message sent successfully to user on {platform}{media_msg}{location_msg}"
             )
 
         except Exception as e:

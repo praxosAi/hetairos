@@ -28,7 +28,7 @@ async def obtain_data(state: AgentState) -> Command[Literal["action","finalize"]
     )
     logger.info(f"Routing to action with obtain_data instruction (iteration {current}).")
     return Command(
-        goto="action",
+        goto="agent",
         update={
             "messages": state["messages"] + [msg],
             "data_iter_counter": current,

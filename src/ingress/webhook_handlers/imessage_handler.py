@@ -14,6 +14,7 @@ from bson import ObjectId
 from src.utils.database import db_manager
 import requests
 from src.services.milestone_service import milestone_service
+import re
 
 logger = setup_logger(__name__)
 router = APIRouter()
@@ -102,8 +103,71 @@ async def handle_imessage_webhook(request: Request, background_tasks: Background
 
     user_id = str(integration_record["user_id"])
     user_id_var.set(user_id)
-    
+
+    # Check if text contains Apple Maps location URL
+    is_location = False
     if text:
+        # Pattern to match Apple Maps URLs with coordinates
+        location_pattern = r'https?://maps\.apple\.com/\?ll=(-?\d+\.\d+),(-?\d+\.\d+)'
+        location_match = re.search(location_pattern, text)
+
+        if location_match:
+            is_location = True
+            latitude = float(location_match.group(1))
+            longitude = float(location_match.group(2))
+
+            # Try to extract location name from query parameter
+            location_name = None
+            name_pattern = r'[&?]q=([^&]+)'
+            name_match = re.search(name_pattern, text)
+            if name_match:
+                import urllib.parse
+                location_name = urllib.parse.unquote(name_match.group(1))
+
+            logger.info(f"Received location from iMessage user {user_id}: lat={latitude}, lng={longitude}, name={location_name}")
+
+            # Store location in user preferences
+            from src.services.user_service import user_service
+            try:
+                user_service.save_user_location(
+                    user_id=user_id,
+                    latitude=latitude,
+                    longitude=longitude,
+                    platform="imessage",
+                    location_name=location_name
+                )
+                logger.info(f"Saved location for user {user_id}")
+            except Exception as e:
+                logger.error(f"Failed to save location for user {user_id}: {e}")
+
+            # Create event for location
+            location_text = f"User shared location: {latitude}, {longitude}"
+            if location_name:
+                location_text += f" ({location_name})"
+
+            event = {
+                "user_id": user_id,
+                'output_type': 'imessage',
+                'output_phone_number': phone_number,
+                "source": "imessage",
+                "logging_context": {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
+                "payload": {"text": location_text},
+                "metadata": {
+                    'message_id': data.get("message_handle"),
+                    'source': 'iMessage',
+                    'timestamp': data.get("date_sent"),
+                    'type': 'text',
+                    'location': {
+                        "latitude": latitude,
+                        "longitude": longitude,
+                        "name": location_name
+                    }
+                }
+            }
+            await event_queue.publish(event)
+
+    # Handle regular text messages (if not a location)
+    if text and not is_location:
         event = {
             "user_id": user_id,
             'output_type': 'imessage',
@@ -117,42 +181,46 @@ async def handle_imessage_webhook(request: Request, background_tasks: Background
 
     media_url = data.get("media_url")
     if media_url:
-        imessage_client = IMessageClient()
-        file_name = media_url.split("/")[-1]
-        file_bytes = requests.get(media_url).content
-        
-        if file_bytes:
-            mime_type = mimetypes.guess_type(file_name)[0]
-            if file_name.endswith('.caf'):
-                file_bytes = caf_bytes_to_ogg_bytes(file_bytes)
-                file_name = file_name.replace('.caf', '.ogg')
-                mime_type = 'audio/ogg'
-            blob_name = await upload_bytes_to_blob_storage(file_bytes, f"{user_id}/imessage/{file_name}"    , content_type=mime_type)
-            ### we need to convert the file
-            file_type = extensions_to_filetypes.get('.' + file_name.split('.')[-1].lower(), 'document')
-            document_entry = {
-                "user_id": ObjectId(user_id),
-                "platform_file_id": data.get("message_handle"),
-                "platform_message_id": data.get("message_handle"),
-                "platform": "imessage",
-                'type': file_type,
-                "blob_path": blob_name,
-                "mime_type": mime_type,
-                "caption": "",
-                'file_name': file_name
-            }
-            inserted_id = await db_manager.add_document(document_entry)
-            
-            event = {
-                "user_id": user_id,
-                'output_type': 'imessage',
-                'output_phone_number': phone_number,
-                "source": "imessage",
-                "logging_context": {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
-                "payload": {"files": [{'type': file_type, 'blob_path': blob_name, 'mime_type': mime_type, 'caption': '', 'inserted_id': str(inserted_id)}]},
-                "metadata": {'message_id': data.get("message_handle"), 'source':'iMessage', 'timestamp': data.get("date_sent")}
-            }
-            await event_queue.publish(event)
+        # Skip .pluginPayloadAttachment files (these are iMessage's internal location data)
+        if media_url.endswith('.pluginPayloadAttachment'):
+            logger.info(f"Skipping .pluginPayloadAttachment file (location data already processed)")
+        else:
+            imessage_client = IMessageClient()
+            file_name = media_url.split("/")[-1]
+            file_bytes = requests.get(media_url).content
+
+            if file_bytes:
+                mime_type = mimetypes.guess_type(file_name)[0]
+                if file_name.endswith('.caf'):
+                    file_bytes = caf_bytes_to_ogg_bytes(file_bytes)
+                    file_name = file_name.replace('.caf', '.ogg')
+                    mime_type = 'audio/ogg'
+                blob_name = await upload_bytes_to_blob_storage(file_bytes, f"{user_id}/imessage/{file_name}"    , content_type=mime_type)
+                ### we need to convert the file
+                file_type = extensions_to_filetypes.get('.' + file_name.split('.')[-1].lower(), 'document')
+                document_entry = {
+                    "user_id": ObjectId(user_id),
+                    "platform_file_id": data.get("message_handle"),
+                    "platform_message_id": data.get("message_handle"),
+                    "platform": "imessage",
+                    'type': file_type,
+                    "blob_path": blob_name,
+                    "mime_type": mime_type,
+                    "caption": "",
+                    'file_name': file_name
+                }
+                inserted_id = await db_manager.add_document(document_entry)
+
+                event = {
+                    "user_id": user_id,
+                    'output_type': 'imessage',
+                    'output_phone_number': phone_number,
+                    "source": "imessage",
+                    "logging_context": {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
+                    "payload": {"files": [{'type': file_type, 'blob_path': blob_name, 'mime_type': mime_type, 'caption': '', 'inserted_id': str(inserted_id)}]},
+                    "metadata": {'message_id': data.get("message_handle"), 'source':'iMessage', 'timestamp': data.get("date_sent")}
+                }
+                await event_queue.publish(event)
 
     try:
         if user_id_var.get() != 'SYSTEM_LEVEL':

@@ -51,7 +51,7 @@ class MediaBus:
         self._storage: Dict[str, List[MediaReference]] = {}
         logger.info("MediaBus initialized")
 
-    def add_media(
+    async def add_media(
         self,
         conversation_id: str,
         url: str,
@@ -61,7 +61,8 @@ class MediaBus:
         source: str = "generated",
         blob_path: Optional[str] = None,
         mime_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        container_name: Optional[str] = settings.AZURE_BLOB_CONTAINER_NAME
     ) -> str:
         """
         Add a media reference to the bus.
@@ -81,7 +82,17 @@ class MediaBus:
             media_id: Unique identifier for this media reference
         """
         # media_id = str(uuid.uuid4())
+        if file_type in {'image','photo'}:
+            container_name = 'cdn-container'
         media_id = str(len(self._storage.get(conversation_id, [])) + 1)  # Use index as media ID
+
+        if url is None and blob_path is not None:
+            ### generate SAS URL from blob path
+            try:
+                from src.utils.blob_utils import get_blob_sas_url
+                url = await get_blob_sas_url(blob_path, container_name=container_name)
+            except Exception as e:
+                logger.warning(f"Failed to generate SAS URL for blob_path {blob_path}: {e}")
         ### simply use the index as media id to make it easier to reference multiple media in order
         ref = MediaReference(
             media_id=media_id,
@@ -94,7 +105,8 @@ class MediaBus:
             blob_path=blob_path,
             mime_type=mime_type,
             loaded_in_context=False,
-            metadata=metadata or {}
+            metadata=metadata or {},
+            container_name=container_name
         )
 
         if conversation_id not in self._storage:

@@ -146,7 +146,7 @@ def create_media_bus_tools(conversation_id: str, user_id: str) -> list:
         """
         try:
             ref = media_bus.get_media(conversation_id, media_id)
-
+            
             if not ref:
                 raise Exception(f"Media not found with ID: {media_id}")
 

@@ -72,9 +72,40 @@ class TelegramClient:
             data.add_field('caption', caption)
 
         result = await self._make_request(api_method, data, is_json=False)
-        
+
         os.unlink(temp_file_path)
         return result
+
+    async def send_location(self, chat_id: int, latitude: float, longitude: float, location_name: Optional[str] = None):
+        """Send a location via Telegram Bot API."""
+        payload = {
+            "chat_id": chat_id,
+            "latitude": latitude,
+            "longitude": longitude,
+        }
+        self.logger.info(f"Sending location to chat {chat_id}: {latitude}, {longitude} ({location_name or 'unnamed'})")
+        return await self._make_request("sendLocation", payload)
+
+    async def request_location(self, chat_id: int, message: str = "Please share your location"):
+        """Request location from user via keyboard button."""
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "reply_markup": {
+                "keyboard": [
+                    [
+                        {
+                            "text": "📍 Share My Location",
+                            "request_location": True
+                        }
+                    ]
+                ],
+                "resize_keyboard": True,
+                "one_time_keyboard": True
+            }
+        }
+        self.logger.info(f"Requesting location from chat {chat_id}")
+        return await self._make_request("sendMessage", payload)
 
     async def _make_request(self, method: str, payload: dict, is_json: bool = True):
         """Make a request to the Telegram Bot API"""

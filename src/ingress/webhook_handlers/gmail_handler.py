@@ -13,19 +13,32 @@ import json
 router = APIRouter()
 from src.utils.logging.base_logger import setup_logger,user_id_var, modality_var, request_id_var
 logger = setup_logger(__name__)
+from fastapi import APIRouter, Request, Response, BackgroundTasks, status, HTTPException
+from datetime import datetime, timezone
+from typing import Dict, Any, List, Optional
+import json
+import asyncio
 
-@router.post("/gmail")
-async def handle_gmail_webhook(request: Request):
+
+
+
+
+router = APIRouter()
+logger = setup_logger("gmail_webhook")
+
+
+# --- Background worker with EXACT same logic (just extracted) ---
+
+async def process_gmail_notification_task(parsed_message: Dict[str, Any]):
     """
-    Handles incoming Gmail push notifications via Google Cloud Pub/Sub.
+    Runs the existing Gmail processing logic in the background.
+    NOTE: Logic is intentionally kept identical to the original handler body.
     """
     try:
-        body = await request.json()
-
-        parsed_message = gmail_pubsub_manager.parse_pubsub_message(body)
-        logger.info(f"Parsed Pub/Sub message: {parsed_message}")
         if not parsed_message or not gmail_pubsub_manager.validate_pubsub_message(parsed_message):
-            raise HTTPException(status_code=400, detail="Invalid Pub/Sub message")
+            # mirror original behavior: invalid message -> just log and exit
+            logger.error("Invalid Pub/Sub message")
+            return
 
         gmail_data = gmail_pubsub_manager.extract_gmail_notification_data(parsed_message)
         user_email = gmail_data.get("email_address")
@@ -36,37 +49,40 @@ async def handle_gmail_webhook(request: Request):
         user_id = await integration_service.get_user_by_integration_name("gmail", user_email)
         if not user_id:
             logger.error(f"No user found for Gmail integration with email {user_email}")
-            return {"status": "error", "message": "No user found for this Gmail integration"}
+            return
         user_id = user_id[0]
         if not user_id:
             logger.error(f"No Gmail integration found for user {user_email}")
-            return {"status": "error", "message": "No Gmail integration found"}
+            return
         user_record = user_service.get_user_by_id(user_id)
         if not user_record:
             logger.error(f"User not found for ID {user_id}")
-            return {"status": "error", "message": "User not found"}
+            return
 
         try:
             gmail_integration = GmailIntegration(user_id)
             if not await gmail_integration.authenticate():
                 logger.error(f"Failed to authenticate Gmail for user {user_id} and email {user_email}")
-                return {"status": "error", "message": "Failed to authenticate Gmail"}
+                return
         except Exception as e:
             logger.error(f"Exception during Gmail authentication for user {user_id} and email {user_email}: {e}")
-            return {"status": "error", "message": "Exception during Gmail authentication"}
+            return
+
         checkpoint = await integration_service.get_gmail_checkpoint(user_id, user_email)
         if not checkpoint:
             # Seed once: store current mailbox historyId and exit (no backfill)
             prof = gmail_integration.services[user_email].users().getProfile(userId="me").execute()
             await integration_service.set_gmail_checkpoint(user_id, user_email, str(prof["historyId"]))
             logger.info(f"Seeded mailbox checkpoint for {user_email} at {prof['historyId']}")
-            return {"status": "seeded"}
+            return
+
         message_ids, new_checkpoint = gmail_integration.get_changed_message_ids_since(
-                start_history_id=checkpoint,
-                account=user_email,
-                history_types=["messageAdded"],  # add "labelAdded" if INBOX transitions matter
-            )
-        new_messages = []
+            start_history_id=checkpoint,
+            account=user_email,
+            history_types=["messageAdded"],  # add "labelAdded" if INBOX transitions matter
+        )
+
+        new_messages: List[Dict[str, Any]] = []
         if message_ids:
             new_messages = gmail_integration.get_messages_by_ids(message_ids, account=user_email)
 
@@ -75,8 +91,8 @@ async def handle_gmail_webhook(request: Request):
 
         if not new_messages:
             logger.info(f"No new messages for {user_email} since checkpoint {checkpoint} (advanced_to={new_checkpoint})")
-            return {"status": "ok", "fetched": 0, "advanced_to": new_checkpoint}
-        
+            return
+
         inserted_ids = await db_manager.insert_or_reject_emails(new_messages, user_id)
         inserted = [iid for iid in inserted_ids if iid]
         logger.info(f"Fetched {len(new_messages)}; inserted {len(inserted)} for {user_email}")
@@ -93,33 +109,30 @@ async def handle_gmail_webhook(request: Request):
             logger.info(f"Processing new message {message.get('id')}")
             event_eval_result = await praxos_client.eval_event(message, 'gmail')
             logger.info(f"Event evaluation result: {event_eval_result}")
+
             if event_eval_result.get('trigger'):
-
-
-
-
-                for rule_id,action_data in event_eval_result.get('fired_rule_actions_details', {}).items():
+                for rule_id, action_data in event_eval_result.get('fired_rule_actions_details', {}).items():
                     if isinstance(action_data, str):
                         action_data = json.loads(action_data)
                     rule_details = await db_manager.get_trigger_by_rule_id(rule_id)
                     if not rule_details:
                         logger.error(f"No trigger details found in DB for rule_id {rule_id}. trigger may be inactive, deleted, or flawed.")
                         continue
-                    
+
                     COMMAND = ""
                     COMMAND += f"Previously, on {rule_details.get('created_at')}, the user set up the following trigger: {rule_details.get('trigger_text')}. \n\n "
                     COMMAND += f"Now, upon receiving a new email,  at {datetime.now(timezone.utc)}, we believe that the trigger has been activated. \n\n "
                     for action in action_data:
                         COMMAND += "The following action was marked as a triggering candidate: " + action.get('simple_sentence', '') + ". \n"
-                        COMMAND += "The action has the following details, as parsed by the Praxos system: " + json.dumps(action,default=str) + ". \n\n"
+                        COMMAND += "The action has the following details, as parsed by the Praxos system: " + json.dumps(action, default=str) + ". \n\n"
                     COMMAND += "Based on the above, please proceed to execute the action(s) specified in the trigger, if they are valid, match the user request, and are safe to perform. If you are unsure about any action, please ask the user for confirmation before proceeding. \n\n The event (email, in this case) that triggered this action is as follows: "
 
                     normalized = await gmail_integration.normalize_gmail_message_for_ingestion(
-                                user_record=user_record,
-                                message=message,
-                                account=user_email,
-                                command_prefix=COMMAND,
-                            )
+                        user_record=user_record,
+                        message=message,
+                        account=user_email,
+                        command_prefix=COMMAND,
+                    )
                     ingestion_event = {
                         "user_id": str(user_id),
                         "source": "triggered",
@@ -143,12 +156,11 @@ async def handle_gmail_webhook(request: Request):
                         ingestion_event['metadata'].pop('conversation_id', None)
                     await event_queue.publish(ingestion_event)
                     logger.info(f"Published triggered event for message {message.get('id')} based on rule {rule_id}")
-                    ### here, we should sleep.
-                # if rule_details.get('one_time', True):
-                #     db_manager.mark_trigger_as_used(rule_id)
-                #     logger.info(f"Marked one-time trigger {rule_id} as used.")
+                    # optional: sleep if you want pacing here
+
             else:
                 logger.info(f"Evaluation found no trigger for message {message.get('id')}. Proceeding with normal ingestion.")
+
             user_id_var.set(str(user_id))
             modality_var.set("gmail_webhook")
             if message.get('metadata') is None:
@@ -172,30 +184,45 @@ async def handle_gmail_webhook(request: Request):
                     'inserted_id': inserted_id
                 }
             }
+            # keep your original commented publish line as-is
             # await event_queue.publish(ingestion_event)
 
-        return {
-            "status": "ok",
-            "fetched": len(new_messages),
-            "inserted": len(inserted),
-            "advanced_to": new_checkpoint
-        }
-    except Exception as e:
-        logger.error(f"Error processing Gmail webhook: {e}", exc_info=True)
-        return {"status": "ok"}
-        ### TODO figure out how to ingest this email.
-        # await event_queue.publish(ingestion_event)
-        # for user_id in user_ids:
-        #     user_id_var.set(str(user_id))
-        #     modality_var.set("gmail")
-            
-        #     event = {
-        #         "user_id": str(user_id),
-        #         "source": "gmail",
-        #         "payload": {"text": input_text},
-        #         "logging_context": {'user_id': str(user_id), 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
-        #         "metadata": {"gmail_message_id": message.get("id"), 'source':'gmail'}
-        #     }
-        #     await event_queue.publish(event)
+        # done; nothing to return from background job
+        return
 
-    
+    except Exception as e:
+        logger.error(f"Background task error processing Gmail webhook: {e}", exc_info=True)
+        return
+        
+
+# --- Lean webhook endpoint: ACK immediately, schedule background work ---
+
+@router.post("/gmail", status_code=status.HTTP_204_NO_CONTENT)
+async def handle_gmail_webhook(request: Request, background_tasks: BackgroundTasks):
+    """
+    Handles incoming Gmail push notifications via Google Cloud Pub/Sub.
+    Acknowledge immediately (2xx) and run the heavy logic in a background task.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        # If body can't be parsed, still 2xx to prevent endless redelivery; log for inspection.
+        logger.error("Failed to parse Gmail Pub/Sub body", exc_info=True)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    # Parse early; if parsing fails, we still 2xx but won't schedule work.
+    try:
+        parsed_message = gmail_pubsub_manager.parse_pubsub_message(body)
+    except Exception:
+        logger.error("gmail_pubsub_manager.parse_pubsub_message failed", exc_info=True)
+        parsed_message = None
+
+    if parsed_message:
+        # Schedule the heavy logic; EXACT logic preserved inside the task
+        background_tasks.add_task(process_gmail_notification_task, parsed_message)
+        logger.info("Gmail webhook accepted; background task scheduled.")
+    else:
+        logger.warning("Gmail webhook accepted; but message parsing failed, no task scheduled.")
+
+    # Immediate ACK so Pub/Sub doesn't retry
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

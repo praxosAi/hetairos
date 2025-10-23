@@ -111,7 +111,9 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
 
 
                         user_record = user_service.get_user_by_id(integration_record["user_id"])
-
+                        if not user_record:
+                            webhook_logger.error(f"User record not found for integration {integration_record['_id']}")
+                            return
                         message_type = message.get("type")
                         user_id_var.set(str(user_record["_id"]))
                         if message_type == "text":
@@ -176,6 +178,58 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                         webhook_logger.info(f"Queued transcription job {job_id} for user {user_record['_id']}")
                                     finally:
                                         os.unlink(file_path) # Clean up the local file
+
+                        elif message_type == "location":
+                            location_data = message.get("location", {})
+                            latitude = location_data.get("latitude")
+                            longitude = location_data.get("longitude")
+                            location_name = location_data.get("name")
+                            location_address = location_data.get("address")
+
+                            webhook_logger.info(f"Received location from WhatsApp user {user_record['_id']}: lat={latitude}, lng={longitude}")
+
+                            # Store location in user preferences
+                            try:
+                                user_service.save_user_location(
+                                    user_id=str(user_record["_id"]),
+                                    latitude=latitude,
+                                    longitude=longitude,
+                                    platform="whatsapp",
+                                    location_name=location_name
+                                )
+                                webhook_logger.info(f"Saved location for user {user_record['_id']}")
+                            except Exception as e:
+                                webhook_logger.error(f"Failed to save location for user {user_record['_id']}: {e}")
+
+                            # Create event for location
+                            location_text = f"User shared location: {latitude}, {longitude}"
+                            if location_name:
+                                location_text += f" ({location_name})"
+                            if location_address:
+                                location_text += f" - {location_address}"
+
+                            event = {
+                                "user_id": str(user_record["_id"]),
+                                'output_type': 'whatsapp',
+                                'output_phone_number': phone_number,
+                                "source": "whatsapp",
+                                "logging_context": {'user_id': str(user_record["_id"]), 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
+                                "payload": {"text": location_text},
+                                "metadata": {
+                                    "message_id": message["id"],
+                                    'source': 'whatsapp',
+                                    'timestamp': message.get('timestamp'),
+                                    'type': 'text',
+                                    'location': {
+                                        "latitude": latitude,
+                                        "longitude": longitude,
+                                        "name": location_name,
+                                        "address": location_address
+                                    }
+                                }
+                            }
+                            await event_queue.publish(event)
+
                         try:
                             if user_id_var.get() != 'SYSTEM_LEVEL':
                                 background_tasks.add_task(milestone_service.user_send_message, user_id_var.get())

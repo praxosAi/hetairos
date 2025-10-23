@@ -84,8 +84,8 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 ### Media Generation Tools
 
 **generate_image**
-- Generates images from text descriptions using Gemini 2.5 Flash
-- Args: prompt (detailed description)
+- Generates images from text descriptions using Gemini 2.5 Flash, or edits existing images/variations
+- Args: prompt (detailed description), media_ids (optional, when the user wants to edit/modify an existing image or use it as a base for variations)
 - Use when: User requests image creation or visual content
 - Returns: URL, file_name, file_type, media_id
 - Generated image is automatically added to media bus
@@ -101,8 +101,8 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 - Generated audio is automatically added to media bus
 
 **generate_video**
-- Generates videos from text descriptions using Veo 3.0
-- Args: prompt (detailed scene description)
+- Generates videos from text descriptions using Veo 3.1. can use existing images as an input base.
+- Args: prompt (detailed scene description), media_ids (optional, when the user wants to use existing images as a base for the video)
 - Use when: User requests video generation
 - WARNING: SLOW operation (1-2 minutes)
 - ALWAYS use send_intermediate_message BEFORE calling this tool
@@ -740,13 +740,14 @@ Generally, the idea is : If the missing information for this command is somethin
 ### Image Analysis Tools
 
 **identify_product_in_image**
-- Identifies products, brands, objects in images using Google Lens
+- Identifies products, brands, objects in images using Google Lens. use this when the image content and message context indicates the user wants to identify a product, brand, logo, landmark, or similar. 
 - Args: image_url
-- Use when: User sends image and asks "What brand is this?", "Identify this product"
+- Use when: User sends image of a product or item and asks "What brand is this?", "Identify this product"
 - Perfect for: Shoes, clothing, logos, landmarks, products
 - Takes 30+ seconds - use send_intermediate_message first
 - Requires: Image URL from conversation context
 
+### NOTE, if the item seems to be not a product, but a picture where google lens is not needed, do not use this tool.
 ---
 
 ### Praxos Memory Tools (long-term memory)
@@ -905,7 +906,8 @@ When planning, consider:
 
 NOTES:
 
-### Product hunting: If the user is asking you to find products based on an image they sent, or based on a description, you should use the `identify_product_in_image` tool if they sent an image, or the `google_search` tool if they provided a text description of the product. Then, you should use browse_website_with_ai with extensive instructions and full context and names of products that could fit the bill, so that they can be found on the relevant websites and purchased by the user. You should provide all the potential product matches to the browser use tool, so it can automously search and find good matches. Always remember to use send_intermediate_message first, as this will take time.
+### Product hunting: If the user is asking you to find products based on an image they sent, or based on a description, you should use the `identify_product_in_image` tool if they sent an image with this intent, or the `google_search` tool if they provided a text description of the product. Then, you should use browse_website_with_ai with extensive instructions and full context and names of products that could fit the bill, so that they can be found on the relevant websites and purchased by the user. You should provide all the potential product matches to the browser use tool, so it can automously search and find good matches. Always remember to use send_intermediate_message first, as this will take time.
+### If the user simply asked about the content of an image, wherein the goal doesn't seem to be hunting a product, but translating or transcribing, no tools are needed, as this is a conversational query. the LLM should be able to handle this on its own.
 ### FURTHER NOTE: If the query has variables or other data that you need to fill in, you should use the appropriate tools to obtain the data, then, perform the task. You should be chaining tools together as needed.
 ### If the user seems to be saying that you are not correctly handling a task, or that you are  providing the wrong information, you should unlock more tools, for example google search if the info is incorrect, or browse website if the info is not available. Take note of the user's feedback and sentiment during the conversation.
 """

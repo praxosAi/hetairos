@@ -111,7 +111,9 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
 
 
                         user_record = user_service.get_user_by_id(integration_record["user_id"])
-
+                        if not user_record:
+                            webhook_logger.error(f"User record not found for integration {integration_record['_id']}")
+                            return
                         message_type = message.get("type")
                         user_id_var.set(str(user_record["_id"]))
                         if message_type == "text":

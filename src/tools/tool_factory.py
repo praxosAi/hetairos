@@ -234,7 +234,7 @@ class AgentToolsFactory:
         # Web tools: if google search or places is needed, also load web browsing
         if needs_category(['read_webpage_content', 'browse_website_with_ai','google_search','GooglePlacesTool']):
             try:
-                tools.extend(create_web_tools(request_id))
+                tools.extend(create_web_tools(request_id, user_id, metadata))
                 logger.info("Web tools created successfully.")
             except Exception as e:
                 logger.error(f"Error creating web tools: {e}", exc_info=True)

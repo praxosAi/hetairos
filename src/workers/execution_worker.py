@@ -155,7 +155,7 @@ class ExecutionWorker:
                 #     event_details=event["payload"]
                 # )
 
-            elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram",'imessage','triggered','slack','discord','mcp']:
+            elif source in ["recurring", "scheduled", "websocket", "email", "whatsapp","telegram",'imessage','triggered','slack','discord','mcp','browser_tool']:
                 # --- Handle Agent Task ---
 
                 if source in ['scheduled', 'recurring']:
@@ -169,7 +169,14 @@ class ExecutionWorker:
                         await scheduling_service.schedule_next_run(event)
                     except Exception as e:
                         logger.error(f"Error scheduling next run for recurring event: {event}, {e}", exc_info=True)
-                 
+                #@todo is it really needed
+                # For browser_tool results, use the original_source for routing
+                if source == "browser_tool":
+                    original_source = event.get("metadata", {}).get("original_source")
+                    if original_source:
+                        # Override output_type to ensure proper routing back to original platform
+                        event["output_type"] = original_source
+                        logger.info(f"Browser result will be routed to original source: {original_source}")
 
                 user_context = await create_user_context(event["user_id"])
                 if not user_context:
@@ -237,4 +244,19 @@ class ExecutionWorker:
 async def execution_task():
     """Entry point for the execution worker background task."""
     worker = ExecutionWorker()
+    await event_queue.publish({
+        "user_id": "68b728d45ffd77756575f942",
+        "output_type": "telegram",
+        "output_chat_id": 75775194,
+        "source": "telegram",
+        "payload": {
+            "text": "/START_NEW got to the times website (https://www.nytimes.com/) and sumerize the news for me"
+        },
+        "metadata": {
+            "chat_id": 75775194,
+            "source": "Telegram",
+            "forwarded": False,
+            "forward_origin": {}
+        }
+    })
     await worker.run()

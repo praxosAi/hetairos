@@ -228,6 +228,102 @@ class UserService:
         )
 
         return result.modified_count > 0 or result.upserted_id is not None
+
+    def save_user_location(self, user_id: str | ObjectId, latitude: float, longitude: float, platform: str, location_name: str = None):
+        """
+        Save user's location to preferences. Stores both the most recent location and appends to location history.
+
+        Args:
+            user_id: User ID
+            latitude: Latitude coordinate
+            longitude: Longitude coordinate
+            platform: Platform where location was shared (telegram, whatsapp, imessage)
+            location_name: Optional name/label for the location
+        """
+        db = self._get_database()
+        preferences_collection = db.user_preferences
+
+        now = datetime.now(timezone.utc)
+
+        location_data = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "timestamp": now,
+            "platform": platform
+        }
+
+        if location_name:
+            location_data["name"] = location_name
+
+        # Update last known location and append to history
+        update_doc = {
+            "$set": {
+                "location_preferences.last_shared_location": location_data,
+                "updated_at": now
+            },
+            "$push": {
+                "location_preferences.location_history": {
+                    "$each": [location_data],
+                    "$slice": -100  # Keep only last 100 locations
+                }
+            },
+            "$setOnInsert": {
+                "user_id": ObjectId(user_id),
+                "created_at": now
+            }
+        }
+
+        logger.info(f"Saving location for user {user_id}: lat={latitude}, lng={longitude}, platform={platform}")
+
+        result = preferences_collection.update_one(
+            {"user_id": ObjectId(user_id)},
+            update_doc,
+            upsert=True
+        )
+
+        return result.modified_count > 0 or result.upserted_id is not None
+
+    def get_user_last_location(self, user_id: str | ObjectId):
+        """
+        Get user's last shared location.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            Dictionary with location data or None if not found
+        """
+        try:
+            preferences = self.get_user_preferences(user_id)
+            if preferences and "location_preferences" in preferences:
+                return preferences["location_preferences"].get("last_shared_location")
+            return None
+        except Exception as e:
+            logger.error(f"Error getting last location for user {user_id}: {e}")
+            return None
+
+    def get_user_location_history(self, user_id: str | ObjectId, limit: int = 10):
+        """
+        Get user's location history.
+
+        Args:
+            user_id: User ID
+            limit: Maximum number of locations to return (default 10)
+
+        Returns:
+            List of location dictionaries, most recent first
+        """
+        try:
+            preferences = self.get_user_preferences(user_id)
+            if preferences and "location_preferences" in preferences:
+                history = preferences["location_preferences"].get("location_history", [])
+                # Return most recent first, limited to requested count
+                return list(reversed(history[-limit:]))
+            return []
+        except Exception as e:
+            logger.error(f"Error getting location history for user {user_id}: {e}")
+            return []
+
     def set_first_time_interaction_to_false(self, user_id: str) -> bool:
         """
         Sets the 'needs_first_interaction' field to False for the specified user.

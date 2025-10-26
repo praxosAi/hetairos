@@ -51,7 +51,7 @@ class SchedulingService:
                 "user_id": str(user_id),
                 "source": "scheduled",
                 "payload": {"text": command_to_perform},
-                "metadata": {"task_id": task_id, 'output_type': delivery_platform, 'original_source': original_source, 'source': original_source, 'source_flag': f"{original_source}_recurring", 'conversation_id': conversation_id},
+                "metadata": {"task_id": task_id, 'output_type': delivery_platform, 'original_source': original_source, 'source': original_source, 'source_flag': f"{original_source}_future", 'conversation_id': conversation_id},
                 "output_type": delivery_platform
             }
             logger.info(f"Publishing scheduled event for user {user_id} at {time_to_do.isoformat()}")
@@ -178,6 +178,56 @@ class SchedulingService:
         except Exception as e:
             logger.error(f"Failed to get tasks for user {user_id}: {e}")
             return []
+
+    async def get_user_future_tasks(self, user_id: str, name_filter: Optional[List[str]] = None) -> List[Dict]:
+        """Gets all future scheduled tasks for a user."""
+        try:
+            tasks = await db_manager.get_future_tasks(user_id, name_filter)
+            return tasks
+        except Exception as e:
+            logger.error(f"Failed to get future tasks for user {user_id}: {e}")
+            return []
+
+    async def get_user_tasks_with_filter(self, user_id: str, future_only: bool = True, name_filter: Optional[List[str]] = None) -> List[Dict]:
+        """Gets scheduled tasks for a user with filtering options."""
+        try:
+            if future_only:
+                tasks = await db_manager.get_future_tasks(user_id, name_filter)
+            else:
+                # For all tasks, we need to apply name_filter manually since get_user_tasks doesn't support it
+                all_tasks = await db_manager.get_user_tasks(user_id)
+                if name_filter:
+                    # Normalize name_filter to list
+                    if isinstance(name_filter, str):
+                        filter_names = [name_filter]
+                    else:
+                        filter_names = name_filter
+                    # Filter tasks by name
+                    tasks = [task for task in all_tasks if task.get("name") in filter_names]
+                else:
+                    tasks = all_tasks
+            return tasks
+        except Exception as e:
+            logger.error(f"Failed to get tasks for user {user_id}: {e}")
+            return []
+
+    async def get_user_triggers(self, user_id: str) -> List[Dict]:
+        """Gets all active triggers for a user."""
+        try:
+            triggers = await db_manager.get_user_triggers(user_id)
+            return triggers
+        except Exception as e:
+            logger.error(f"Failed to get triggers for user {user_id}: {e}")
+            return []
+
+    async def cancel_trigger(self, rule_id: str) -> str:
+        """Cancels a trigger by its rule_id."""
+        try:
+            await db_manager.deactivate_trigger(rule_id)
+            return f"Trigger {rule_id} cancelled successfully."
+        except Exception as e:
+            logger.error(f"Failed to cancel trigger {rule_id}: {e}")
+            return "Failed to cancel trigger."
 
     async def cancel_task(self, task_id: str) -> str:
         """Cancels a scheduled task."""

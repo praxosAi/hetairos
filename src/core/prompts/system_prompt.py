@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 from typing import Optional, Dict, Any
 import pytz
 from src.core.context import UserContext
@@ -81,10 +82,15 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
     preferences = preferences if preferences else {}
     timezone_name = preferences.get('timezone', 'America/New_York')
     annotations = preferences.get('annotations', [])
+    last_known_location =  preferences.get('location_preferences', {}).get('last_shared_location', {})
 
     if annotations:
         logger.info(f"User has provided additional context and preferences: {annotations}")
         praxos_prompt += f"\n\nThe user has provided the following additional context and preferences for you to consider in your responses: {'\n'.join(annotations)}\n"
+    if last_known_location:
+        praxos_prompt += f"\n\nThe user's last known location is latitude {json.dumps(last_known_location,default=str,indent=2)}.\n"
+    else:
+        praxos_prompt += "we do not know the user's last known location.\n"
     nyc_tz = pytz.timezone(timezone_name)
     current_time_nyc = datetime.now(nyc_tz).isoformat()
     time_prompt = f"\nThe current time in the user's timezone is {current_time_nyc}. You should always assume the user is in the '{timezone_name}' timezone unless specified otherwise."

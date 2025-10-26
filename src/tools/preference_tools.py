@@ -239,10 +239,130 @@ def create_preference_tools(user_id: str) -> list:
                 exception=e,
                 integration="user_preferences"
             )
+    @tool
+    def get_user_location() -> ToolExecutionResponse:
+        """
+        Get the user's last shared location.
+        Returns the most recent location with coordinates, platform, timestamp, and optional name.
+        If user has not shared location, returns a message suggesting to request it.
+
+        Returns:
+            ToolExecutionResponse with location data or suggestion to request location
+        """
+        try:
+            location = user_service.get_user_last_location(user_id)
+
+            if not location:
+                return ToolExecutionResponse(
+                    status="success",
+                    result={
+                        "has_location": False,
+                        "message": "User has not shared their location yet. You should ask them to share their location using request_location parameter in your reply.",
+                        "suggestion": "Use request_location=True in your next message to ask the user for their location."
+                    }
+                )
+
+            # Format timestamp nicely
+            timestamp = location.get("timestamp")
+            if timestamp:
+                timestamp_str = timestamp.isoformat() if hasattr(timestamp, 'isoformat') else str(timestamp)
+            else:
+                timestamp_str = None
+
+            return ToolExecutionResponse(
+                status="success",
+                result={
+                    "has_location": True,
+                    "location": {
+                        "latitude": location.get("latitude"),
+                        "longitude": location.get("longitude"),
+                        "name": location.get("name"),
+                        "platform": location.get("platform"),
+                        "timestamp": timestamp_str
+                    }
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to get user location: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="get_user_location",
+                exception=e,
+                integration="user_preferences"
+            )
+
+    @tool
+    def get_user_location_history(limit: int = 10) -> ToolExecutionResponse:
+        """
+        Get the user's location history (most recent first).
+        Returns up to 'limit' recent locations with coordinates, platform, timestamp, and optional name.
+        If user has not shared any locations, returns a message suggesting to request it.
+
+        Args:
+            limit: Maximum number of locations to return (default 10, max 100)
+
+        Returns:
+            ToolExecutionResponse with location history or suggestion to request location
+        """
+        try:
+            # Validate limit
+            if limit < 1:
+                limit = 10
+            if limit > 100:
+                limit = 100
+
+            history = user_service.get_user_location_history(user_id, limit=limit)
+
+            if not history:
+                return ToolExecutionResponse(
+                    status="success",
+                    result={
+                        "has_history": False,
+                        "count": 0,
+                        "message": "User has not shared their location yet. You should ask them to share their location using request_location parameter in your reply.",
+                        "suggestion": "Use request_location=True in your next message to ask the user for their location."
+                    }
+                )
+
+            # Format locations
+            formatted_history = []
+            for loc in history:
+                timestamp = loc.get("timestamp")
+                if timestamp:
+                    timestamp_str = timestamp.isoformat() if hasattr(timestamp, 'isoformat') else str(timestamp)
+                else:
+                    timestamp_str = None
+
+                formatted_history.append({
+                    "latitude": loc.get("latitude"),
+                    "longitude": loc.get("longitude"),
+                    "name": loc.get("name"),
+                    "platform": loc.get("platform"),
+                    "timestamp": timestamp_str
+                })
+
+            return ToolExecutionResponse(
+                status="success",
+                result={
+                    "has_history": True,
+                    "count": len(formatted_history),
+                    "locations": formatted_history
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to get user location history: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="get_user_location_history",
+                exception=e,
+                integration="user_preferences",
+                context={"limit": limit}
+            )
+
     return [
         add_user_preference_annotation,
         set_assistant_name,
         set_timezone,
         set_language_response,
         delete_user_preference_annotations,
+        get_user_location,
+        get_user_location_history,
     ]

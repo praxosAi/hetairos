@@ -76,7 +76,7 @@ async def build_payload_entry(file: Dict[str, Any], add_to_media_bus=False, conv
             if not file_name or file_name == 'Original filename not accessible':
                 file_name = blob_path.split('/')[-1]
             caption = file.get("caption", "")
-            media_bus.add_media(
+            await media_bus.add_media(
                 conversation_id=conversation_id,
                 url=url,
                 file_name=file_name,
@@ -92,11 +92,11 @@ async def build_payload_entry(file: Dict[str, Any], add_to_media_bus=False, conv
             logger.error(f"Error adding media to media bus: {e}", exc_info=True)
     return payload
 
-async def build_payload_entry_from_inserted_id(inserted_id: str) -> Tuple[Optional[Dict[str, Any]],Optional[Dict[str, Any]]]:
+async def build_payload_entry_from_inserted_id(inserted_id: str,add_to_media_bus:bool=False, conversation_id: str = None) -> Tuple[Optional[Dict[str, Any]],Optional[Dict[str, Any]]]:
     from src.utils.database import db_manager
     file = await db_manager.get_document_by_id(inserted_id)
     if file:
-        payload = await build_payload_entry(file)
+        payload = await build_payload_entry(file, add_to_media_bus=add_to_media_bus, conversation_id=conversation_id)
         return payload,file
     return None,None
 
@@ -437,7 +437,7 @@ async def get_conversation_history(
             # De-duplicate downloads for the same inserted_id
             task = cache.get(inserted_id)
             if task is None:
-                task = build_payload_entry_from_inserted_id(inserted_id)
+                task = build_payload_entry_from_inserted_id(inserted_id, add_to_media_bus=True, conversation_id=conversation_id)
                 cache[inserted_id] = task
 
             fetch_tasks.append(task)
@@ -465,7 +465,7 @@ async def get_conversation_history(
             raw_msg = raw_msgs[i]
             msg_type = raw_msg.get("message_type")
             inserted_id = (raw_msg.get("metadata") or {}).get("inserted_id")
-
+            container_name = 'cdn-container' if msg_type in {'image', 'photo'} else settings.AZURE_BLOB_CONTAINER_NAME
             # Try to extract URL from payload
             media_url = None
             if payload.get("type") == "image_url":
@@ -477,17 +477,18 @@ async def get_conversation_history(
                 file_name = media_url.split('/')[-1] if '/' in media_url else "media_file"
                 caption = raw_msg.get("content", "")  # Use message content as description
                 
-                media_bus.add_media(
-                    conversation_id=conversation_id,
-                    url=media_url,
-                    file_name=file_name,
-                    file_type=msg_type,
-                    description=f"User uploaded {msg_type}" + (f": {caption}" if caption else ""),
-                    source="uploaded",
-                    blob_path=file_info.get('blob_path'),  # Would need to extract from database
-                    mime_type=file_info.get('mime_type'),  # Would need to extract from database
-                    metadata={"inserted_id": inserted_id, "from_history": True}
-                )
+                # media_bus.add_media(
+                #     conversation_id=conversation_id,
+                #     url=media_url,
+                #     file_name=file_name,
+                #     file_type=msg_type,
+                #     description=f"User uploaded {msg_type}" + (f": {caption}" if caption else ""),
+                #     source="uploaded",
+                #     blob_path=file_info.get('blob_path'),  # Would need to extract from database
+                #     mime_type=file_info.get('mime_type'),  # Would need to extract from database
+                #     metadata={"inserted_id": inserted_id, "from_history": True},
+                #     container_name=container_name,
+                # )
                 logger.debug(f"Added historical media to bus: {msg_type} - {file_name}")
         except Exception as e:
             logger.warning(f"Could not add media to bus: {e}")
@@ -572,7 +573,7 @@ async def update_history( conversation_manager: Any, new_messages: List[BaseMess
                     user_context.user_id,
                     conversation_id,
                     content,
-                    metadata={"tool_calls": [tc.get('name') for tc in msg.tool_calls]}
+                    metadata={"tool_calls": [tc for tc in msg.tool_calls]}
                 )
             elif isinstance(msg, ToolMessage):
                 # Persist tool results

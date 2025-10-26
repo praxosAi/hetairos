@@ -11,6 +11,12 @@ class DeliveryPlatform(str, Enum):
     TELEGRAM = 'telegram'
     EMAIL = 'email'
     imessage = 'imessage'
+
+class FutureTaskType(str, Enum):
+    ONE_TIME = 'one_time'
+    RECURRING = 'recurring'
+    TRIGGER = 'trigger'
+
 logger = setup_logger(__name__)
 def create_scheduling_tools(user_id: str,source:str,conversation_id:str) -> List:
     """Creates all scheduling-related tools for a given user."""
@@ -67,23 +73,83 @@ def create_scheduling_tools(user_id: str,source:str,conversation_id:str) -> List
         )
         return ToolExecutionResponse(status="success", result=result)
 
+
+
+
+
+    # @tool
+    # async def get_scheduled_tasks() -> ToolExecutionResponse:
+    #     """Gets all scheduled tasks for the user."""
+    #     try:
+    #         tasks = await scheduling_service.get_user_tasks(user_id)
+    #         if not tasks:
+    #             return ToolExecutionResponse(status="success", result="You have no upcoming scheduled tasks.")
+    #         # Format the tasks for better readability
+    #         formatted_tasks = [
+    #             {
+    #                 "task_id": task.get("id"),
+    #                 "description": task.get("agent_config", {}).get("description"),
+    #                 "schedule": task.get("cron_description"),
+    #                 "next_run": task.get("next_run").isoformat() if task.get("next_run") else "N/A"
+    #             } for task in tasks
+    #         ]
+    #         return ToolExecutionResponse(status="success", result=formatted_tasks)
+    #     except Exception as e:
+    #         logger.error(f"Error in scheduling operation: {e}", exc_info=True)
+    #         return ErrorResponseBuilder.from_exception(
+    #             operation="scheduling_operation",
+    #             exception=e,
+    #             integration="scheduling_service"
+    #         )
     @tool
-    async def get_scheduled_tasks() -> ToolExecutionResponse:
-        """Gets all future scheduled tasks for the user."""
+    async def get_scheduled_tasks(future_only: bool = True, task_type: Optional[FutureTaskType] = None) -> ToolExecutionResponse:
+        """Gets all scheduled, recurring, and trigger sensitive tasks for the user. 
+        args:
+            future_only: If true, only returns future scheduled tasks.
+            task_type: If provided, filters tasks by the specified type (one_time, recurring, triggers).
+        
+            
+        Generally, unless the user specifies otherwise, assume they want to see only future scheduled tasks.
+        """
         try:
-            tasks = await scheduling_service.get_user_tasks(user_id)
-            if not tasks:
-                return ToolExecutionResponse(status="success", result="You have no upcoming scheduled tasks.")
-            # Format the tasks for better readability
-            formatted_tasks = [
-                {
-                    "task_id": task.get("id"),
-                    "description": task.get("agent_config", {}).get("description"),
-                    "schedule": task.get("cron_description"),
-                    "next_run": task.get("next_run").isoformat() if task.get("next_run") else "N/A"
-                } for task in tasks
-            ]
-            return ToolExecutionResponse(status="success", result=formatted_tasks)
+            if task_type == FutureTaskType.TRIGGER:
+                # Get user triggers
+                triggers = await scheduling_service.get_user_triggers(user_id)
+                if not triggers:
+                    return ToolExecutionResponse(status="success", result="You have no active triggers.")
+                # Format the triggers for better readability
+                formatted_triggers = [
+                    {
+                        "trigger_id": trigger.get("rule_id"),
+                        "trigger_text": trigger.get("trigger_text"),
+                        "created_at": trigger.get("created_at").isoformat() if trigger.get("created_at") else "N/A",
+                        "is_one_time": trigger.get("is_one_time", False),
+                        "status": trigger.get("status", "active")
+                    } for trigger in triggers
+                ]
+                return ToolExecutionResponse(status="success", result=formatted_triggers)
+            else:
+                # Convert task_type to name filter for database query
+                name_filter = None
+                if task_type == FutureTaskType.ONE_TIME:
+                    name_filter = ["scheduled"]
+                elif task_type == FutureTaskType.RECURRING:
+                    name_filter = ["recurring"]
+                
+                tasks = await scheduling_service.get_user_tasks_with_filter(user_id, future_only, name_filter)
+                if not tasks:
+                    task_scope = "upcoming" if future_only else "scheduled"
+                    return ToolExecutionResponse(status="success", result=f"You have no {task_scope} scheduled tasks.")
+                # Format the tasks for better readability
+                formatted_tasks = [
+                    {
+                        "task_id": task.get("id"),
+                        "description": task.get("agent_config", {}).get("description"),
+                        "schedule": task.get("cron_description"),
+                        "next_run": task.get("next_run").isoformat() if task.get("next_run") else "N/A"
+                    } for task in tasks
+                ]
+                return ToolExecutionResponse(status="success", result=formatted_tasks)
         except Exception as e:
             logger.error(f"Error in scheduling operation: {e}", exc_info=True)
             return ErrorResponseBuilder.from_exception(
@@ -120,4 +186,18 @@ def create_scheduling_tools(user_id: str,source:str,conversation_id:str) -> List
                 integration="scheduling_service"
             )
 
-    return [schedule_task, create_recurring_future_task, get_scheduled_tasks, cancel_scheduled_task, update_scheduled_task]
+    @tool
+    async def cancel_trigger(rule_id: str) -> ToolExecutionResponse:
+        """Cancels an active trigger by its rule ID."""
+        try:
+            result = await scheduling_service.cancel_trigger(rule_id)
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            logger.error(f"Error cancelling trigger: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="cancel_trigger",
+                exception=e,
+                integration="scheduling_service"
+            )
+
+    return [schedule_task, create_recurring_future_task, get_scheduled_tasks, cancel_scheduled_task, update_scheduled_task, cancel_trigger]

@@ -348,5 +348,5 @@ async def trigger_ingestion(request: IngestionRequest):
         },
         "metadata": {}
     }
-    await event_queue.publish(event)
+    # await event_queue.publish(event)
     return {"status": "success", "message": f"Initial ingestion for {request.integration_id} has been queued for user {request.user_id}."}

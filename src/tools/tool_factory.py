@@ -4,7 +4,6 @@ from src.services.conversation_manager import ConversationManager
 from src.utils.logging import setup_logger
 from langchain_core.tools import Tool
 from langchain_google_community import GoogleSearchAPIWrapper
-from langchain_community.tools import GooglePlacesTool
 import asyncio
 # Integration Clients
 from src.integrations.notion.notion_client import NotionIntegration
@@ -35,6 +34,7 @@ from src.tools.preference_tools import create_preference_tools
 from src.tools.integration_tools import create_integration_tools
 from src.tools.database_tools import create_database_access_tools
 from src.tools.google_lens import create_google_lens_tools
+from src.tools.google_places import create_google_places_tools
 import src.tools.mock_tools as mock_tools
 
 logger = setup_logger(__name__)
@@ -217,11 +217,12 @@ class AgentToolsFactory:
                 logger.error(f"Error creating Google search tool: {e}", exc_info=True)
 
         # Google Places
-        if is_tool_required('GooglePlacesTool'):
+        if needs_category(['google_places_text_search', 'google_places_nearby_search', 'google_places_find_place', 'google_places_get_details']):
             try:
-                tools.append(GooglePlacesTool())
+                tools.extend(create_google_places_tools())
+                logger.info("Google Places tools created successfully.")
             except Exception as e:
-                logger.error(f"Error creating Google places tool: {e}", exc_info=True)
+                logger.error(f"Error creating Google places tools: {e}", exc_info=True)
 
         # Google Lens
         if is_tool_required('identify_product_in_image'):
@@ -232,7 +233,7 @@ class AgentToolsFactory:
                 logger.error(f"Error creating Google Lens tools: {e}", exc_info=True)
 
         # Web tools: if google search or places is needed, also load web browsing
-        if needs_category(['read_webpage_content', 'browse_website_with_ai','google_search','GooglePlacesTool']):
+        if needs_category(['read_webpage_content', 'browse_website_with_ai','google_search','google_places_text_search','google_places_nearby_search','google_places_find_place','google_places_get_details']):
             try:
                 tools.extend(create_web_tools(request_id, user_id, metadata))
                 logger.info("Web tools created successfully.")

@@ -164,13 +164,13 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
 
             return Command(goto="agent")
         # 1) Missing-params path: Route to gather more data if needed.
-        if not config.minimal_tools and config.required_tool_ids and 'ask_user_for_missing_params' in config.required_tool_ids:
-            if state.get("param_probe_done", False) or state.get("data_iter_counter", 0) >= config.MAX_DATA_ITERS:
-                logger.info("Missing-param probe already done or cap reached; finalizing.")
-                return Command(goto="finalize")
+        # if not config.minimal_tools and config.required_tool_ids and 'ask_user_for_missing_params' in config.required_tool_ids:
+        #     if state.get("param_probe_done", False) or state.get("data_iter_counter", 0) >= config.MAX_DATA_ITERS:
+        #         logger.info("Missing-param probe already done or cap reached; finalizing.")
+        #         return Command(goto="finalize")
             
-            logger.info("Missing params required; routing to obtain_data node.")
-            return Command(goto="obtain_data")
+        #     logger.info("Missing params required; routing to obtain_data node.")
+        #     return Command(goto="obtain_data")
 
         # 2) Stalled-tool path: If tools are expected but none were called, force an action.
         if not config.minimal_tools:

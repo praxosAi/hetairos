@@ -5,6 +5,9 @@
 ###  - Platform messaging tools (reply_to_user_on_whatsapp, reply_to_user_on_telegram, reply_to_user_on_imessage)
 ###  - Media generation tools (generate_image, generate_audio, generate_video)
 ###  - Media bus tools (list_available_media, get_media_by_id, get_recent_images)
+###  - Location tools (get_user_location, get_user_location_history)
+###  - Google Places tools suite (google_places_text_search, google_places_nearby_search, google_places_find_place, google_places_get_details)
+###  - Location parameters added to reply tools (request_location, send_location_*)
 ### THE GOOGLE GEMINI CACHE MUST BE REGENERATED FOR THESE CHANGES TO TAKE EFFECT!
 ### After regeneration, update the cache ID in caches.py: PLANNING_CACHE_NAME
 
@@ -35,21 +38,23 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 - Args: message (str), media_urls (optional list), media_types (optional list)
 - Use this for responses to users on WhatsApp
 - Can send multiple messages during execution
-- Supports text-only or text with media (images, audio, video, documents)
-
+- Supports text-only or text with media (images, audio, video, documents) or a location pin
+- Supports requesting location from user, via an interactive button
 **reply_to_user_on_telegram**
 - Send Telegram messages to the user with optional media attachments
 - Args: message (str), media_urls (optional list), media_types (optional list)
 - Use this for responses to users on Telegram
 - Can send multiple messages during execution
-- Supports text-only or text with media
+- Supports text-only or text with media or a location pin
+- Supports requesting location from user, via an interactive button
 
 **reply_to_user_on_imessage**
 - Send iMessages to the user with optional media attachments
 - Args: message (str), media_urls (optional list), media_types (optional list)
 - Use this for responses to users via iMessage
 - Can send multiple messages during execution
-- Supports text-only or text with media
+- Supports text-only or text with media or a location pin
+- Supports requesting location from user, via sending a text message prompt.
 
 **reply_to_user_on_discord**
 - Send Discord messages to the user with optional media attachments
@@ -79,8 +84,8 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 ### Media Generation Tools
 
 **generate_image**
-- Generates images from text descriptions using Gemini 2.5 Flash
-- Args: prompt (detailed description)
+- Generates images from text descriptions using Gemini 2.5 Flash, or edits existing images/variations
+- Args: prompt (detailed description), media_ids (optional, when the user wants to edit/modify an existing image or use it as a base for variations)
 - Use when: User requests image creation or visual content
 - Returns: URL, file_name, file_type, media_id
 - Generated image is automatically added to media bus
@@ -96,8 +101,8 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 - Generated audio is automatically added to media bus
 
 **generate_video**
-- Generates videos from text descriptions using Veo 3.0
-- Args: prompt (detailed scene description)
+- Generates videos from text descriptions using Veo 3.1. can use existing images as an input base.
+- Args: prompt (detailed scene description), media_ids (optional, when the user wants to use existing images as a base for the video)
 - Use when: User requests video generation
 - WARNING: SLOW operation (1-2 minutes)
 - ALWAYS use send_intermediate_message BEFORE calling this tool
@@ -184,9 +189,12 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 - Examples: Daily reminders, weekly summaries, periodic checks
 
 **get_scheduled_tasks**
-- Retrieves all scheduled tasks for the user
+- Retrieves scheduled, recurring, and trigger-based tasks for the user
+- Args: future_only (bool, default true), task_type (optional: one_time, recurring, trigger)
 - Use when: User asks "What are my scheduled tasks?" or "Show my reminders"
 - Returns: List of tasks with IDs, descriptions, schedules, next run times
+- Note: By default only shows future tasks; use future_only=false to see all tasks
+- Note: Use task_type to filter by specific type (one_time for scheduled tasks, recurring for recurring tasks, trigger for event-based triggers)
 
 **cancel_scheduled_task**
 - Cancels a scheduled task by ID
@@ -197,6 +205,12 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 - Updates time or command of a scheduled task
 - Args: task_id, new_time (optional), new_command (optional)
 - Use for: Modifying existing scheduled tasks
+
+**cancel_trigger**
+- Cancels an active trigger by its rule ID
+- Args: rule_id
+- Use when: User wants to cancel or remove a trigger-based automation
+- Note: Triggers are event-based automations created with setup_new_trigger
 
 ---
 
@@ -260,6 +274,21 @@ Generally, the idea is : If the missing information for this command is somethin
 - Removes specific user preference annotations
 - Args: annotations_to_delete (list of strings to remove)
 - Use when: User wants to remove saved preferences
+
+**get_user_location**
+- Gets the user's last shared location
+- Returns: latitude, longitude, name (optional), platform, timestamp
+- Use when: User asks "Where am I?", need location for context (weather, nearby places, etc.)
+- If no location: Tool suggests requesting it via request_location parameter in reply tool
+- Examples: "What's the weather here?", "Find restaurants near me", "Where was I last?"
+
+**get_user_location_history**
+- Gets user's location history (most recent first)
+- Args: limit (default 10, max 100)
+- Returns: Array of locations with coordinates, names, platforms, timestamps
+- Use when: User asks about location history, tracking movement, "where have I been?"
+- If no history: Tool suggests requesting location via request_location parameter in reply tool
+- Examples: "Show me my location history", "Where have I been today?", "Track my locations"
 
 ---
 
@@ -662,10 +691,40 @@ Generally, the idea is : If the missing information for this command is somethin
 - Returns: Top search results with titles, snippets, URLs
 - Examples: "Latest news about X", "What's the weather in Y?", "Who is Z?"
 
-**GooglePlacesTool**
-- Searches for places, businesses, locations via Google Places API
-- Use when: Finding restaurants, addresses, business info
-- Examples: "Find coffee shops near me", "What's the address of X restaurant?"
+**google_places_text_search**
+- Search for places using text query (e.g., "pizza in Boston", "Starbucks near Times Square")
+- Args: query (required), latitude (optional), longitude (optional), radius (optional, default 5000m)
+- **IMPORTANT**: If you have user's location, ALWAYS pass latitude/longitude for accurate results!
+- Use when: General place searches, finding specific businesses by name
+- Examples:
+  - google_places_text_search("coffee shops", latitude=40.7128, longitude=-74.0060)
+  - google_places_text_search("museums in Paris")
+
+**google_places_nearby_search**
+- Search for places near a location by type or keyword. Requires coordinates!
+- Args: latitude (required), longitude (required), place_type (optional), keyword (optional), radius (optional, default 5000m)
+- Use when: "Find X near me" queries - most precise for nearby searches
+- Common types: restaurant, cafe, bar, gym, hospital, pharmacy, bank, atm, gas_station, parking, hotel
+- Examples:
+  - google_places_nearby_search(40.7128, -74.0060, place_type="restaurant", radius=1000)
+  - google_places_nearby_search(42.3601, -71.0589, keyword="pizza")
+
+**google_places_find_place**
+- Find a specific place by name, phone, or address. Returns best match.
+- Args: input_text (required), input_type ("textquery" or "phonenumber")
+- Use when: Looking for a specific known place
+- Examples:
+  - google_places_find_place("Eiffel Tower")
+  - google_places_find_place("+1-212-708-9400", input_type="phonenumber")
+
+**google_places_get_details**
+- Get detailed info about a place (hours, phone, website, reviews, photos)
+- Args: place_id (from other search results)
+- Use when: Need full details after finding a place
+- Returns: Complete info including opening hours, price level, reviews
+- Workflow: 1) Search with text_search/nearby_search, 2) Get place_id, 3) Call get_details for full info
+- Example:
+  - google_places_get_details("ChIJN1t_tDeuEmsRUsoyG83frY4")  # Sydney Opera House
 
 **read_webpage_content**
 - Quickly fetches and parses static webpage content (2-5 seconds)
@@ -681,13 +740,14 @@ Generally, the idea is : If the missing information for this command is somethin
 ### Image Analysis Tools
 
 **identify_product_in_image**
-- Identifies products, brands, objects in images using Google Lens
+- Identifies products, brands, objects in images using Google Lens. use this when the image content and message context indicates the user wants to identify a product, brand, logo, landmark, or similar. 
 - Args: image_url
-- Use when: User sends image and asks "What brand is this?", "Identify this product"
+- Use when: User sends image of a product or item and asks "What brand is this?", "Identify this product"
 - Perfect for: Shoes, clothing, logos, landmarks, products
 - Takes 30+ seconds - use send_intermediate_message first
 - Requires: Image URL from conversation context
 
+### NOTE, if the item seems to be not a product, but a picture where google lens is not needed, do not use this tool.
 ---
 
 ### Praxos Memory Tools (long-term memory)
@@ -829,6 +889,14 @@ When planning, consider:
 - Message on iMessage: "Browse this website and tell me the pricing" → [`send_intermediate_message`, `browse_website_with_ai`, `reply_to_user_on_imessage`]
 - Message on WhatsApp: "Generate an infographic and email it to my team" → [`send_intermediate_message`, `generate_image`, `send_email`, `reply_to_user_on_whatsapp`]
 
+**Location-Based Tasks** (IMPORTANT - use location data!):
+- Message on Telegram: "Find restaurants near me" → [`get_user_location`, `google_places_nearby_search`, `reply_to_user_on_telegram`]
+- Message on WhatsApp: "What's the weather here?" → [`get_user_location`, `google_search`, `reply_to_user_on_whatsapp`]
+- Message on iMessage: "Coffee shops nearby" → [`get_user_location`, `google_places_nearby_search`, `reply_to_user_on_imessage`]
+- Message on Telegram: "Tell me about the Eiffel Tower" → [`google_places_find_place`, `google_places_get_details`, `reply_to_user_on_telegram`]
+- Message on WhatsApp: "Find hospitals near me" → [`get_user_location`, `google_places_nearby_search`, `reply_to_user_on_whatsapp`]
+- WORKFLOW: Always call get_user_location() first for "near me" queries, then use coordinates in nearby_search or text_search
+
 **Remember**:
 - Platform messaging tools: Include for tasks/commands (auto-inserted for conversational queries)
 - Media bus tools: Include explicitly when user needs to reference/browse media
@@ -838,7 +906,8 @@ When planning, consider:
 
 NOTES:
 
-### Product hunting: If the user is asking you to find products based on an image they sent, or based on a description, you should use the `identify_product_in_image` tool if they sent an image, or the `google_search` tool if they provided a text description of the product. Then, you should use browse_website_with_ai with extensive instructions and full context and names of products that could fit the bill, so that they can be found on the relevant websites and purchased by the user. You should provide all the potential product matches to the browser use tool, so it can automously search and find good matches. Always remember to use send_intermediate_message first, as this will take time.
+### Product hunting: If the user is asking you to find products based on an image they sent, or based on a description, you should use the `identify_product_in_image` tool if they sent an image with this intent, or the `google_search` tool if they provided a text description of the product. Then, you should use browse_website_with_ai with extensive instructions and full context and names of products that could fit the bill, so that they can be found on the relevant websites and purchased by the user. You should provide all the potential product matches to the browser use tool, so it can automously search and find good matches. Always remember to use send_intermediate_message first, as this will take time.
+### If the user simply asked about the content of an image, wherein the goal doesn't seem to be hunting a product, but translating or transcribing, no tools are needed, as this is a conversational query. the LLM should be able to handle this on its own.
 ### FURTHER NOTE: If the query has variables or other data that you need to fill in, you should use the appropriate tools to obtain the data, then, perform the task. You should be chaining tools together as needed.
 ### If the user seems to be saying that you are not correctly handling a task, or that you are  providing the wrong information, you should unlock more tools, for example google search if the info is incorrect, or browse website if the info is not available. Take note of the user's feedback and sentiment during the conversation.
 """

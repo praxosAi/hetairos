@@ -122,6 +122,56 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                 "metadata": {'message_id': message["message_id"],'chat_id': chat_id, 'source':'telegram','forwarded':forwarded,'forward_origin':forward_origin,'timestamp': message.get("date")}
             }
             await event_queue.publish(event)
+
+        # Handle location messages
+        if "location" in message:
+            location = message["location"]
+            latitude = location.get("latitude")
+            longitude = location.get("longitude")
+            horizontal_accuracy = location.get("horizontal_accuracy")
+
+            logger.info(f"Received location from Telegram user {user_id}: lat={latitude}, lng={longitude}")
+
+            # Store location in user preferences
+            from src.services.user_service import user_service
+            try:
+                user_service.save_user_location(
+                    user_id=user_id,
+                    latitude=latitude,
+                    longitude=longitude,
+                    platform="telegram"
+                )
+                logger.info(f"Saved location for user {user_id}")
+            except Exception as e:
+                logger.error(f"Failed to save location for user {user_id}: {e}")
+
+            # Create event for location
+            location_text = f"User shared location: {latitude}, {longitude}"
+            if horizontal_accuracy:
+                location_text += f" (accuracy: {horizontal_accuracy}m)"
+
+            event = {
+                "user_id": user_id,
+                'output_type': 'telegram',
+                'output_chat_id': chat_id,
+                "source": "telegram",
+                'logging_context': {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
+                "payload": {"text": location_text},
+                "metadata": {
+                    'message_id': message["message_id"],
+                    'chat_id': chat_id,
+                    'source': 'telegram',
+                    'timestamp': message.get("date"),
+                    'type': 'text',
+                    'location': {
+                        "latitude": latitude,
+                        "longitude": longitude,
+                        "accuracy": horizontal_accuracy
+                    }
+                }
+            }
+            await event_queue.publish(event)
+
         for key in ['video','document','sticker','voice','audio','photo','image']:
             if not key in message or not message[key]:
                 continue

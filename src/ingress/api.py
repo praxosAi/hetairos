@@ -9,6 +9,7 @@ from src.ingress.webhook_handlers import telegram_handler
 from src.ingress.webhook_handlers import notion_handler
 from src.ingress.webhook_handlers import outlook_handler
 from src.ingress.webhook_handlers import imessage_handler
+from src.ingress.webhook_handlers import ios_handler
 from src.ingress.webhook_handlers import google_calendar_handler
 from src.ingress.webhook_handlers import google_drive_handler
 from src.ingress.webhook_handlers import microsoft_calendar_handler
@@ -61,6 +62,7 @@ app.include_router(telegram_handler.router, prefix="/webhooks")
 app.include_router(slack_handler.router, prefix="/webhooks")
 app.include_router(discord_handler.router, prefix="/webhooks")
 app.include_router(imessage_handler.router, prefix="/webhooks")
+app.include_router(ios_handler.router, prefix="/webhooks")
 
 # Email
 app.include_router(gmail_handler.router, prefix="/webhooks")

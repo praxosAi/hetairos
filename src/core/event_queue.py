@@ -41,7 +41,7 @@ class InMemoryEventQueue:
         while True:
             try:
                 event = await self._queue.get()
-                yield event
+                yield {"events": [event]}
                 self._queue.task_done()
             except asyncio.CancelledError:
                 logger.info("In-memory consumer task cancelled.")

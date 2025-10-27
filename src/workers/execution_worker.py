@@ -244,19 +244,4 @@ class ExecutionWorker:
 async def execution_task():
     """Entry point for the execution worker background task."""
     worker = ExecutionWorker()
-    await event_queue.publish({
-        "user_id": "68b728d45ffd77756575f942",
-        "output_type": "telegram",
-        "output_chat_id": 75775194,
-        "source": "telegram",
-        "payload": {
-            "text": "/START_NEW got to the times website (https://www.nytimes.com/) and sumerize the news for me"
-        },
-        "metadata": {
-            "chat_id": 75775194,
-            "source": "Telegram",
-            "forwarded": False,
-            "forward_origin": {}
-        }
-    })
     await worker.run()

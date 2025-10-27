@@ -48,7 +48,7 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
         "\n1. FIRST use send_intermediate_message to notify the user you're starting the task (e.g., 'I'm browsing that website now, this will take about 30 seconds...' or 'Generating your video, this will take 1-2 minutes...')"
         "\n2. THEN execute the long-running tool"
         "\n3. THEN send the result to the user using the appropriate messaging tool"
-        "\n\n IMPORTANT - Asynchronized long-running operations: For operations that take significant time (30+ seconds), such as browsing websites with AI, generating media, and you have not access to the final result after calling the tool, you MUST:"
+        "\n\n IMPORTANT - Asynchronized long-running operations: For operations that take significant time (30+ seconds), such as browsing websites with AI, and you have not access to the final result after calling the tool, you MUST:"
         "\n1. Execute the long-running tool"
         "\n2. Then notify the user that the task has been started and that they will receive the results shortly as the final output. "
         "\nThis pattern applies to: browse_website_with_ai, generate_video, and any future long-running tools."

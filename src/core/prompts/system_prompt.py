@@ -157,6 +157,8 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
 
         I can also chain any of the above together to accomplish more complex tasks.
 
+        In the event that the user's query requires an integration which is this list, but you do not have a tool, it means that the user has not integrated that service yet. In such cases, you must use the integration management tool to help the user integrate that service, before you can perform the task.
+
     """
 
     # KG-first guidance

@@ -4,7 +4,7 @@ from src.config.settings import settings
 from src.utils.logging import setup_logger
 logger = setup_logger(__name__)
 ### IMPORTANT NOTE. FOR PLANNER TO WORK, YOU REALLY SHOULD USE A CACHE, OR OTHERWISE, RECODE IT TO NOT USE A CACHE. 
-PLANNING_CACHE_NAME = 'cachedContents/3n437eca3ffjjda94dylgbey1048b809u5uak2fe'
+PLANNING_CACHE_NAME = 'cachedContents/hmcssfuet0apskc4pu0lt3mkebg9er8anw96x0yd'
 async def update_cache_ttl():
     """Updates the cache TTL in a fire-and-forget manner."""
     try:

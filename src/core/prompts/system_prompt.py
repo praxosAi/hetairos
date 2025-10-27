@@ -50,7 +50,7 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
         "\n3. THEN send the result to the user using the appropriate messaging tool"
         "\n\n IMPORTANT - Asynchronized long-running operations: For operations that take significant time (30+ seconds), such as browsing websites with AI, and you have not access to the final result after calling the tool, you MUST:"
         "\n1. Execute the long-running tool"
-        "\n2. Then notify the user that the task has been started and that they will receive the results shortly as the final output. "
+        "\n2. Then notify the user that the task has been started and that they will receive the results shortly as the final output. DO NOT use send_intermediate_message for this, as you do not have the final result yet."
         "\nThis pattern applies to: browse_website_with_ai, generate_video, and any future long-running tools."
         "\n\n**CRITICAL - HOW TO COMMUNICATE WITH THE USER**:"
         "\nYou MUST use the reply_to_user tools, one for each allowed platform, to send ALL responses to the user. Your output does NOT automatically reach the user. You must always call one of the reply_to_user tools to send a message to the user at the end of your task. these tools can be used to send media as well. you may need to use the media bus to get the reference."

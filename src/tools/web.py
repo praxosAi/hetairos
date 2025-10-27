@@ -123,7 +123,8 @@ def create_browser_tool(request_id, user_id, metadata):
         This tool can handle complex web interactions that simple HTML parsing cannot.
         Use this for websites with JavaScript content, forms, modals, or multi-step navigation.
 
-        This operation takes between 30 seconds to 5 minutes.
+        This operation takes between 30 seconds to 5 minutes and is processed asynchronously.
+        You will be notified with the results in this conversation once the task is complete.
 
         Args:
             task: Natural language description of what to do (e.g., "Find pricing information", "Extract product details"), and on what website, if it's a specific one.

@@ -17,6 +17,7 @@ import mimetypes
 from bson import ObjectId
 from src.utils.logging.base_logger import user_id_var, modality_var, request_id_var
 from src.services.milestone_service import milestone_service
+from src.utils.file_manager import file_manager
 
 router = APIRouter()
 
@@ -132,52 +133,59 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                         elif message_type in ["audio", "voice","document",'image','video']:
                             media_id = message.get(message_type, {}).get("id")
                             if media_id:
-                                mime_type = [message.get(message_type, {}).get("mime_type").split(';')[0]]
-                                extension = mimetypes.guess_extension(mime_type[0]) or ''
-                                webhook_logger.info(f"Downloading media {media_id} of type {message_type} with extension {extension} and mime type {mime_type} for user {user_record['_id']}")
-                                file_path, _ = await whatsapp_client.download_media_by_id_to_file(media_id,extension)
+                                mime_type_raw = message.get(message_type, {}).get("mime_type", "").split(';')[0]
+                                extension = mimetypes.guess_extension(mime_type_raw) or ''
+                                webhook_logger.info(f"Downloading media {media_id} of type {message_type} with extension {extension} and mime type {mime_type_raw} for user {user_record['_id']}")
+                                file_path, _ = await whatsapp_client.download_media_by_id_to_file(media_id, extension)
                                 if file_path:
                                     try:
-                                        job_id = str(uuid.uuid4())
-
-                                        blob_name = f"{str(user_record['_id'])}/whatsapp/{media_id or job_id}.{extension.lstrip('.')}"
                                         caption = message.get(message_type, {}).get("caption", "")
 
-                                        # Upload images to CDN container, other files to default container
-                                        if message_type == 'image':
-                                            file_path_blob = await upload_to_blob_storage(file_path, blob_name, container_name="cdn-container")
-                                        else:
-                                            file_path_blob = await upload_to_blob_storage(file_path, blob_name)
-                                        document_entry = {
-                                            "user_id": ObjectId(user_record["_id"]),
-                                            "platform_file_id": media_id,
-                                            "platform_message_id": message["id"],
-                                            "platform": "whatsapp",
-                                            'type': message_type,
-                                            "blob_path": blob_name,
-                                            "mime_type": mime_type[0],
-                                            "caption": caption,
-                                            "file_name": 'whatsapp files do not have original file names'
+                                        # WhatsApp doesn't provide original filenames - generate one
+                                        filename = file_manager.generate_filename(
+                                            platform="whatsapp",
+                                            platform_file_id=media_id,
+                                            extension=extension,
+                                            mime_type=mime_type_raw
+                                        )
 
-                                        }
-                                        inserted_id = await db_manager.add_document(document_entry)
+                                        # Use FileManager for unified file handling
+                                        file_result = await file_manager.receive_file(
+                                            user_id=str(user_record["_id"]),
+                                            platform="whatsapp",
+                                            file_path=file_path,
+                                            filename=filename,
+                                            mime_type=mime_type_raw,
+                                            caption=caption,
+                                            platform_file_id=media_id,
+                                            platform_message_id=message["id"],
+                                            platform_type=message_type,  # WhatsApp type hint (audio, voice, document, image, video)
+                                            conversation_id=None,  # Not known at webhook time
+                                            auto_add_to_media_bus=False,  # Will be added later when conversation starts
+                                            auto_cleanup=True  # FileManager will clean up temp file
+                                        )
+
+                                        # Publish event with FileResult
                                         event = {
                                             "user_id": str(user_record["_id"]),
                                             'output_type': 'whatsapp',
                                             'output_phone_number': phone_number,
                                             "source": "whatsapp",
                                             "logging_context": {'user_id': str(user_record["_id"]), 'request_id': str(request_id_var.get()), 'modality': modality_var.get() },
-
-                                            "payload": {"files": [{'type': message_type, 'blob_path': file_path_blob, 'mime_type': mime_type[0],'caption': caption,'inserted_id': str(inserted_id)}]},
-                                            "metadata": {"message_id": message["id"],'source':'whatsapp','forwarded':forwarded,'timestamp': message.get('timestamp')}
+                                            "payload": {"files": [file_result.to_event_file_entry()]},
+                                            "metadata": {
+                                                "message_id": message["id"],
+                                                'source': 'whatsapp',
+                                                'forwarded': forwarded,
+                                                'timestamp': message.get('timestamp')
+                                            }
                                         }
 
-
                                         await event_queue.publish(event)
-                                        
-                                        webhook_logger.info(f"Queued transcription job {job_id} for user {user_record['_id']}")
-                                    finally:
-                                        os.unlink(file_path) # Clean up the local file
+                                        webhook_logger.info(f"Published event for file: {file_result.file_name} (type: {file_result.file_type})")
+
+                                    except Exception as e:
+                                        webhook_logger.error(f"Failed to process WhatsApp file {media_id}: {e}", exc_info=True)
 
                         elif message_type == "location":
                             location_data = message.get("location", {})

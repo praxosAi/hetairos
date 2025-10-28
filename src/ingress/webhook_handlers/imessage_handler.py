@@ -15,6 +15,7 @@ from src.utils.database import db_manager
 import requests
 from src.services.milestone_service import milestone_service
 import re
+from src.utils.file_manager import file_manager
 
 logger = setup_logger(__name__)
 router = APIRouter()
@@ -190,37 +191,55 @@ async def handle_imessage_webhook(request: Request, background_tasks: Background
             file_bytes = requests.get(media_url).content
 
             if file_bytes:
-                mime_type = mimetypes.guess_type(file_name)[0]
-                if file_name.endswith('.caf'):
-                    file_bytes = caf_bytes_to_ogg_bytes(file_bytes)
-                    file_name = file_name.replace('.caf', '.ogg')
-                    mime_type = 'audio/ogg'
-                blob_name = await upload_bytes_to_blob_storage(file_bytes, f"{user_id}/imessage/{file_name}"    , content_type=mime_type)
-                ### we need to convert the file
-                file_type = extensions_to_filetypes.get('.' + file_name.split('.')[-1].lower(), 'document')
-                document_entry = {
-                    "user_id": ObjectId(user_id),
-                    "platform_file_id": data.get("message_handle"),
-                    "platform_message_id": data.get("message_handle"),
-                    "platform": "imessage",
-                    'type': file_type,
-                    "blob_path": blob_name,
-                    "mime_type": mime_type,
-                    "caption": "",
-                    'file_name': file_name
-                }
-                inserted_id = await db_manager.add_document(document_entry)
+                try:
+                    mime_type = mimetypes.guess_type(file_name)[0]
 
-                event = {
-                    "user_id": user_id,
-                    'output_type': 'imessage',
-                    'output_phone_number': phone_number,
-                    "source": "imessage",
-                    "logging_context": {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
-                    "payload": {"files": [{'type': file_type, 'blob_path': blob_name, 'mime_type': mime_type, 'caption': '', 'inserted_id': str(inserted_id)}]},
-                    "metadata": {'message_id': data.get("message_handle"), 'source':'iMessage', 'timestamp': data.get("date_sent")}
-                }
-                await event_queue.publish(event)
+                    # Special handling for CAF audio (iMessage-specific)
+                    if file_name.endswith('.caf'):
+                        logger.info(f"Converting CAF audio to OGG for {file_name}")
+                        file_bytes = caf_bytes_to_ogg_bytes(file_bytes)
+                        file_name = file_name.replace('.caf', '.ogg')
+                        mime_type = 'audio/ogg'
+
+                    # Detect platform_type from extension (using old mapping for compatibility)
+                    extension = '.' + file_name.split('.')[-1].lower()
+                    platform_type = extensions_to_filetypes.get(extension, 'document')
+
+                    # Use FileManager for unified file handling
+                    file_result = await file_manager.receive_file(
+                        user_id=user_id,
+                        platform="imessage",
+                        file_bytes=file_bytes,  # Already in memory from HTTP GET
+                        filename=file_name,
+                        mime_type=mime_type,
+                        caption="",
+                        platform_file_id=data.get("message_handle"),
+                        platform_message_id=data.get("message_handle"),
+                        platform_type=platform_type,  # iMessage type hint (image, video, audio, document)
+                        conversation_id=None,  # Not known at webhook time
+                        auto_add_to_media_bus=False,  # Will be added later when conversation starts
+                        auto_cleanup=False  # No temp file to cleanup (file_bytes, not file_path)
+                    )
+
+                    # Publish event with FileResult
+                    event = {
+                        "user_id": user_id,
+                        'output_type': 'imessage',
+                        'output_phone_number': phone_number,
+                        "source": "imessage",
+                        "logging_context": {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
+                        "payload": {"files": [file_result.to_event_file_entry()]},
+                        "metadata": {
+                            'message_id': data.get("message_handle"),
+                            'source': 'iMessage',
+                            'timestamp': data.get("date_sent")
+                        }
+                    }
+                    await event_queue.publish(event)
+                    logger.info(f"Published event for file: {file_result.file_name} (type: {file_result.file_type})")
+
+                except Exception as e:
+                    logger.error(f"Failed to process iMessage file {file_name}: {e}", exc_info=True)
 
     try:
         if user_id_var.get() != 'SYSTEM_LEVEL':

@@ -92,4 +92,6 @@ inspect_db.py
 k8s/keda-scaler.yaml
 k8s/certificate.yaml
 k8s/secret.yaml
+k8s/*secrets-decoded.yaml
+k8s/hetairoi-secrets-decoded.yaml
 run_workers_local.py

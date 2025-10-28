@@ -22,6 +22,7 @@ from src.tools.microsoft_graph import create_outlook_tools
 from src.tools.notion import create_notion_tools
 from src.tools.trello import create_trello_tools
 from src.tools.praxos import create_praxos_memory_tool
+from src.tools.file_retrieval import create_file_retrieval_tools
 from src.tools.communication import create_bot_communication_tools, create_platform_messaging_tools
 from src.tools.media_generation import create_media_generation_tools
 from src.tools.media_bus_tools import create_media_bus_tools
@@ -376,6 +377,10 @@ class AgentToolsFactory:
                 praxos_client = PraxosClient(f"env_for_{user_email}", api_key=praxos_api_key)
                 tools.extend(create_praxos_memory_tool(praxos_client, user_id, str(metadata.get('conversation_id'))))
                 logger.info("Praxos memory tools loaded")
+
+                # Add file retrieval tools (uses Praxos search for file discovery)
+                tools.extend(create_file_retrieval_tools(praxos_client, user_id, str(metadata.get('conversation_id'))))
+                logger.info("File retrieval tools loaded")
             else:
                 logger.warning("Praxos API key not found, memory tools will be unavailable.")
 

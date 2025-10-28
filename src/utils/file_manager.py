@@ -773,6 +773,40 @@ class FileManager:
             metadata=document.get("metadata", {})
         )
 
+    async def get_file_by_source_id(self, source_id: str) -> Optional[FileResult]:
+        """
+        Retrieve file metadata by Praxos source_id as FileResult.
+
+        This is the primary method for file retrieval after Praxos search.
+
+        Args:
+            source_id: Praxos source_id (from search results)
+
+        Returns:
+            FileResult or None if not found
+        """
+        document = await _get_db_manager().get_document_by_source_id(source_id)
+        if not document:
+            return None
+
+        return FileResult(
+            inserted_id=str(document.get("_id")),
+            blob_path=document.get("blob_path"),
+            file_name=document.get("file_name", "unknown"),
+            file_type=document.get("type", "file"),
+            mime_type=document.get("mime_type"),
+            size=document.get("size", 0),
+            user_id=str(document.get("user_id")),
+            platform=document.get("platform", "unknown"),
+            url=None,
+            caption=document.get("caption", ""),
+            container_name=document.get("container_name", settings.AZURE_BLOB_CONTAINER_NAME),
+            platform_file_id=document.get("platform_file_id"),
+            platform_message_id=document.get("platform_message_id"),
+            created_at=document.get("created_at"),
+            metadata=document.get("metadata", {})
+        )
+
     async def get_files_by_user(
         self,
         user_id: str,

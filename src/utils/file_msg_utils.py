@@ -15,6 +15,7 @@ import asyncio
 from src.core.media_bus import media_bus
 from src.config.settings import settings
 from src.core.models.agent_runner_models import AgentFinalResponse
+from src.utils.file_manager import file_manager
 logger = setup_logger(__name__)
 
 #### media message payload handling
@@ -32,73 +33,106 @@ async def _gather_bounded(coros: List[Any], limit: int = 8):
 
 
 async def build_payload_entry(file: Dict[str, Any], add_to_media_bus=False, conversation_id: str = None) -> Optional[Dict[str, Any]]:
-    """Create a single payload dict for a file entry."""
-    payload = None
-    url = None
-    container_name = None
-    ftype = file.get("type")
-    mime_type = file.get("mime_type")
-    ### need unification here, case in point.
-    if not mime_type:
-        mime_type = file.get("mimetype")
+    """
+    Create a single payload dict for a file entry.
 
-    blob_path = file.get("blob_path")
-    if not blob_path or not ftype:
+    UPDATED: Now uses FileManager for unified payload building.
+    This is a compatibility wrapper for existing code.
+    """
+    try:
+        # Handle both old dict format and new FileResult objects
+        if hasattr(file, 'to_dict'):
+            # It's a FileResult object
+            file_dict = file.to_dict()
+        else:
+            file_dict = file
+
+        # Check if this is a FileResult or has inserted_id
+        inserted_id = file_dict.get("inserted_id") or file_dict.get("_id")
+
+        if inserted_id:
+            # Use FileManager's efficient method (no duplicate download)
+            payload, file_result = await file_manager.build_payload_from_id(
+                inserted_id=str(inserted_id),
+                conversation_id=conversation_id if add_to_media_bus else None,
+                add_to_media_bus=add_to_media_bus
+            )
+            return payload
+
+        # Fallback: old-style dict without inserted_id (legacy compatibility)
+        # This path handles cases where file info comes from other sources
+        payload = None
+        url = None
+        container_name = None
+        ftype = file_dict.get("type")
+        mime_type = file_dict.get("mime_type") or file_dict.get("mimetype")
+        blob_path = file_dict.get("blob_path")
+
+        if not blob_path or not ftype:
+            return None
+
+        if ftype in {"image", "photo"}:
+            from src.utils.blob_utils import get_cdn_url
+            image_url = await get_cdn_url(blob_path, container_name="cdn-container")
+            container_name = "cdn-container"
+            url = image_url
+            payload = {"type": "image_url", "image_url": image_url}
+        else:
+            data_b64 = await download_from_blob_storage_and_encode_to_base64(blob_path)
+            if ftype in {"voice", "audio", "video"}:
+                payload = {"type": "media", "data": data_b64, "mime_type": mime_type}
+            elif ftype in {"document", "file"}:
+                payload = {
+                    "type": "file",
+                    "source_type": "base64",
+                    "mime_type": mime_type,
+                    "data": data_b64,
+                }
+
+        # Add to media bus if requested
+        if add_to_media_bus and conversation_id and payload:
+            try:
+                file_name = file_dict.get("file_name")
+                if not file_name or file_name == 'Original filename not accessible':
+                    file_name = blob_path.split('/')[-1]
+                caption = file_dict.get("caption", "")
+                await media_bus.add_media(
+                    conversation_id=conversation_id,
+                    url=url,
+                    file_name=file_name,
+                    file_type=ftype,
+                    description=f"User uploaded {ftype}" + (f": {caption}" if caption else ""),
+                    source="uploaded",
+                    blob_path=blob_path,
+                    mime_type=mime_type,
+                    metadata=file_dict.get("metadata", {}),
+                    container_name=container_name if container_name else settings.AZURE_BLOB_CONTAINER_NAME,
+                )
+            except Exception as e:
+                logger.error(f"Error adding media to media bus: {e}", exc_info=True)
+
+        return payload
+
+    except Exception as e:
+        logger.error(f"Error building payload entry: {e}", exc_info=True)
         return None
 
-    if ftype in {"image", "photo"}:
-        # Images are in CDN container - use public CDN URL instead of SAS URL
-        from src.utils.blob_utils import get_cdn_url
-        image_url = await get_cdn_url(blob_path, container_name="cdn-container")
-        container_name = "cdn-container"
-        url = image_url
-        payload = {"type": "image_url", "image_url": image_url}
+async def build_payload_entry_from_inserted_id(inserted_id: str, add_to_media_bus:bool=False, conversation_id: str = None) -> Tuple[Optional[Dict[str, Any]],Optional[Dict[str, Any]]]:
+    """
+    Build payload from MongoDB document ID.
 
-    # Download non-image files from default container
-    else:
-        
-        data_b64 = await download_from_blob_storage_and_encode_to_base64(blob_path)
+    UPDATED: Now uses FileManager's efficient method (no redundant database calls).
+    """
+    payload, file_result = await file_manager.build_payload_from_id(
+        inserted_id=inserted_id,
+        conversation_id=conversation_id if add_to_media_bus else None,
+        add_to_media_bus=add_to_media_bus
+    )
 
-        if ftype in {"voice", "audio", "video"}:
-            payload = {"type": "media", "data": data_b64, "mime_type": mime_type}
-        if ftype in {"document", "file"}:
-            payload = {
-                "type": "file",
-                "source_type": "base64",
-                "mime_type": mime_type,
-                "data": data_b64,
-            }
+    # Convert FileResult to dict for backward compatibility
+    file_dict = file_result.to_dict() if file_result else None
 
-    ### now, we add to media bus.
-    if add_to_media_bus and conversation_id and payload:
-        try:
-            file_name = file.get("file_name")
-            if not file_name or file_name == 'Original filename not accessible':
-                file_name = blob_path.split('/')[-1]
-            caption = file.get("caption", "")
-            await media_bus.add_media(
-                conversation_id=conversation_id,
-                url=url,
-                file_name=file_name,
-                file_type=ftype,
-                description=f"User uploaded {ftype}" + (f": {caption}" if caption else ""),
-                source="uploaded",
-                blob_path=blob_path,
-                mime_type=mime_type,  # Would need to extract from database
-                metadata= file.get("metadata", {}),
-                container_name = container_name if container_name else settings.AZURE_BLOB_CONTAINER_NAME,
-            )
-        except Exception as e:
-            logger.error(f"Error adding media to media bus: {e}", exc_info=True)
-    return payload
-
-async def build_payload_entry_from_inserted_id(inserted_id: str,add_to_media_bus:bool=False, conversation_id: str = None) -> Tuple[Optional[Dict[str, Any]],Optional[Dict[str, Any]]]:
-    from src.utils.database import db_manager
-    file = await db_manager.get_document_by_id(inserted_id)
-    if file:
-        payload = await build_payload_entry(file, add_to_media_bus=add_to_media_bus, conversation_id=conversation_id)
-        return payload,file
-    return None,None
+    return payload, file_dict
 
 
 

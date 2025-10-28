@@ -1,0 +1,43 @@
+# Test Ingress - Subdomain approach
+# Uses separate subdomain: test-hooks.praxos.ai
+# Requires DNS A record pointing to ingress IP
+#
+# Test webhooks will be:
+# - https://test-hooks.praxos.ai/webhooks/telegram
+# - https://test-hooks.praxos.ai/webhooks/whatsapp
+# - https://test-hooks.praxos.ai/webhooks/imessage
+# - https://test-hooks.praxos.ai/ingress/http
+#
+# Cleaner separation, but requires DNS setup
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hetairoi-test-ingress
+  namespace: hetairoi-test
+  annotations:
+    appgw.ingress.kubernetes.io/cookie-based-affinity: "true"
+    appgw.ingress.kubernetes.io/affinity-cookie-name: "HETAIROI_TEST_STICKY_SESSION"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    appgw.ingress.kubernetes.io/request-timeout: "3600"
+spec:
+  ingressClassName: webapprouting.kubernetes.azure.com
+  rules:
+  - host: test-hooks.praxos.ai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: hetairoi-web-service-test
+            port:
+              number: 80
+  # TLS configuration - requires certificate for test-hooks.praxos.ai
+  # Option 1: Use wildcard cert (*.praxos.ai) if you have one
+  # Option 2: Create new cert for test-hooks.praxos.ai
+  # Option 3: Let cert-manager auto-provision
+  tls:
+  - hosts:
+    - test-hooks.praxos.ai
+    secretName: test-hooks-tls  # Will be created by cert-manager or manually

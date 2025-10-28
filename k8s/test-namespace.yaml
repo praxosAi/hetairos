@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hetairoi-test
+  labels:
+    environment: test
+    purpose: file-manager-testing

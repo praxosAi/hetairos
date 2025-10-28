@@ -5,13 +5,14 @@ from typing import Dict, Any, Optional
 import json
 from contextvars import ContextVar
 import platform
+import os
 # Context variables for request-specific data
 request_id_var: ContextVar[Optional[str]] = ContextVar("request_id", default='SYSTEM_LEVEL')
 user_id_var: ContextVar[Optional[str]] = ContextVar("user_id", default='SYSTEM_LEVEL')
 modality_var: ContextVar[Optional[str]] = ContextVar("modality", default='SYSTEM_LEVEL')
 
 
-if platform.system() == "Darwin" or platform.system() == "Windows":
+if platform.system() == "Darwin" or platform.system() == "Windows" or os.getenv("ENV_NAME",'production') == "test":
     # If local, use colored logging for better readability
     json_logging = False
 else:

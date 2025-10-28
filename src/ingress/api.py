@@ -31,7 +31,15 @@ from apscheduler.triggers.cron import CronTrigger
 
 logger = setup_logger(__name__)
 
-app = FastAPI(title="Hetairoi Agent Ingress")
+# Configure root_path for path-based routing in test environment
+# When ENV_NAME=test, ingress sends /test/webhooks/telegram
+# FastAPI needs root_path="/test" to handle this correctly
+API_ROOT_PATH = "/test" if os.getenv("ENV_NAME") == "test" else ""
+
+app = FastAPI(
+    title="Hetairoi Agent Ingress",
+    root_path=API_ROOT_PATH
+)
 
 @app.middleware("http")
 async def logging_middleware(request: Request, call_next):
@@ -57,38 +65,40 @@ async def logging_middleware(request: Request, call_next):
 
 # Mount the webhook handlers
 # Messaging
-app.include_router(whatsapp_handler.router, prefix="/webhooks")
+## for now, limit test env to telegram only
 app.include_router(telegram_handler.router, prefix="/webhooks")
-app.include_router(slack_handler.router, prefix="/webhooks")
-app.include_router(discord_handler.router, prefix="/webhooks")
-app.include_router(imessage_handler.router, prefix="/webhooks")
-app.include_router(ios_handler.router, prefix="/webhooks")
+if os.getenv("ENV_NAME","production") != "test":
+    app.include_router(whatsapp_handler.router, prefix="/webhooks")
+    app.include_router(slack_handler.router, prefix="/webhooks")
+    app.include_router(discord_handler.router, prefix="/webhooks")
+    app.include_router(imessage_handler.router, prefix="/webhooks")
+    app.include_router(ios_handler.router, prefix="/webhooks")
 
 # Email
-app.include_router(gmail_handler.router, prefix="/webhooks")
-app.include_router(outlook_handler.router, prefix="/webhooks")
+    app.include_router(gmail_handler.router, prefix="/webhooks")
+    app.include_router(outlook_handler.router, prefix="/webhooks")
 
-# Calendar
-app.include_router(google_calendar_handler.router, prefix="/webhooks")
-app.include_router(microsoft_calendar_handler.router, prefix="/webhooks")
+    # Calendar
+    app.include_router(google_calendar_handler.router, prefix="/webhooks")
+    app.include_router(microsoft_calendar_handler.router, prefix="/webhooks")
 
-# Storage/Drive
-app.include_router(google_drive_handler.router, prefix="/webhooks")
-app.include_router(onedrive_handler.router, prefix="/webhooks")
-app.include_router(dropbox_handler.router, prefix="/webhooks")
+    # Storage/Drive
+    app.include_router(google_drive_handler.router, prefix="/webhooks")
+    app.include_router(onedrive_handler.router, prefix="/webhooks")
+    app.include_router(dropbox_handler.router, prefix="/webhooks")
 
-# Productivity
-app.include_router(notion_handler.router, prefix="/webhooks")
-app.include_router(trello_handler.router, prefix="/webhooks")
+    # Productivity
+    app.include_router(notion_handler.router, prefix="/webhooks")
+    app.include_router(trello_handler.router, prefix="/webhooks")
 
-# General HTTP ingress
-app.include_router(http_handler.router, prefix="/ingress")
+    # General HTTP ingress
+    app.include_router(http_handler.router, prefix="/ingress")
 
-# MCP (Model Context Protocol) ingress
-app.include_router(mcp_handler.router, prefix="/api")
+    # MCP (Model Context Protocol) ingress
+    app.include_router(mcp_handler.router, prefix="/api")
 
-# Admin
-app.include_router(suspended_event_queue.router, prefix="/admin/suspended-events")
+
+    app.include_router(suspended_event_queue.router, prefix="/admin/suspended-events")
 
 @app.get("/")
 async def root():
@@ -98,7 +108,7 @@ async def root():
 async def start_telegram_webhook_scheduler():
     """Start the Telegram webhook scheduler on application startup."""
     await set_telegram_webhook()  # Set webhook immediately on startup
-
+    
     telegram_scheduler.add_job(
         set_telegram_webhook,
         CronTrigger(hour="*"),  # Every hour at minute 0

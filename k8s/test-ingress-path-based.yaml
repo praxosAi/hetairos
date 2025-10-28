@@ -1,0 +1,45 @@
+# Test Ingress - Path-based routing
+# Routes /test/* to test namespace
+# No DNS changes needed!
+#
+# Test webhooks will be:
+# - https://hooks.praxos.ai/test/webhooks/telegram
+# - https://hooks.praxos.ai/test/webhooks/whatsapp
+# - https://hooks.praxos.ai/test/webhooks/imessage
+# - https://hooks.praxos.ai/test/ingress/http
+#
+# Production webhooks remain:
+# - https://hooks.praxos.ai/webhooks/telegram
+# - https://hooks.praxos.ai/webhooks/whatsapp
+# etc.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hetairoi-test-ingress
+  namespace: hetairoi-test
+  annotations:
+    appgw.ingress.kubernetes.io/cookie-based-affinity: "true"
+    appgw.ingress.kubernetes.io/affinity-cookie-name: "HETAIROI_TEST_STICKY_SESSION"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    appgw.ingress.kubernetes.io/request-timeout: "3600"
+    # Rewrite /test/webhooks/telegram -> /webhooks/telegram
+    appgw.ingress.kubernetes.io/backend-path-prefix: "/"
+spec:
+  ingressClassName: webapprouting.kubernetes.azure.com
+  rules:
+  - host: hooks.praxos.ai
+    http:
+      paths:
+      # Route /test/* to test service
+      - path: /test
+        pathType: Prefix
+        backend:
+          service:
+            name: hetairoi-web-service-test
+            port:
+              number: 80
+  tls:
+  - hosts:
+    - hooks.praxos.ai
+    secretName: hooks-tls  # Same TLS cert as production

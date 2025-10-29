@@ -167,7 +167,11 @@ class ExecutionWorker:
 
             await conversation_db.messages.update_one(
                 {"_id": prev_message["_id"]},
-                {"$set": {"content": f"{prefix}{tool_result}", "metadata.asynchronous_task_status": "success"}}
+                {"$set": {
+                    "content": f"{tool_result}", 
+                    "metadata.asynchronous_task_status": "success",
+                    "metadata.asynchronous_task_recieved_at": datetime.utcnow()
+                }}
             )
 
         requested_tasks = await conversation_db.messages.find({

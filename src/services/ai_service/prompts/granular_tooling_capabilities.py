@@ -680,7 +680,6 @@ Generally, the idea is : If the missing information for this command is somethin
 - Args: task, max_steps (optional, default 30)
 - Use when: Need to interact with dynamic websites, fill forms, click buttons, search for extensive information, create filters, etc.
 - Examples: "Find pricing on this website", "Navigate to contact page and get email", "Find me hotels on a specific site".
-- IMPORTANT: Always use send_intermediate_message first to notify user this will take time
 - Best for: Modern web apps, e-commerce sites, complex navigation
 
 

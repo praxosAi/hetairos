@@ -138,7 +138,7 @@ class LangGraphAgentRunner:
             elif isinstance(input, dict):
                 # Single message - existing logic
                 message_prefix = f'message sent on date {current_time_user} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
-                if input_text:
+                if input_text and source != 'browser_tool':
                     ### filter out flags, empty text, etc.
                     input_text = input_text.replace('/START_NEW','').replace('/start_new','').strip()
                     if not input_text:

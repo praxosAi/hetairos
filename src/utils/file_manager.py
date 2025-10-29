@@ -367,21 +367,54 @@ class FileManager:
             FileResult with all file information
 
         Raises:
-            ValueError: If neither file_bytes nor file_path provided
+            ValueError: If validation fails (missing required params, invalid values)
+            FileNotFoundError: If file_path provided but doesn't exist
+            IOError: If file reading fails
+            Exception: If blob upload or database operations fail
         """
+        # Validation
+        if not user_id:
+            raise ValueError("user_id is required")
+
+        if not platform:
+            raise ValueError("platform is required")
+
         if not file_bytes and not file_path:
             raise ValueError("Either file_bytes or file_path must be provided")
+
+        # Validate platform is known
+        valid_platforms = ['telegram', 'whatsapp', 'imessage', 'praxos_web', 'import_file_upload']
+        if platform not in valid_platforms:
+            self.logger.warning(f"Unknown platform: {platform}. Proceeding anyway.")
 
         # Read file if only path provided
         file_size = None
         if file_path and not file_bytes:
             try:
+                # Check file exists first
+                if not os.path.exists(file_path):
+                    raise FileNotFoundError(f"File not found: {file_path}")
+
+                # Check file is readable
+                if not os.access(file_path, os.R_OK):
+                    raise IOError(f"File not readable: {file_path}")
+
                 with open(file_path, 'rb') as f:
                     file_bytes = f.read()
                 file_size = os.path.getsize(file_path)
-            except Exception as e:
+
+                if file_size == 0:
+                    self.logger.warning(f"File is empty: {file_path}")
+
+            except FileNotFoundError:
+                self.logger.error(f"File not found: {file_path}")
+                raise
+            except IOError as e:
                 self.logger.error(f"Failed to read file from path {file_path}: {e}")
                 raise
+            except Exception as e:
+                self.logger.error(f"Unexpected error reading file from path {file_path}: {e}")
+                raise IOError(f"Failed to read file: {e}") from e
 
         if not file_size:
             file_size = len(file_bytes) if file_bytes else 0
@@ -432,9 +465,16 @@ class FileManager:
                 container_name=container
             )
             self.logger.info(f"Uploaded to blob storage: {blob_path} (container: {container or 'default'})")
+        except ValueError as e:
+            # Blob storage validation error
+            self.logger.error(f"Invalid blob storage parameters for {filename}: {e}")
+            raise ValueError(f"Failed to upload file: Invalid parameters - {e}") from e
+        except ConnectionError as e:
+            self.logger.error(f"Network error uploading {filename} to blob storage: {e}")
+            raise ConnectionError(f"Failed to upload file: Network error - {e}") from e
         except Exception as e:
-            self.logger.error(f"Failed to upload file to blob storage: {e}")
-            raise
+            self.logger.error(f"Unexpected error uploading {filename} to blob storage: {e}", exc_info=True)
+            raise RuntimeError(f"Failed to upload file to storage: {e}") from e
 
         # Create standardized MongoDB document
         document_entry = {
@@ -461,9 +501,16 @@ class FileManager:
         try:
             inserted_id = await _get_db_manager().add_document(document_entry)
             self.logger.info(f"Created document in MongoDB: {inserted_id}")
+        except ValueError as e:
+            # Database validation error (e.g., invalid ObjectId)
+            self.logger.error(f"Invalid MongoDB document data for {filename}: {e}")
+            raise ValueError(f"Failed to create file record: Invalid data - {e}") from e
+        except ConnectionError as e:
+            self.logger.error(f"Database connection error while saving {filename}: {e}")
+            raise ConnectionError(f"Failed to create file record: Database connection error - {e}") from e
         except Exception as e:
-            self.logger.error(f"Failed to create MongoDB document: {e}")
-            raise
+            self.logger.error(f"Unexpected error creating MongoDB document for {filename}: {e}", exc_info=True)
+            raise RuntimeError(f"Failed to create file record in database: {e}") from e
 
         # Generate URL (CDN for images, will be generated on-demand for others)
         url = None

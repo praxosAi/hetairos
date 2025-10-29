@@ -452,8 +452,7 @@ async def get_conversation_history(
             # Check if this is a tool result message
             if role == "assistant" and metadata.get("message_type") == "tool_result":
                 tool_name = metadata.get("tool_name", "unknown_tool")
-                # Reconstruct as ToolMessage
-                history_slots[i] = ToolMessage(content=content, name=tool_name, tool_call_id=metadata.get("tool_call_id", ""))
+                history_slots[i] = AIMessage(content=f'We called the tool {tool_name} with result {content}.')
             elif role == "user":
                 history_slots[i] = HumanMessage(content=content)
             else:

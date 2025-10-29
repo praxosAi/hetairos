@@ -358,15 +358,23 @@ Generally, the idea is : If the missing information for this command is somethin
 
 **get_calendar_events**
 - Retrieves calendar events in a date/time range
-- Args: time_min, time_max, calendar_id (optional)
+- Args: time_min, time_max, calendar_id (optional), account (optional for multi-account)
 - Use when: "What's on my calendar?", "Do I have meetings tomorrow?"
 - Returns: List of events with time, title, location, attendees
 
 **create_calendar_event**
-- Creates a new calendar event
-- Args: summary, start_time, end_time, description (optional), attendees (optional), location (optional)
+- Creates a new calendar event (one-time or recurring)
+- Args: title, start_time, end_time, description (optional), attendees (optional), location (optional), calendar_id (optional), account (optional), recurrence_rule (optional)
 - Use when: User wants to schedule a meeting or event
-- Supports: All-day events, recurring events, inviting attendees
+- Supports: One-time events, recurring events, inviting attendees
+- Recurrence Examples:
+  - Daily for 30 days: recurrence_rule="FREQ=DAILY;COUNT=30"
+  - Every Monday: recurrence_rule="FREQ=WEEKLY;BYDAY=MO"
+  - Every Mon/Wed/Fri: recurrence_rule="FREQ=WEEKLY;BYDAY=MO,WE,FR"
+  - 15th of every month: recurrence_rule="FREQ=MONTHLY;BYMONTHDAY=15"
+  - First Friday of month: recurrence_rule="FREQ=MONTHLY;BYDAY=1FR"
+  - Every year: recurrence_rule="FREQ=YEARLY"
+- Format: RFC 5545 RRULE format (FREQ, COUNT, UNTIL, INTERVAL, BYDAY, BYMONTHDAY supported)
 
 ---
 

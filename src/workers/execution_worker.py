@@ -1,17 +1,18 @@
-import asyncio
 from datetime import datetime
-import logging
+from importlib import metadata
 from typing import Optional
 from src.core.event_queue import event_queue
+from bson import ObjectId
+import re
 
 from src.core.agent_runner_langgraph import LangGraphAgentRunner
 from src.core.context import create_user_context
-from src.config.settings import settings
+from src.tools.tool_types import ToolExecutionResponse
 from src.utils.logging.base_logger import setup_logger, user_id_var, modality_var, request_id_var
 from src.services.scheduling_service import scheduling_service
 from src.ingest.ingestion_worker import InitialIngestionCoordinator
 from src.egress.service import egress_service
-from src.utils.database import db_manager
+from src.utils.database import conversation_db
 import uuid
 logger = setup_logger(__name__)
 
@@ -128,6 +129,64 @@ class ExecutionWorker:
         
         return combined_payload
 
+    async def handle_async_single_event(self, event) -> tuple[bool, list]:
+        """Handle a single event that may involve asynchronous tasks (e.g., browser tool)"""
+        if event.get("source") not in ["browser_tool"]:
+            return True, []
+        
+        conversation_id = event.get("metadata", {}).get("conversation_id")
+
+        if not conversation_id:
+            logger.error(f"Async event missing conversation_id in metadata: {event}")
+            return False, []
+        
+        user_id = event.get("user_id")
+        if not user_id:
+            logger.error(f"Async event missing user_id: {event}")
+            return False, []
+        
+        tool_call_id = event.get("metadata", {}).get("tool_call_id")
+        if not tool_call_id:
+            logger.error(f"Async event missing tool_call_id in metadata: {event}")
+            return False, []
+        
+        prev_message = await conversation_db.messages.find_one({
+            "conversation_id": ObjectId(conversation_id),
+            "user_id": ObjectId(user_id),
+            "metadata.tool_call_id": tool_call_id
+        })
+
+        if not prev_message:
+            logger.error(f"Could not find previous message for async event: {event}")
+            return False, []
+        
+        if not prev_message.get("metadata", {}).get("asynchronous_task_status") == "success":
+            tool_result_json = prev_message.get("content", "")
+            tool_result = ToolExecutionResponse.model_validate_json(tool_result_json)
+            tool_result.result = event.get('payload', {}).get('text','')
+
+            await conversation_db.messages.update_one(
+                {"_id": prev_message["_id"]},
+                {"$set": {
+                    "content": f"{tool_result}", 
+                    "metadata.asynchronous_task_status": "success",
+                    "metadata.asynchronous_task_recieved_at": datetime.utcnow()
+                }}
+            )
+
+        requested_tasks = await conversation_db.messages.find({
+            "conversation_id": ObjectId(conversation_id),
+            "user_id": ObjectId(user_id),
+            "metadata.asynchronous_task_status": "requested"
+        }).to_list()
+
+        if not requested_tasks:
+            return True, []
+        else:
+            pending_tasks = [task.get("metadata", {}).get("tool_name") for task in requested_tasks]
+            return False, pending_tasks
+        
+            
 
 
     async def handle_single_event(self, event):
@@ -169,7 +228,6 @@ class ExecutionWorker:
                         await scheduling_service.schedule_next_run(event)
                     except Exception as e:
                         logger.error(f"Error scheduling next run for recurring event: {event}, {e}", exc_info=True)
-                #@todo is it really needed
                 # For browser_tool results, use the original_source for routing
                 if source == "browser_tool":
                     original_source = event.get("metadata", {}).get("original_source")
@@ -177,6 +235,12 @@ class ExecutionWorker:
                         # Override output_type to ensure proper routing back to original platform
                         event["output_type"] = original_source
                         logger.info(f"Browser result will be routed to original source: {original_source}")
+                
+                    
+                is_done, pending_tasks = await self.handle_async_single_event(event)
+                if not is_done:
+                    logger.info(f"Async tasks pending for browser_tool event: {event}, tasks: {pending_tasks}")
+                    return  # Changed from continue to return
 
                 user_context = await create_user_context(event["user_id"])
                 if not user_context:

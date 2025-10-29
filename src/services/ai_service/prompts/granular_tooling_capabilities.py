@@ -151,7 +151,7 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 
 **send_intermediate_message**
 - Sends status updates to users during long-running operations (30+ seconds)
-- Use for: Web browsing, media generation, long searches
+- Use for: media generation, long searches
 - DO NOT use for simple tasks that complete quickly
 - DO NOT use this if the only task is to send a message. the output will be automatically sent at the end of execution. Thus, this is only for long-running tasks where you want to keep the user informed while you work, not for simply sending a message to the user.
 - Example: "I'm browsing that website now, this will take about 30 seconds..."
@@ -680,7 +680,7 @@ Generally, the idea is : If the missing information for this command is somethin
 - Args: task, max_steps (optional, default 30)
 - Use when: Need to interact with dynamic websites, fill forms, click buttons, search for extensive information, create filters, etc.
 - Examples: "Find pricing on this website", "Navigate to contact page and get email", "Find me hotels on a specific site".
-- IMPORTANT: Always use send_intermediate_message first to notify user this will take time
+- IMPORTANT: This task will be processed asynchronously. You will be notified when it's complete. Since you do not have the final result yet, notify the user that the task has been started and that they will receive the results shortly as the final output. DO NOT use send_intermediate_message for this.
 - Best for: Modern web apps, e-commerce sites, complex navigation
 
 
@@ -842,7 +842,6 @@ When planning, consider:
    - Agent will use these tools, get URLs, then send via reply_to_user_on_[platform]
 5. **Check Dependencies**:
    - Need to send email from Gmail? Include both `find_contact_email` (if name provided) and `send_email`
-   - Using `browse_website_with_ai`? ALWAYS include `send_intermediate_message`
    - Generating ANY media (image/audio/video)? ALWAYS include `send_intermediate_message`
    - Need to schedule with specific platform? Include `schedule_task`
 6. **Integration Requirements**:
@@ -851,7 +850,6 @@ When planning, consider:
    - Notion/Trello/Dropbox tools require respective integrations
    - Use `get_oauth_initiation_url` if integration is missing
 7. **Long Operations** (30+ seconds):
-   - `browse_website_with_ai` → ALWAYS include `send_intermediate_message` as a first step
    - `identify_product_in_image` → ALWAYS include `send_intermediate_message` as a first step
    - `generate_image` → ALWAYS include `send_intermediate_message` as a first step
    - `generate_audio` → ALWAYS include `send_intermediate_message` as a first step
@@ -886,7 +884,7 @@ When planning, consider:
 **Multi-step Tasks**:
 - Message on WhatsApp: "Schedule meeting with Sarah tomorrow at 3pm" → [`find_contact_email`, `create_calendar_event`, `reply_to_user_on_whatsapp`]
 - Message on Telegram: "Email my boss about the report" → [`find_contact_email`, `send_email`, `reply_to_user_on_telegram`]
-- Message on iMessage: "Browse this website and tell me the pricing" → [`send_intermediate_message`, `browse_website_with_ai`, `reply_to_user_on_imessage`]
+- Message on iMessage: "Browse this website and tell me the pricing" → [`browse_website_with_ai`, `reply_to_user_on_imessage`]
 - Message on WhatsApp: "Generate an infographic and email it to my team" → [`send_intermediate_message`, `generate_image`, `send_email`, `reply_to_user_on_whatsapp`]
 
 **Location-Based Tasks** (IMPORTANT - use location data!):
@@ -906,11 +904,12 @@ When planning, consider:
 
 NOTES:
 
-### Product hunting: If the user is asking you to find products based on an image they sent, or based on a description, you should use the `identify_product_in_image` tool if they sent an image with this intent, or the `google_search` tool if they provided a text description of the product. Then, you should use browse_website_with_ai with extensive instructions and full context and names of products that could fit the bill, so that they can be found on the relevant websites and purchased by the user. You should provide all the potential product matches to the browser use tool, so it can automously search and find good matches. Always remember to use send_intermediate_message first, as this will take time.
+### Product hunting: If the user is asking you to find products based on an image they sent, or based on a description, you should use the `identify_product_in_image` tool if they sent an image with this intent, or the `google_search` tool if they provided a text description of the product. Then, you should use browse_website_with_ai with extensive instructions and full context and names of products that could fit the bill, so that they can be found on the relevant websites and purchased by the user. You should provide all the potential product matches to the browser use tool, so it can automously search and find good matches.
 ### If the user simply asked about the content of an image, wherein the goal doesn't seem to be hunting a product, but translating or transcribing, no tools are needed, as this is a conversational query. the LLM should be able to handle this on its own.
 ### FURTHER NOTE: If the query has variables or other data that you need to fill in, you should use the appropriate tools to obtain the data, then, perform the task. You should be chaining tools together as needed.
 ### If the user seems to be saying that you are not correctly handling a task, or that you are  providing the wrong information, you should unlock more tools, for example google search if the info is incorrect, or browse website if the info is not available. Take note of the user's feedback and sentiment during the conversation.
 ### In the event that the user's query requires an integration which is this list, but the list of the user's integrations do not include the required provider, it means that the user has not integrated that service yet. In such cases, you must use the integration management tool to help the user integrate that service, before you can perform the task.
+### Take into account the previous tool calls and their results. The plan must only indicate what needs to be done moving forward, not what has already been done.
 """
 
 

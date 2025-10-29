@@ -4,11 +4,11 @@ from urllib.parse import urlparse, urlunparse
 import requests
 from requests.utils import requote_uri
 from bs4 import BeautifulSoup
-from langchain_core.tools import tool
+from langchain_core.tools import tool, InjectedToolCallId
 from src.tools.tool_types import ToolExecutionResponse
 from src.tools.error_helpers import ErrorResponseBuilder
 from src.utils.logging import setup_logger
-from typing import Optional
+from typing import Annotated, Optional
 from src.config.settings import settings
 
 logger = setup_logger(__name__)
@@ -117,7 +117,7 @@ def create_browser_tool(request_id, user_id, metadata):
     The hetairos-browser service will process the task and return results via the events queue.
     """
     @tool
-    async def browse_website_with_ai(task: str, max_steps: Optional[int] = 30) -> ToolExecutionResponse:
+    async def browse_website_with_ai(task: str, tool_call_id: Annotated[str, InjectedToolCallId], max_steps: Optional[int] = 30) -> ToolExecutionResponse:
         """
         Uses an AI-powered browser to interact with dynamic websites (JavaScript, forms, navigation).
         This tool can handle complex web interactions that simple HTML parsing cannot.
@@ -151,6 +151,7 @@ def create_browser_tool(request_id, user_id, metadata):
                     "conversation_id": metadata.get("conversation_id"),
                     "source": metadata.get("source"),
                     "message_id": metadata.get("message_id"),
+                    "tool_call_id": tool_call_id
                 },
                 "logging_context": {
                     "user_id": user_id,

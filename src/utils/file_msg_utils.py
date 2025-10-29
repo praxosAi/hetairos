@@ -418,8 +418,7 @@ async def get_conversation_history(
             # Check if this is a tool result message
             if role == "assistant" and metadata.get("message_type") == "tool_result":
                 tool_name = metadata.get("tool_name", "unknown_tool")
-                # Reconstruct as ToolMessage
-                history_slots[i] = ToolMessage(content=content, name=tool_name, tool_call_id=metadata.get("tool_call_id", ""))
+                history_slots[i] = AIMessage(content=f'We called the tool {tool_name} with result {content}.')
             elif role == "user":
                 history_slots[i] = HumanMessage(content=content)
             else:
@@ -578,15 +577,20 @@ async def update_history( conversation_manager: Any, new_messages: List[BaseMess
             elif isinstance(msg, ToolMessage):
                 # Persist tool results
                 content = str(msg.content)
+                metadata = {
+                    "tool_name": msg.name,
+                    "message_type": "tool_result",
+                    "tool_call_id": msg.tool_call_id if hasattr(msg, 'tool_call_id') else ""
+                }
+
+                if msg.name == "browse_website_with_ai":
+                    metadata["asynchronous_task_status"] = "requested"
+
                 await conversation_manager.add_assistant_message(
                     user_context.user_id,
                     conversation_id,
-                    f"[Tool: {msg.name}] {content}",
-                    metadata={
-                        "tool_name": msg.name,
-                        "message_type": "tool_result",
-                        "tool_call_id": msg.tool_call_id if hasattr(msg, 'tool_call_id') else ""
-                    }
+                    content,
+                    metadata=metadata
                 )
             inserted_ct += 1
         except Exception as e:

@@ -161,13 +161,7 @@ class ExecutionWorker:
             return False, []
         
         if not prev_message.get("metadata", {}).get("asynchronous_task_status") == "success":
-            prefix = re.match(r'^\[Tool:.+\]\s*', prev_message.get("content", ""))
-            if prefix:
-                prefix = prefix[0]
-            else:
-                prefix = ""
-
-            tool_result_json = prev_message.get("content", "").removeprefix(prefix)
+            tool_result_json = prev_message.get("content", "")
             tool_result = ToolExecutionResponse.model_validate_json(tool_result_json)
             tool_result.result = event.get('payload', {}).get('text','')
 

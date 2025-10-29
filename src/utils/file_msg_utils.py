@@ -589,7 +589,7 @@ async def update_history( conversation_manager: Any, new_messages: List[BaseMess
                 await conversation_manager.add_assistant_message(
                     user_context.user_id,
                     conversation_id,
-                    f"[Tool: {msg.name}] {content}",
+                    content,
                     metadata=metadata
                 )
             inserted_ct += 1

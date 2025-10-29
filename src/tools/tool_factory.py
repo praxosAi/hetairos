@@ -194,7 +194,7 @@ class AgentToolsFactory:
                 logger.error(f"Error creating preference tools: {e}", exc_info=True)
 
         # Integration tools
-        if needs_category(['get_oauth_initiation_url']):
+        if True:
             try:
                 tools.extend(create_integration_tools(user_id))
                 logger.info("Integration tools created successfully.")

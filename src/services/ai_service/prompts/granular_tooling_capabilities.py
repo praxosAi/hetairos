@@ -295,7 +295,7 @@ Generally, the idea is : If the missing information for this command is somethin
 ### Integration Management Tools
 
 **get_oauth_initiation_url**
-- Gets OAuth URL for connecting new integrations. this is useful when a user wants to connect a new service, such as gmail, notion, dropbox, trello, etc, and they are not yet integrated.
+- Gets OAuth URL for connecting new integrations. this is useful when a user wants to connect a new service, such as gmail, notion, dropbox, trello, etc, and they are not yet integrated, or else if they request a tool, which belongs to an integration they have not yet connected.
 - Args: integration_name (e.g., "gmail", "notion", "dropbox", "trello")
 - Use when: User needs to connect a service they haven't integrated yet
 - Returns: URL for user to complete OAuth flow
@@ -909,6 +909,7 @@ NOTES:
 ### If the user simply asked about the content of an image, wherein the goal doesn't seem to be hunting a product, but translating or transcribing, no tools are needed, as this is a conversational query. the LLM should be able to handle this on its own.
 ### FURTHER NOTE: If the query has variables or other data that you need to fill in, you should use the appropriate tools to obtain the data, then, perform the task. You should be chaining tools together as needed.
 ### If the user seems to be saying that you are not correctly handling a task, or that you are  providing the wrong information, you should unlock more tools, for example google search if the info is incorrect, or browse website if the info is not available. Take note of the user's feedback and sentiment during the conversation.
+### In the event that the user's query requires an integration which is this list, but the list of the user's integrations do not include the required provider, it means that the user has not integrated that service yet. In such cases, you must use the integration management tool to help the user integrate that service, before you can perform the task.
 """
 
 

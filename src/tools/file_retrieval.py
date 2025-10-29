@@ -77,6 +77,35 @@ def create_file_retrieval_tools(
             # Now you can see the document
         """
         try:
+            # Validation
+            if not query or not query.strip():
+                return ErrorResponseBuilder.invalid_parameter(
+                    operation="search_uploaded_files",
+                    param_name="query",
+                    param_value=query,
+                    expected_format="Non-empty search query string"
+                )
+
+            # Validate file_type if provided
+            if file_type:
+                valid_types = ['image', 'video', 'audio', 'document', 'file']
+                if file_type not in valid_types:
+                    return ErrorResponseBuilder.invalid_parameter(
+                        operation="search_uploaded_files",
+                        param_name="file_type",
+                        param_value=file_type,
+                        expected_format=f"One of: {', '.join(valid_types)}"
+                    )
+
+            # Validate top_k
+            if top_k < 1 or top_k > 20:
+                return ErrorResponseBuilder.invalid_parameter(
+                    operation="search_uploaded_files",
+                    param_name="top_k",
+                    param_value=top_k,
+                    expected_format="Integer between 1 and 20"
+                )
+
             # Enhance query with file type if specified
             search_query = query
             if file_type:
@@ -206,6 +235,15 @@ def create_file_retrieval_tools(
             # Now you can see the PDF and answer questions about it
         """
         try:
+            # Validation
+            if not source_id or not source_id.strip():
+                return ErrorResponseBuilder.invalid_parameter(
+                    operation="retrieve_file_by_source_id",
+                    param_name="source_id",
+                    param_value=source_id,
+                    expected_format="Non-empty Praxos source ID string"
+                )
+
             logger.info(f"Retrieving file by source_id: {source_id}")
 
             # Query MongoDB for document with this source_id
@@ -213,46 +251,64 @@ def create_file_retrieval_tools(
             file_doc = await db_manager.documents.find_one({"source_id": source_id})
 
             if not file_doc:
-                return ToolExecutionResponse(
-                    status="error",
-                    result=f"File not found with source_id: {source_id}. The file may not have been ingested to Praxos yet."
+                return ErrorResponseBuilder.not_found(
+                    operation="retrieve_file_by_source_id",
+                    resource_type="file",
+                    resource_id=source_id,
+                    technical_details="No document found in MongoDB with this source_id. The file may not have been ingested to Praxos yet.",
+                    suggestions=["Use search_uploaded_files() to find files", "Check if file has been uploaded recently (may still be processing)"]
                 )
 
             # Get inserted_id from document
             inserted_id = str(file_doc.get("_id"))
 
             # Use FileManager to build payload and get FileResult
-            payload, file_result = await file_manager.build_payload_from_id(
-                inserted_id=inserted_id,
-                conversation_id=conversation_id,
-                add_to_media_bus=True  # Add to media bus for agent access
-            )
+            try:
+                payload, file_result = await file_manager.build_payload_from_id(
+                    inserted_id=inserted_id,
+                    conversation_id=conversation_id,
+                    add_to_media_bus=True  # Add to media bus for agent access
+                )
+            except Exception as e:
+                logger.error(f"Error building payload for source_id {source_id}: {e}", exc_info=True)
+                return ErrorResponseBuilder.file_error(
+                    operation="retrieve_file_by_source_id",
+                    error_type="download_failed",
+                    file_name=file_doc.get('file_name'),
+                    technical_details=f"Failed to download/process file: {e}"
+                )
 
             if not payload or not file_result:
-                return ToolExecutionResponse(
-                    status="error",
-                    result=f"Failed to load file with source_id: {source_id}"
+                return ErrorResponseBuilder.file_error(
+                    operation="retrieve_file_by_source_id",
+                    error_type="invalid_file",
+                    file_name=file_doc.get('file_name'),
+                    technical_details="Payload or FileResult is None after building"
                 )
 
             # Add to conversation history so agent can see it
-            from src.services.conversation_manager import ConversationManager
-            from src.services.integration_service import integration_service
-            from src.utils.database import conversation_db
+            try:
+                from src.services.conversation_manager import ConversationManager
+                from src.services.integration_service import integration_service
+                from src.utils.database import conversation_db
 
-            conversation_manager = ConversationManager(conversation_db, integration_service)
-            await conversation_manager.add_assistant_message(
-                user_id,
-                conversation_id,
-                f"[Retrieved file from Praxos memory] {file_result.file_name} ({file_result.file_type})",
-                metadata={
-                    "source_id": source_id,
-                    "inserted_id": inserted_id,
-                    "file_type": file_result.file_type,
-                    "action": "file_retrieval_from_praxos"
-                }
-            )
+                conversation_manager = ConversationManager(conversation_db, integration_service)
+                await conversation_manager.add_assistant_message(
+                    user_id,
+                    conversation_id,
+                    f"[Retrieved file from Praxos memory] {file_result.file_name} ({file_result.file_type})",
+                    metadata={
+                        "source_id": source_id,
+                        "inserted_id": inserted_id,
+                        "file_type": file_result.file_type,
+                        "action": "file_retrieval_from_praxos"
+                    }
+                )
 
-            logger.info(f"Loaded file into conversation: {file_result.file_name} (source_id={source_id})")
+                logger.info(f"Loaded file into conversation: {file_result.file_name} (source_id={source_id})")
+            except Exception as e:
+                # Log but don't fail - file is already in media bus
+                logger.warning(f"Failed to add retrieval message to conversation history: {e}")
 
             result_text = f"✅ File loaded into conversation:\n\n"
             result_text += f"File: {file_result.file_name}\n"
@@ -309,7 +365,22 @@ def create_file_retrieval_tools(
             - Use retrieve_file_by_source_id() to load a specific file
         """
         try:
-            limit = max(1, min(limit, 50))  # Clamp between 1 and 50
+            # Validation
+            if file_type:
+                valid_types = ['image', 'video', 'audio', 'document', 'file']
+                if file_type not in valid_types:
+                    return ErrorResponseBuilder.invalid_parameter(
+                        operation="list_recent_uploaded_files",
+                        param_name="file_type",
+                        param_value=file_type,
+                        expected_format=f"One of: {', '.join(valid_types)}"
+                    )
+
+            # Clamp limit to valid range
+            original_limit = limit
+            limit = max(1, min(limit, 50))
+            if limit != original_limit:
+                logger.warning(f"Limit clamped from {original_limit} to {limit}")
 
             logger.info(f"Listing recent files for user {user_id} (type={file_type}, limit={limit})")
 

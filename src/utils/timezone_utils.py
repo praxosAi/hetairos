@@ -1,7 +1,8 @@
 from datetime import datetime, timezone, timedelta
 from typing import Union
 from zoneinfo import ZoneInfo # Use this for Python 3.9+
-def nyc_to_utc(nyc_dt: datetime, timezone: str|ZoneInfo = "America/New_York") -> datetime:
+
+def to_utc(origin_datetime: datetime, timezone: str|ZoneInfo = "America/New_York") -> datetime:
     """
     Converts a naive datetime object from NYC time to UTC.
 
@@ -17,7 +18,7 @@ def nyc_to_utc(nyc_dt: datetime, timezone: str|ZoneInfo = "America/New_York") ->
     
     # Localize the naive datetime by applying the NYC timezone.
     # This step correctly determines whether the datetime falls in EST or EDT.
-    aware_nyc_dt = nyc_dt.replace(tzinfo=zoneinfo)
+    aware_nyc_dt = origin_datetime.replace(tzinfo=zoneinfo)
     
     # Convert the timezone-aware NYC datetime to UTC
     utc_dt = aware_nyc_dt.astimezone(timezone.utc)

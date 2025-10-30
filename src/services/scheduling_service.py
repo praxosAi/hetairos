@@ -12,7 +12,7 @@ logger = setup_logger(__name__)
 from src.services.user_service import user_service
 from datetime import datetime, timezone, timedelta
 
-from src.utils.timezone_utils import nyc_to_utc, to_ZoneInfo
+from src.utils.timezone_utils import to_utc, to_ZoneInfo
 
 def get_next_run_time_utc(cron_expression: str, timezone: str|ZoneInfo) -> datetime:
     """
@@ -27,7 +27,7 @@ def get_next_run_time_utc(cron_expression: str, timezone: str|ZoneInfo) -> datet
     base_time = datetime.now(zoneinfo)
     cron = croniter(cron_expression, base_time)
     next_run_time = cron.get_next(datetime)
-    return nyc_to_utc(next_run_time, zoneinfo)
+    return to_utc(next_run_time, zoneinfo)
 
 class SchedulingService:
     """
@@ -44,7 +44,7 @@ class SchedulingService:
             task_id = f"task_{user_id}_{datetime.utcnow().timestamp()}"
             user_preferences = user_service.get_user_preferences(user_id)    
             timezone_name = user_preferences.get('timezone', 'America/New_York') if user_preferences else 'America/New_York'
-            time_to_do = nyc_to_utc(time_to_do, timezone_name)
+            time_to_do = to_utc(time_to_do, timezone_name)
             await db_manager.create_scheduled_task(
                 task_id=task_id,
                 user_id=user_id,
@@ -113,7 +113,7 @@ class SchedulingService:
             logger.info(f"User {user_id} timezone: {timezone_name}")
             zoneinfo = to_ZoneInfo(timezone_name)
 
-            start_time = nyc_to_utc(start_time, zoneinfo)
+            start_time = to_utc(start_time, zoneinfo)
             if not croniter.is_valid(cron_expression):
                 logger.error(f"Invalid cron expression: {cron_expression}")
                 return "Invalid cron expression."
@@ -270,7 +270,7 @@ class SchedulingService:
         try:
             update_data = {}
             if new_time:
-                update_data["next_execution"] = nyc_to_utc(new_time)
+                update_data["next_execution"] = to_utc(new_time)
             if new_command:
                 update_data["command"] = new_command
             

@@ -14,17 +14,18 @@ from datetime import datetime, timezone, timedelta
 
 from src.utils.timezone_utils import to_utc, to_ZoneInfo
 
-def get_next_run_time_utc(cron_expression: str, timezone: str|ZoneInfo) -> datetime:
+def get_next_run_time_utc(cron_expression: str, timezone: str|ZoneInfo, base_time_delay:timedelta = timedelta()) -> datetime:
     """
     Given a cron expression and a base time, returns the next run time as a datetime object.
     """
+
 
     if isinstance(timezone, str):
         zoneinfo = to_ZoneInfo(timezone)
     else:
         zoneinfo = timezone
 
-    base_time = datetime.now(zoneinfo)
+    base_time = datetime.now(zoneinfo) + base_time_delay
     cron = croniter(cron_expression, base_time)
     next_run_time = cron.get_next(datetime)
     return to_utc(next_run_time, zoneinfo)
@@ -177,7 +178,7 @@ class SchedulingService:
         timezone_name = user_preferences.get('timezone', 'America/New_York') if user_preferences else 'America/New_York'
         logger.info(f"User {user_id} timezone: {timezone_name}")
         zoneinfo = to_ZoneInfo(timezone_name)
-        next_run_time = get_next_run_time_utc(cron_expression, zoneinfo)
+        next_run_time = get_next_run_time_utc(cron_expression, zoneinfo, timedelta(seconds=5))
         ## schedule the next run.
         await db_manager.update_task_execution(task_id, next_run_time)
         new_event = {

@@ -13,6 +13,58 @@ from src.config.settings import settings
 
 logger = setup_logger(__name__)
 
+
+@tool
+def google_search(query: str) -> ToolExecutionResponse:
+    """
+    Search Google for information and recent results.
+
+    Args:
+        query: Search query string
+
+    Returns:
+        ToolExecutionResponse with search results
+
+    Examples:
+        - "latest news about AI"
+        - "weather in New York"
+        - "who is the CEO of Tesla"
+    """
+    try:
+        if not query or not query.strip():
+            return ErrorResponseBuilder.invalid_parameter(
+                operation="google_search",
+                param_name="query",
+                param_value=query,
+                expected_format="Non-empty search query string"
+            )
+
+        logger.info(f"Google search: {query}")
+
+        from langchain_google_community import GoogleSearchAPIWrapper
+
+        search = GoogleSearchAPIWrapper()
+        result = search.run(query)
+
+        # GoogleSearchAPIWrapper returns a string
+        if not result or not result.strip():
+            return ToolExecutionResponse(
+                status="success",
+                result="No search results found for this query."
+            )
+
+        return ToolExecutionResponse(status="success", result=result)
+
+    except Exception as e:
+        logger.error(f"Error in Google search: {e}", exc_info=True)
+        return ErrorResponseBuilder.from_exception(
+            operation="google_search",
+            exception=e,
+            integration="Google Search",
+            context={"query": query}
+        )
+
+
 def _normalize_and_encode_url(url: str) -> str:
     """
     Normalize Unicode (NFC) and percent-encode safely without double-encoding.
@@ -189,14 +241,14 @@ def create_browser_tool(request_id, user_id, metadata):
 
 def create_web_tools(request_id: str, user_id: str, metadata: dict) -> list:
     """
-    Create web tools including AI browser tool that publishes to browser_tasks queue.
+    Create web tools including google_search and AI browser tool.
 
     Args:
         request_id: Request ID for tracing
         user_id: User ID
         metadata: Request metadata including conversation_id, source, etc.
     """
-    tools = [read_webpage_content]
+    tools = [google_search, read_webpage_content]
 
     if request_id is not None:
         # Add AI browser tool that publishes to queue

@@ -204,7 +204,7 @@ class ErrorResponseBuilder:
         **kwargs
     ) -> ToolExecutionResponse:
         """Build invalid parameter error"""
-        error_msg = f"Parameter '{param_name}' has invalid value. Expected format: {expected_format}"
+        error_msg = f"Parameter '{param_name}' has invalid value or is missing. Expected format: {expected_format}"
         if validation_error:
             error_msg += f". Validation error: {validation_error}"
 
@@ -339,6 +339,47 @@ class ErrorResponseBuilder:
         )
 
     @staticmethod
+    def file_error(
+        operation: str,
+        error_type: str,
+        file_name: Optional[str] = None,
+        technical_details: Optional[str] = None,
+        **kwargs
+    ) -> ToolExecutionResponse:
+        """Build file-specific errors (upload, download, processing)"""
+        file_msg = f" for file '{file_name}'" if file_name else ""
+
+        error_messages = {
+            "upload_failed": f"Failed to upload file{file_msg}. The storage service may be temporarily unavailable.",
+            "download_failed": f"Failed to download file{file_msg}. The file may have been deleted or moved.",
+            "invalid_file": f"Invalid file{file_msg}. The file may be corrupted or in an unsupported format.",
+            "file_too_large": f"File{file_msg} is too large. Please use a smaller file.",
+            "unsupported_type": f"File type not supported{file_msg}. Please use a supported file format.",
+            "file_not_found": f"File{file_msg} not found. It may have been deleted or never uploaded.",
+        }
+
+        error_message = error_messages.get(error_type, f"File error{file_msg}: {error_type}")
+
+        return ToolExecutionResponse(
+            status="error",
+            error_details=ErrorDetails(
+                category=ErrorCategory.INVALID_PARAMETER if "invalid" in error_type else ErrorCategory.UNKNOWN_ERROR,
+                severity=ErrorSeverity.MEDIUM,
+                error_message=error_message,
+                operation=operation,
+                technical_details=technical_details,
+                is_retryable="not_found" not in error_type and "invalid" not in error_type,
+                recovery_actions=[
+                    RecoveryAction(
+                        action_type="retry" if "failed" in error_type else "ask_user",
+                        description="Retry the operation" if "failed" in error_type else "Ask user to provide a valid file",
+                    )
+                ],
+                **kwargs
+            )
+        )
+
+    @staticmethod
     def from_exception(
         operation: str,
         exception: Exception,
@@ -352,6 +393,27 @@ class ErrorResponseBuilder:
         error_str = str(exception)
         error_lower = error_str.lower()
         exception_type = type(exception).__name__
+
+        # Handle ValueError specifically
+        if isinstance(exception, ValueError):
+            # Extract parameter info if available from context
+            param_name = "parameter"
+            param_value = "invalid"
+            expected_format = "valid value"
+
+            if context:
+                param_name = context.get("param_name", param_name)
+                param_value = context.get("param_value", param_value)
+                expected_format = context.get("expected_format", expected_format)
+
+            return ErrorResponseBuilder.invalid_parameter(
+                operation=operation,
+                param_name=param_name,
+                param_value=param_value,
+                expected_format=expected_format,
+                validation_error=error_str,
+                technical_details=f"ValueError: {error_str}"
+            )
 
         # Pattern matching for common errors
         if "401" in error_str or "unauthorized" in error_lower:

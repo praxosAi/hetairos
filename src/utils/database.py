@@ -527,6 +527,14 @@ class DatabaseManager:
         if document:
             return document
         return None
+
+    async def get_document_by_source_id(self, source_id: str) -> Optional[Dict]:
+        """Get a document by its Praxos source_id."""
+        document = await self.documents.find_one({"source_id": source_id})
+        if document:
+            return document
+        return None
+
     async def update_document_source_id(self, document_id: str, source_id: str):    
         """Update the source_id of a document."""
         await self.documents.update_one(

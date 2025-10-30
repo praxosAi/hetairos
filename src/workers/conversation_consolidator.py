@@ -29,17 +29,50 @@ class ConversationConsolidator:
             try:
                 file_message_idx = []
                 tasks = []
+                document_files_to_ingest = []  # Track documents that need to be sent to Praxos
+
                 for idx, message in enumerate(messages):
-                    if message.get('metadata', {}).get('inserted_id'):
-                        file_message_idx.append(idx)
-                        tasks.append(asyncio.create_task(ai_service.multi_modal_by_doc_id('provide a full description of this media. prefix it with "description of media type: , where media type is the type of the media, for example, audio, video, etc."', message['metadata']['inserted_id'])))
-                descriptions = await asyncio.gather(*tasks)
-                for i, idx in enumerate(file_message_idx):
-                    message_idx = file_message_idx[i]
-                    message = messages[message_idx]
-                    description = descriptions[i]
-                    message['content'] = f'Description of media type with id: {message["metadata"]["inserted_id"]}: {description}'
-                    message_dict[str(message['_id'])] = {'content': message['content']}
+                    inserted_id = message.get('metadata', {}).get('inserted_id')
+                    if inserted_id:
+                        # Get file info from database to check type
+                        from src.utils.database import db_manager
+                        file_doc = await db_manager.get_document_by_id(inserted_id)
+
+                        if file_doc:
+                            file_type = file_doc.get('type', 'file')
+
+                            # For non-document files (images, videos, audio), generate descriptions
+                            if file_type in {'image', 'photo', 'video', 'audio', 'voice'}:
+                                file_message_idx.append(idx)
+                                tasks.append(asyncio.create_task(
+                                    ai_service.multi_modal_by_doc_id(
+                                        'provide a full description of this media. prefix it with "description of media type: , where media type is the type of the media, for example, audio, video, etc."',
+                                        inserted_id
+                                    )
+                                ))
+
+                            # For documents, add to ingestion list
+                            elif file_type in {'document', 'file'}:
+                                # Check if already has source_id (already ingested)
+                                if not file_doc.get('source_id'):
+                                    document_files_to_ingest.append({
+                                        'inserted_id': inserted_id,
+                                        'file_doc': file_doc,
+                                        'message_idx': idx
+                                    })
+                                    logger.info(f"Document {file_doc.get('file_name')} will be ingested to Praxos")
+                                else:
+                                    logger.info(f"Document {file_doc.get('file_name')} already ingested (source_id={file_doc.get('source_id')})")
+
+                # Generate descriptions for media files
+                if tasks:
+                    descriptions = await asyncio.gather(*tasks)
+                    for i, idx in enumerate(file_message_idx):
+                        message_idx = file_message_idx[i]
+                        message = messages[message_idx]
+                        description = descriptions[i]
+                        message['content'] = f'Description of media type with id: {message["metadata"]["inserted_id"]}: {description}'
+                        message_dict[str(message['_id'])] = {'content': message['content']}
 
             except Exception as e:
                 logger.error(f"Error generating media descriptions: {e}", exc_info=True)
@@ -47,6 +80,80 @@ class ConversationConsolidator:
             ### now, let's update messages
             update_messages = await self.db.bulk_update_messages(message_dict)
             logger.info(f"Updated {update_messages} messages with media descriptions")
+
+            # Ingest documents to Praxos (not just descriptions)
+            if document_files_to_ingest:
+                logger.info(f"Ingesting {len(document_files_to_ingest)} documents to Praxos")
+
+                # Get Praxos client for file ingestion
+                conversation_user_id = conversation['user_id']
+                user_record = user_service.get_user_by_id(conversation_user_id)
+                user_email = user_record['email']
+                env_name = f"env_for_{user_email}"
+
+                from src.config.settings import settings
+                if settings.OPERATING_MODE == "local":
+                    praxos_api_key = settings.PRAXOS_API_KEY
+                else:
+                    praxos_api_key = user_record.get("praxos_api_key")
+
+                if praxos_api_key:
+                    praxos_client = PraxosClient(env_name, api_key=praxos_api_key)
+
+                    from src.utils.blob_utils import download_from_blob_storage
+                    import tempfile
+
+                    for doc_info in document_files_to_ingest:
+                        try:
+                            file_doc = doc_info['file_doc']
+                            blob_path = file_doc.get('blob_path')
+                            file_name = file_doc.get('file_name', 'unknown')
+                            inserted_id = doc_info['inserted_id']
+
+                            logger.info(f"Ingesting document to Praxos: {file_name}")
+
+                            # Download from blob storage
+                            file_bytes = await download_from_blob_storage(blob_path)
+
+                            # Create temp file for Praxos add_file (requires path)
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file_name}") as tmp:
+                                tmp.write(file_bytes)
+                                tmp_path = tmp.name
+
+                            try:
+                                # Send to Praxos with conversation context
+                                result = await praxos_client.add_file(
+                                    file_path=tmp_path,
+                                    name=file_name,
+                                    description=f"Document from conversation {conversation_id}: {file_doc.get('caption', file_name)}"
+                                )
+
+                                if result and result.get('success'):
+                                    source_id = result['id']
+                                    logger.info(f"Document ingested to Praxos: {file_name} (source_id={source_id})")
+
+                                    # Update MongoDB with source_id
+                                    from src.utils.database import db_manager
+                                    await db_manager.update_document_source_id(inserted_id, source_id)
+
+                                    # Update message with Praxos reference
+                                    message_idx = doc_info['message_idx']
+                                    message = messages[message_idx]
+                                    message['content'] = f"[Document ingested to Praxos] {file_name} (source_id: {source_id})"
+                                    message_dict[str(message['_id'])] = {'content': message['content']}
+                                else:
+                                    logger.warning(f"Failed to ingest document {file_name}: {result}")
+
+                            finally:
+                                # Cleanup temp file
+                                import os
+                                os.unlink(tmp_path)
+
+                        except Exception as e:
+                            logger.error(f"Error ingesting document {file_doc.get('file_name')}: {e}", exc_info=True)
+                else:
+                    logger.warning("Praxos API key not available, skipping document ingestion")
+
             search_attempts = await self.db.get_recent_search_attempts(conversation_id, limit=100)
             logger.info(f"Found {len(search_attempts)} search attempts")
             if not messages:

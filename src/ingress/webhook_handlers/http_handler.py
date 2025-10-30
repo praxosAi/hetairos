@@ -14,6 +14,7 @@ from fastapi import UploadFile,Request, Form, File
 from src.utils.database import db_manager
 from typing import List, Optional
 import json
+from src.utils.file_manager import file_manager
 class FileInfo(BaseModel):
     filename: str
     content_type: str
@@ -144,50 +145,59 @@ async def handle_chat_request(
     if request_obj.files:
         payload["files"] = []
         for f in request_obj.files:
-            logger.info(f"Processing uploaded file: {f.filename} of type {f.content_type} and size {f.size}")
-            blob_name = f"{user_id}/websockets/{f.filename.replace(' ', '_')}"
-            blob_name = await upload_bytes_to_blob_storage(f.content, blob_name)
-            doc_entry = {
-                'user_id': ObjectId(request_obj.user_id),
-                'blob_path': blob_name,
-                'type': content_type_to_praxos_name(f.content_type),
-                'mimetype': f.content_type,
-                "platform": "praxos_web",
-                'file_name': f.filename
+            try:
+                logger.info(f"Processing uploaded file: {f.filename} of type {f.content_type} and size {f.size}")
 
-            }
-            inserted_id = await db_manager.add_document(doc_entry)
-            payload["files"].append(
-                {
-                    "type": content_type_to_praxos_name(f.content_type),
-                    'mime_type': f.content_type,
-                    "blob_path": blob_name,
-                    'inserted_id': inserted_id
-                } )
+                # Use FileManager for unified file handling
+                file_result = await file_manager.receive_file(
+                    user_id=user_id,
+                    platform="praxos_web",
+                    file_bytes=f.content,  # Already in memory from form upload
+                    filename=f.filename,
+                    mime_type=f.content_type,
+                    caption="",
+                    platform_file_id=None,
+                    platform_message_id=None,
+                    conversation_id=None,  # Not known yet
+                    auto_add_to_media_bus=False,  # Will be added when conversation processes it
+                    auto_cleanup=False  # No temp file to cleanup
+                )
+
+                payload["files"].append(file_result.to_event_file_entry())
+
+            except Exception as e:
+                logger.error(f"Failed to process HTTP file {f.filename}: {e}", exc_info=True)
+
         payload["file_count"] = len(request_obj.files)
     
-    # Add audio to payload if present  
+    # Add audio to payload if present
     if request_obj.audio:
-        if "files" not in payload:
-            payload["files"] = []
-        blob_path = await upload_bytes_to_blob_storage(request_obj.audio.content, f"{user_id}/telegram/{request_obj.audio.filename.replace(' ', '_')}")
-        doc_entry = {
-            'user_id': ObjectId(request_obj.user_id),
-            'blob_path': blob_name,
-            'type': content_type_to_praxos_name(f.content_type),
-            'mimetype': f.content_type,
-            "platform": "praxos_web",
-            'file_name': request_obj.audio.filename
+        try:
+            if "files" not in payload:
+                payload["files"] = []
 
-        }
-        inserted_id = await db_manager.add_document(doc_entry)
-        
-        payload["files"].append({
-            "type": "voice",
-            'mime_type': request_obj.audio.content_type,
-            "blob_path": blob_path,
-            'inserted_id': inserted_id
-        })
+            logger.info(f"Processing uploaded audio: {request_obj.audio.filename}")
+
+            # Use FileManager for unified audio handling
+            file_result = await file_manager.receive_file(
+                user_id=user_id,
+                platform="praxos_web",
+                file_bytes=request_obj.audio.content,
+                filename=request_obj.audio.filename,
+                mime_type=request_obj.audio.content_type,
+                caption="",
+                platform_file_id=None,
+                platform_message_id=None,
+                platform_type="voice",  # Hint that it's audio
+                conversation_id=None,  # Not known yet
+                auto_add_to_media_bus=False,
+                auto_cleanup=False
+            )
+
+            payload["files"].append(file_result.to_event_file_entry())
+
+        except Exception as e:
+            logger.error(f"Failed to process HTTP audio {request_obj.audio.filename}: {e}", exc_info=True)
 
     conversation_manager = ConversationManager(conversation_db, integration_service)
     conversation_id = await conversation_manager.get_or_create_conversation(request_obj.user_id, "websocket", payload)
@@ -283,30 +293,30 @@ async def handle_file_upload_request(
     if request_obj.files:
         payload["files"] = []
         for f in request_obj.files:
-            logger.info(f"Processing uploaded file: {f.filename} of type {f.content_type} and size {f.size}")
-            blob_name = f"{user_id}/imported_files/{f.filename.replace(' ', '_')}"
-            blob_name = await upload_bytes_to_blob_storage(f.content, blob_name)
-            doc_entry = {
-                'user_id': ObjectId(request_obj.user_id),
-                'blob_path': blob_name,
-                'type': content_type_to_praxos_name(f.content_type),
-                'mimetype': f.content_type,
-                "platform": "import_file_upload",
-                'file_name': f.filename
+            try:
+                logger.info(f"Processing uploaded file: {f.filename} of type {f.content_type} and size {f.size}")
 
-            }
-            
-            inserted_id = await db_manager.add_document(doc_entry)
-            payload["files"].append(
-                {
-                    "type": content_type_to_praxos_name(f.content_type),
-                    'mime_type': f.content_type,
-                    "blob_path": blob_name,
-                    "inserted_id": inserted_id,
-                    'metadata':{'inserted_id': inserted_id},
-                    'file_name': f.filename
-                } )
-            logger.info(f"Inserted document record with ID: {inserted_id}")
+                # Use FileManager for unified file handling
+                file_result = await file_manager.receive_file(
+                    user_id=user_id,
+                    platform="import_file_upload",
+                    file_bytes=f.content,  # Already in memory from form upload
+                    filename=f.filename,
+                    mime_type=f.content_type,
+                    caption="",
+                    platform_file_id=None,
+                    platform_message_id=None,
+                    conversation_id=None,  # Not known yet
+                    auto_add_to_media_bus=False,  # Will be added when ingested
+                    auto_cleanup=False  # No temp file to cleanup
+                )
+
+                payload["files"].append(file_result.to_event_file_entry())
+                logger.info(f"Inserted document record with ID: {file_result.inserted_id}")
+
+            except Exception as e:
+                logger.error(f"Failed to process import file {f.filename}: {e}", exc_info=True)
+
         payload["file_count"] = len(request_obj.files)
     
 

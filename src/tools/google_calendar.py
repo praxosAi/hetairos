@@ -48,15 +48,52 @@ def create_calendar_tools(gcal_integration: GoogleCalendarIntegration,user_time_
     @tool
     async def create_calendar_event(
         title: str,
-        start_time: datetime, 
+        start_time: datetime,
         end_time: datetime,
         attendees: List[str] = [],
         description: str = "",
         location: str = "",
         calendar_id: str = 'primary',
-        account: Optional[str] = None  # Add optional account parameter
+        account: Optional[str] = None,
+        recurrence_rule: Optional[str] = None
     ) -> ToolExecutionResponse:
-        """Creates a new event on the user's Google Calendar."""
+        """
+        Creates a new event on the user's Google Calendar.
+
+        Args:
+            title: Event title/summary
+            start_time: Start time as datetime object
+            end_time: End time as datetime object
+            attendees: List of attendee email addresses
+            description: Event description
+            location: Event location
+            calendar_id: Calendar ID (default: 'primary')
+            account: Account email (for multi-account users)
+            recurrence_rule: Optional RRULE string for recurring events (RFC 5545 format)
+                            Examples:
+                            - "FREQ=DAILY;COUNT=5" - Daily for 5 days
+                            - "FREQ=WEEKLY;BYDAY=MO,WE,FR" - Every Monday, Wednesday, Friday
+                            - "FREQ=MONTHLY;BYMONTHDAY=15" - 15th of every month
+                            - "FREQ=YEARLY;BYMONTH=6;BYMONTHDAY=1" - June 1st every year
+                            - "FREQ=WEEKLY;INTERVAL=2" - Every 2 weeks
+                            - "FREQ=DAILY;UNTIL=20251231T235959Z" - Daily until Dec 31, 2025
+
+        Returns:
+            Success status and event link
+
+        Examples:
+            # One-time event
+            create_calendar_event("Team Meeting", start_time, end_time)
+
+            # Daily standup for 30 days
+            create_calendar_event("Daily Standup", start_time, end_time, recurrence_rule="FREQ=DAILY;COUNT=30")
+
+            # Weekly meeting every Monday
+            create_calendar_event("Weekly Review", start_time, end_time, recurrence_rule="FREQ=WEEKLY;BYDAY=MO")
+
+            # Monthly team lunch on 1st Friday
+            create_calendar_event("Team Lunch", start_time, end_time, recurrence_rule="FREQ=MONTHLY;BYDAY=1FR")
+        """
         try:
             start_time = to_rfc3339(nyc_to_utc(start_time,user_time_zone))
             end_time = to_rfc3339(nyc_to_utc(end_time,user_time_zone))
@@ -65,6 +102,16 @@ def create_calendar_tools(gcal_integration: GoogleCalendarIntegration,user_time_
             signed_description = (description or "")
             if gcal_integration.user_id not in NO_WATERMARK_USER_IDS:
                 signed_description += '\n\nSchedule directive created by <a href="https://app.mypraxos.com">My Praxos</a>'
+
+            # Format recurrence rule if provided
+            recurrence = None
+            if recurrence_rule:
+                # RRULE should be prefixed with "RRULE:" if not already
+                if not recurrence_rule.startswith('RRULE:'):
+                    recurrence_rule = f'RRULE:{recurrence_rule}'
+                recurrence = [recurrence_rule]
+                logger.info(f"Creating recurring event: {recurrence_rule}")
+
             # Pass the account parameter to the integration method
             created_event = await gcal_integration.create_calendar_event(
                 title=title,
@@ -74,7 +121,8 @@ def create_calendar_tools(gcal_integration: GoogleCalendarIntegration,user_time_
                 description=signed_description,
                 location=location,
                 calendar_id=calendar_id,
-                account=account
+                account=account,
+                recurrence=recurrence
             )
             return ToolExecutionResponse(status="success", result=created_event)
         except Exception as e:

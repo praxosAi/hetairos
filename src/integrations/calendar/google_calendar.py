@@ -171,8 +171,38 @@ class GoogleCalendarIntegration(BaseIntegration):
             logger.error(f"Error fetching calendar events for {resolved_account}: {e}", exc_info=True)
             raise Exception("An error occurred while fetching calendar events.") from e
 
-    async def create_calendar_event(self, title: str, start_time: str, end_time: str, *, attendees: List[str] = [], description: str = "", location: str = "", calendar_id: str = 'primary', account: Optional[str] = None) -> Dict:
-        """Creates a new event on a specific Google Calendar account."""
+    async def create_calendar_event(
+        self,
+        title: str,
+        start_time: str,
+        end_time: str,
+        *,
+        attendees: List[str] = [],
+        description: str = "",
+        location: str = "",
+        calendar_id: str = 'primary',
+        account: Optional[str] = None,
+        recurrence: Optional[List[str]] = None
+    ) -> Dict:
+        """
+        Creates a new event on a specific Google Calendar account.
+
+        Args:
+            title: Event title/summary
+            start_time: Start time in RFC3339 format
+            end_time: End time in RFC3339 format
+            attendees: List of attendee email addresses
+            description: Event description
+            location: Event location
+            calendar_id: Calendar ID (default: 'primary')
+            account: Account email (for multi-account users)
+            recurrence: Optional list of RRULE strings for recurring events
+                       Example: ['RRULE:FREQ=DAILY;COUNT=5'] for daily event 5 times
+                       Example: ['RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR'] for weekly on Mon/Wed/Fri
+
+        Returns:
+            Dict with status and event link
+        """
         service, resolved_account = self._get_service_for_account(account)
 
         # Dynamically get the calendar's timezone for accurate event creation
@@ -187,6 +217,11 @@ class GoogleCalendarIntegration(BaseIntegration):
             'attendees': [{'email': email} for email in attendees],
             'reminders': {'useDefault': True},
         }
+
+        # Add recurrence rules if provided
+        if recurrence:
+            event_body['recurrence'] = recurrence
+            logger.info(f"Creating recurring event with rules: {recurrence}")
 
         try:
             created_event = service.events().insert(

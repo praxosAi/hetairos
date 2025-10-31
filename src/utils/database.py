@@ -123,11 +123,12 @@ class ConversationDatabase:
         )
         return str(result.inserted_id)
     async def get_conversation_messages(self, conversation_id: str, limit: int = 50) -> List[Dict]:
-        """Get messages for a conversation, ordered by timestamp."""
+        """Get the most recent messages for a conversation, ordered by timestamp (oldest first)."""
         cursor = self.messages.find(
             {"conversation_id": ObjectId(conversation_id)}
-        ).sort("timestamp", 1).limit(limit)
-        return await cursor.to_list(length=limit)
+        ).sort("timestamp", -1).limit(limit)
+        messages = await cursor.to_list(length=limit)
+        return list(reversed(messages))  # Reverse to get chronological order (oldest to newest)
 
     async def get_recent_messages(self, user_id: str, limit: int = 10) -> List[Dict]:
         """Get the most recent messages for a user."""

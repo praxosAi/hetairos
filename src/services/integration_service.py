@@ -277,6 +277,13 @@ class IntegrationService:
     #     except Exception as e:
     #         logger.error(f"Failed to create Microsoft credentials for user {user_id}: {e}")
     #         return None
+    async def create_integration(self,integration_record:Dict[str,Any]) -> str:
+        """Create a new integration record in the database."""
+        result = await self.db_manager.db["integrations"].insert_one(integration_record)
+        if result:
+            return str(result.inserted_id)
+        else:
+            return None
     async def get_authenticated_clients(self, user_id: str) -> Dict[str, Any]:
         """
         Creates and returns a dictionary of all authenticated API clients for a user.

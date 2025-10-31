@@ -19,6 +19,7 @@ from src.ingress.webhook_handlers import dropbox_handler
 from src.ingress.webhook_handlers import slack_handler
 from src.ingress.webhook_handlers import discord_handler
 from src.ingress.webhook_handlers import mcp_handler
+from src.ingress.webhook_handlers import internal_handler
 from src.core import suspended_event_queue
 from src.utils.logging.base_logger import request_id_var, user_id_var, modality_var
 from src.utils.redis_client import subscribe_to_channel
@@ -99,6 +100,9 @@ if os.getenv("ENV_NAME","production") != "test":
 
 
     app.include_router(suspended_event_queue.router, prefix="/admin/suspended-events")
+
+# Internal endpoints
+app.include_router(internal_handler.router, prefix="/internal")
 
 @app.get("/")
 async def root():

@@ -81,8 +81,9 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                     integration_record = integration_record_new
                     return
                 else:
-                    logger.warning(f"User {message['from']['id']} is not authorized to use the bot")
-                    await telegram_client.send_message(message["chat"]["id"], "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com, and add your telegram username to your account.")
+                    logger.warning(f"User {message['from']['id']} is not authorized, showing account selection")
+                    first_name = message["from"].get("first_name", "")
+                    await telegram_client.send_account_selection_prompt(chat_id, first_name)
                     return {"status": "ok"}
             except Exception as e:
                 logger.error(f"Error during authorization attempt for {username}: {e}")
@@ -247,6 +248,143 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
 
                 except Exception as e:
                     logger.error(f"Failed to process file {file_name_og}: {e}", exc_info=True)
+
+    # Handle callback queries (button clicks)
+    if "callback_query" in data:
+        callback_query = data["callback_query"]
+        callback_data = callback_query["data"]
+        chat_id = callback_query["message"]["chat"]["id"]
+        message_id = callback_query["message"]["message_id"]
+        user_from = callback_query["from"]
+
+        username = user_from.get("username", "").lower()
+        first_name = user_from.get("first_name", "")
+        last_name = user_from.get("last_name", "")
+
+        # Answer the callback to remove loading state
+        await telegram_client.answer_callback_query(callback_query["id"])
+
+        if callback_data == "create_account":
+            # NEW USER - Show language selection
+            await telegram_client.send_language_selection(chat_id, first_name)
+
+        elif callback_data == "link_account":
+            # EXISTING USER - Generate linking token and send deep link
+            try:
+                from src.config.settings import settings
+                import httpx
+
+                backend_url = settings.PRAXOS_BASE_URL
+                endpoint = f"{backend_url}/api/auth/telegram/generate-link-token"
+
+                payload = {
+                    "telegram_chat_id": chat_id,
+                    "telegram_username": username,
+                    "first_name": first_name,
+                    "last_name": last_name
+                }
+
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(endpoint, json=payload, timeout=30)
+                    response.raise_for_status()
+                    result = response.json()
+
+                link_url = result['data']['link_url']
+                expires_in = result['data']['expires_in']
+
+                # Send message with inline button linking to webapp
+                link_keyboard = {
+                    "inline_keyboard": [
+                        [
+                            {
+                                "text": "🔗 Link My Account",
+                                "url": link_url
+                            }
+                        ]
+                    ]
+                }
+
+                instructions = f"""To link your existing Praxos account:
+
+                                1. Click the button below to open the webapp
+                                2. Make sure you're logged in to your Praxos account
+                                3. Confirm the linking
+
+                                ⏱️ This link expires in {expires_in // 60} minutes."""
+
+                await telegram_client.send_message_with_inline_keyboard(
+                    chat_id=chat_id,
+                    text=instructions,
+                    inline_keyboard=link_keyboard
+                )
+
+            except Exception as e:
+                logger.error(f"Failed to generate link token: {str(e)}")
+                error_msg = "Sorry, failed to generate linking URL. Please try again or contact support."
+                await telegram_client.send_message(chat_id, error_msg)
+
+        elif callback_data.startswith("lang_"):
+            # Language selected - Complete registration
+            language = callback_data.split("_")[1]
+
+            from src.services.user_service import user_service
+
+            try:
+                registration_result = await user_service.register_telegram_user(
+                    telegram_chat_id=chat_id,
+                    telegram_username=username,
+                    first_name=first_name,
+                    last_name=last_name,
+                    language=language
+                )
+
+                # Welcome messages in each language
+                welcome_messages = {
+                    "en": f"🎉 Welcome to Praxos, {first_name}!\n\nYour account has been created successfully!\n\nYou can now start chatting with me here. How can I help you today?",
+                    "es": f"🎉 ¡Bienvenido a Praxos, {first_name}!\n\n¡Tu cuenta ha sido creada exitosamente!\n\nAhora puedes comenzar a chatear conmigo aquí. ¿Cómo puedo ayudarte hoy?",
+                    "pt": f"🎉 Bem-vindo ao Praxos, {first_name}!\n\nSua conta foi criada com sucesso!\n\nVocê já pode começar a conversar comigo aqui. Como posso ajudá-lo hoje?",
+                    "ru": f"🎉 Добро пожаловать в Praxos, {first_name}!\n\nВаш аккаунт успешно создан!\n\nТеперь вы можете общаться со мной здесь. Чем могу помочь сегодня?",
+                    "fa": f"🎉 به Praxos خوش آمدید، {first_name}!\n\nحساب شما با موفقیت ایجاد شد!\n\nاکنون می‌توانید اینجا با من چت کنید. امروز چطور می‌تونم کمکتون کنم؟",
+                    "fr": f"🎉 Bienvenue sur Praxos, {first_name}!\n\nVotre compte a été créé avec succès!\n\nVous pouvez maintenant commencer à discuter avec moi ici. Comment puis-je vous aider aujourd'hui?",
+                    "de": f"🎉 Willkommen bei Praxos, {first_name}!\n\nIhr Konto wurde erfolgreich erstellt!\n\nSie können jetzt hier mit mir chatten. Wie kann ich Ihnen heute helfen?",
+                    "ar": f"🎉 مرحباً بك في Praxos، {first_name}!\n\nتم إنشاء حسابك بنجاح!\n\nيمكنك الآن بدء الدردشة معي هنا. كيف يمكنني مساعدتك اليوم؟"
+                }
+
+                success_msg = welcome_messages.get(language, welcome_messages["en"])
+
+                await telegram_client.send_message(chat_id, success_msg)
+
+                # Trigger first engagement
+                from datetime import datetime
+                user_record = {"_id": ObjectId(registration_result["user_id"]), "first_name": first_name}
+                await research_user_and_engage(
+                    user_record,
+                    'telegram',
+                    chat_id,
+                    timestamp=datetime.utcnow(),
+                    request_id_var=str(request_id_var.get())
+                )
+
+            except Exception as e:
+                logger.error(f"Registration failed: {str(e)}")
+
+                # Error messages in each language
+                error_messages = {
+                    "en": "Sorry, registration failed. Please try again later or contact support.",
+                    "es": "Lo sentimos, el registro falló. Por favor, inténtalo de nuevo más tarde o contacta a soporte.",
+                    "pt": "Desculpe, o registro falhou. Por favor, tente novamente mais tarde ou entre em contato com o suporte.",
+                    "ru": "Извините, регистрация не удалась. Пожалуйста, попробуйте позже или свяжитесь с поддержкой.",
+                    "fa": "متاسفیم، ثبت‌نام ناموفق بود. لطفاً بعداً دوباره امتحان کنید یا با پشتیبانی تماس بگیرید.",
+                    "fr": "Désolé, l'inscription a échoué. Veuillez réessayer plus tard ou contacter le support.",
+                    "de": "Entschuldigung, die Registrierung ist fehlgeschlagen. Bitte versuchen Sie es später erneut oder kontaktieren Sie den Support.",
+                    "ar": "عذراً، فشل التسجيل. يرجى المحاولة مرة أخرى لاحقاً أو الاتصال بالدعم."
+                }
+
+                error_msg = error_messages.get(language, error_messages["en"])
+                await telegram_client.send_message(chat_id, error_msg)
+
+        return {"status": "ok"}
+
     try:
         if user_id_var.get() != 'SYSTEM_LEVEL':
             background_tasks.add_task(milestone_service.user_send_message, user_id_var.get())

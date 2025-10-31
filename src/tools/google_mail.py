@@ -187,9 +187,8 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
     ) -> ToolExecutionResponse:
         """Marks a specific email as read by removing the 'UNREAD' label. Provide the email's message ID."""
         try:
-            # NOTE: Assumes you will add a `modify_message_labels` method.
             result = await gmail_integration.modify_message_labels(
-                message_id=message_id, 
+                message_id=message_id,
                 labels_to_remove=['UNREAD'],
                 account=account
             )
@@ -202,14 +201,186 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
                 context={"message_id": message_id}
             )
 
+    @tool
+    async def mark_email_as_unread(
+        message_id: str,
+        account: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """Marks a specific email as unread by adding the 'UNREAD' label. Provide the email's message ID."""
+        try:
+            result = await gmail_integration.mark_as_unread(message_id=message_id, account=account)
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="mark_email_as_unread",
+                exception=e,
+                integration="Gmail",
+                context={"message_id": message_id}
+            )
+
+    @tool
+    async def star_email(
+        message_id: str,
+        account: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """Stars an email by adding the 'STARRED' label. Provide the email's message ID."""
+        try:
+            result = await gmail_integration.add_star(message_id=message_id, account=account)
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="star_email",
+                exception=e,
+                integration="Gmail",
+                context={"message_id": message_id}
+            )
+
+    @tool
+    async def unstar_email(
+        message_id: str,
+        account: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """Removes the star from an email by removing the 'STARRED' label. Provide the email's message ID."""
+        try:
+            result = await gmail_integration.remove_star(message_id=message_id, account=account)
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="unstar_email",
+                exception=e,
+                integration="Gmail",
+                context={"message_id": message_id}
+            )
+
+    @tool
+    async def move_email_to_spam(
+        message_id: str,
+        account: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """Moves an email to spam. Provide the email's message ID."""
+        try:
+            result = await gmail_integration.move_to_spam(message_id=message_id, account=account)
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="move_email_to_spam",
+                exception=e,
+                integration="Gmail",
+                context={"message_id": message_id}
+            )
+
+    @tool
+    async def move_email_to_trash(
+        message_id: str,
+        account: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """Moves an email to trash. Provide the email's message ID."""
+        try:
+            result = await gmail_integration.move_to_trash(message_id=message_id, account=account)
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="move_email_to_trash",
+                exception=e,
+                integration="Gmail",
+                context={"message_id": message_id}
+            )
+
+    @tool
+    async def create_email_draft(
+        recipient: str,
+        subject: str,
+        body: str,
+        account: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """Creates a draft email in Gmail without sending it. The draft can be edited and sent later."""
+        try:
+            result = await gmail_integration.create_draft(
+                recipient=recipient,
+                subject=subject,
+                body=body,
+                account=account
+            )
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="create_email_draft",
+                exception=e,
+                integration="Gmail",
+                context={"recipient": recipient, "subject": subject}
+            )
+
+    @tool
+    async def list_gmail_labels(
+        account: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """Lists all labels (folders) in the user's Gmail account, including system and custom labels."""
+        try:
+            result = await gmail_integration.list_labels(account=account)
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="list_gmail_labels",
+                exception=e,
+                integration="Gmail",
+                context={}
+            )
+
+    @tool
+    async def add_label_to_email(
+        message_id: str,
+        label_name: str,
+        account: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """Adds a label/folder to an email. Creates the label if it doesn't exist. Provide the email's message ID and label name."""
+        try:
+            result = await gmail_integration.add_label_to_message(
+                message_id=message_id,
+                label_name=label_name,
+                account=account
+            )
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="add_label_to_email",
+                exception=e,
+                integration="Gmail",
+                context={"message_id": message_id, "label_name": label_name}
+            )
+
+    @tool
+    async def remove_label_from_email(
+        message_id: str,
+        label_name: str,
+        account: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """Removes a label/folder from an email. Provide the email's message ID and label name."""
+        try:
+            result = await gmail_integration.remove_label_from_message(
+                message_id=message_id,
+                label_name=label_name,
+                account=account
+            )
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="remove_label_from_email",
+                exception=e,
+                integration="Gmail",
+                context={"message_id": message_id, "label_name": label_name}
+            )
+
 
     accounts = gmail_integration.get_connected_accounts()
     if not accounts:
-        return [] 
+        return []
 
     all_tools = [
-        send_email, reply_to_email, search_gmail, get_email_content, 
-        get_emails_from_sender, find_contact_email, archive_email, mark_email_as_read
+        send_email, reply_to_email, search_gmail, get_email_content,
+        get_emails_from_sender, find_contact_email, archive_email, mark_email_as_read,
+        mark_email_as_unread, star_email, unstar_email, move_email_to_spam,
+        move_email_to_trash, create_email_draft, list_gmail_labels,
+        add_label_to_email, remove_label_from_email
     ]
 
     if len(accounts) == 1:

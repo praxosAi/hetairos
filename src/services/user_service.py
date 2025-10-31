@@ -425,5 +425,90 @@ class UserService:
             logger.error(f"Failed to initialize KG for user {user_id}: {e}", exc_info=True)
             return {"error": str(e)}
 
+    async def register_telegram_user(
+        self,
+        telegram_chat_id: int,
+        telegram_username: str,
+        first_name: str,
+        last_name: str,
+        language: str = "en"
+    ) -> dict:
+        """
+        Register new user via Telegram bot.
+
+        Flow:
+        1. Call mypraxos-backend registration endpoint
+        2. Receive user_id
+        3. Create integration record in hetairos
+        4. Update milestones
+        5. Return user data
+        """
+        import httpx
+        from datetime import datetime
+        from bson import ObjectId
+
+        try:
+            # Step 1: Call mypraxos-backend
+            backend_url = settings.PRAXOS_BASE_URL
+            endpoint = f"{backend_url}/api/auth/register/telegram"
+
+            payload = {
+                "telegram_chat_id": telegram_chat_id,
+                "telegram_username": telegram_username,
+                "first_name": first_name,
+                "last_name": last_name,
+                "language": language
+            }
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(endpoint, json=payload, timeout=30)
+                response.raise_for_status()
+                backend_response = response.json()
+                logger.info(f"Telegram registration response: {backend_response}")
+            user_id = backend_response['data']["user_id"]
+
+            # Step 2: Create integration record in hetairos
+            from src.services.integration_service import integration_service
+
+            integration_data = {
+                "user_id": ObjectId(user_id),
+                "name": "telegram",
+                "type": "messaging",
+                "provider": "telegram",
+                "connected_account": telegram_username or f"telegram_{telegram_chat_id}",
+                "telegram_chat_id": telegram_chat_id,
+                "status": "active",
+                "settings": {
+                    "username": telegram_username,
+                    "notifications": True,
+                    "consent_given": True,
+                    "integration_method": "username"
+                },
+                "metadata": {
+                    "connected_at": datetime.utcnow().isoformat(),
+                    "consent_timestamp": datetime.utcnow().isoformat(),
+                    "phone_verified": False
+                }
+            }
+
+            integration_id = await integration_service.create_integration(integration_data)
+
+            # Step 3: Update milestones
+            from src.services.milestone_service import milestone_service
+            await milestone_service.user_setup_messaging(user_id)
+
+
+            logger.info(f"Successfully registered Telegram user {telegram_chat_id} as user_id {user_id}")
+
+            return {
+                "user_id": user_id,
+                "integration_id": str(integration_id),
+                "success": True
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to register Telegram user {telegram_chat_id}: {str(e)}")
+            raise
+
 # Global instance
 user_service = UserService()

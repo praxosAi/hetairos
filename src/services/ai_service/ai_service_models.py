@@ -63,6 +63,10 @@ class ToolFunctionID(str, Enum):
     GET_EMAILS_FROM_SENDER = "get_emails_from_sender"
     FIND_CONTACT_EMAIL = "find_contact_email"
     SEARCH_GMAIL = "search_gmail"
+    REPLY_TO_EMAIL = "reply_to_email"
+    GET_EMAIL_CONTENT = "get_email_content"
+    ARCHIVE_EMAIL = "archive_email"
+    MARK_EMAIL_AS_READ = "mark_email_as_read"
 
     # Google Calendar tools
     GET_CALENDAR_EVENTS = "get_calendar_events"
@@ -75,6 +79,43 @@ class ToolFunctionID(str, Enum):
     READ_FILE_CONTENT_BY_ID = "read_file_content_by_id"
     LIST_DRIVE_FILES = "list_drive_files"
 
+    # Google Docs tools
+    CREATE_GOOGLE_DOC = "create_google_doc"
+    GET_GOOGLE_DOC_CONTENT = "get_google_doc_content"
+    INSERT_TEXT_IN_DOC = "insert_text_in_doc"
+    APPEND_TEXT_TO_DOC = "append_text_to_doc"
+    FORMAT_DOC_TEXT = "format_doc_text"
+    INSERT_PARAGRAPH_IN_DOC = "insert_paragraph_in_doc"
+    INSERT_TABLE_IN_DOC = "insert_table_in_doc"
+    DELETE_DOC_CONTENT = "delete_doc_content"
+    REPLACE_TEXT_IN_DOC = "replace_text_in_doc"
+
+    # Google Sheets tools
+    CREATE_GOOGLE_SHEET = "create_google_sheet"
+    GET_SHEET_VALUES = "get_sheet_values"
+    UPDATE_SHEET_VALUES = "update_sheet_values"
+    APPEND_SHEET_ROWS = "append_sheet_rows"
+    CLEAR_SHEET_RANGE = "clear_sheet_range"
+    GET_SINGLE_CELL = "get_single_cell"
+    SET_SINGLE_CELL = "set_single_cell"
+    ADD_SHEET_TAB = "add_sheet_tab"
+    DELETE_SHEET_TAB = "delete_sheet_tab"
+    INSERT_SHEET_ROWS = "insert_sheet_rows"
+    INSERT_SHEET_COLUMNS = "insert_sheet_columns"
+    DELETE_SHEET_ROWS = "delete_sheet_rows"
+    GET_SPREADSHEET_INFO = "get_spreadsheet_info"
+
+    # Google Slides tools
+    CREATE_GOOGLE_PRESENTATION = "create_google_presentation"
+    GET_PRESENTATION_INFO = "get_presentation_info"
+    ADD_SLIDE = "add_slide"
+    DELETE_SLIDE = "delete_slide"
+    INSERT_TEXT_IN_SLIDE = "insert_text_in_slide"
+    INSERT_IMAGE_IN_SLIDE = "insert_image_in_slide"
+    FORMAT_SLIDE_TEXT = "format_slide_text"
+    CREATE_TABLE_IN_SLIDE = "create_table_in_slide"
+    DELETE_SLIDE_OBJECT = "delete_slide_object"
+
     # Microsoft Outlook tools
     SEND_OUTLOOK_EMAIL = "send_outlook_email"
     FETCH_OUTLOOK_CALENDAR_EVENTS = "fetch_outlook_calendar_events"
@@ -82,6 +123,7 @@ class ToolFunctionID(str, Enum):
     FIND_OUTLOOK_CONTACT_EMAIL = "find_outlook_contact_email"
 
     # Notion tools
+    LIST_NOTION_WORKSPACES = "list_notion_workspaces"
     LIST_DATABASES = "list_databases"
     LIST_NOTION_PAGES = "list_notion_pages"
     QUERY_NOTION_DATABASE = "query_notion_database"
@@ -95,6 +137,7 @@ class ToolFunctionID(str, Enum):
     GET_NOTION_PAGE_CONTENT = "get_notion_page_content"
 
     # Dropbox tools
+    LIST_DROPBOX_ACCOUNTS = "list_dropbox_accounts"
     SAVE_FILE_TO_DROPBOX = "save_file_to_dropbox"
     READ_FILE_FROM_DROPBOX = "read_file_from_dropbox"
     LIST_DROPBOX_FILES = "list_dropbox_files"
@@ -143,6 +186,30 @@ class ToolFunctionID(str, Enum):
     QUERY_PRAXOS_MEMORY_INTELLIGENT_SEARCH = "query_praxos_memory_intelligent_search"
     ENRICH_PRAXOS_MEMORY_ENTRIES = "enrich_praxos_memory_entries"
     SETUP_NEW_TRIGGER = "setup_new_trigger"
+    EXTRACT_ENTITIES_BY_TYPE = "extract_entities_by_type"
+    EXTRACT_LITERALS_BY_TYPE = "extract_literals_by_type"
+    GET_ENTITIES_BY_TYPE_NAME = "get_entities_by_type_name"
+    STORE_NEW_ENTITY_IN_KNOWLEDGE_GRAPH = "store_new_entity_in_knowledge_graph"
+    UPDATE_KNOWLEDGE_GRAPH_LITERAL = "update_knowledge_graph_literal"
+    UPDATE_ENTITY_PROPERTIES_IN_KNOWLEDGE_GRAPH = "update_entity_properties_in_knowledge_graph"
+    DELETE_FROM_KNOWLEDGE_GRAPH = "delete_from_knowledge_graph"
+    CHECK_CONNECTED_INTEGRATIONS = "check_connected_integrations"
+
+    # Discord tools
+    LIST_DISCORD_SERVERS = "list_discord_servers"
+    SEND_DISCORD_MESSAGE = "send_discord_message"
+    SEND_DISCORD_DM = "send_discord_dm"
+    LIST_DISCORD_CHANNELS = "list_discord_channels"
+    GET_DISCORD_CHANNEL_HISTORY = "get_discord_channel_history"
+    GET_DISCORD_USER_INFO = "get_discord_user_info"
+
+    # Slack tools
+    LIST_SLACK_WORKSPACES = "list_slack_workspaces"
+    SEND_SLACK_MESSAGE = "send_slack_message"
+    SEND_SLACK_DM = "send_slack_dm"
+    LIST_SLACK_CHANNELS = "list_slack_channels"
+    GET_SLACK_CHANNEL_HISTORY = "get_slack_channel_history"
+    GET_SLACK_USER_INFO = "get_slack_user_info"
 
 class BooleanResponse(BaseModel):
     reason: str = Field(..., description="a short reason for the boolean response.")

@@ -8,6 +8,9 @@
 ###  - Location tools (get_user_location, get_user_location_history)
 ###  - Google Places tools suite (google_places_text_search, google_places_nearby_search, google_places_find_place, google_places_get_details)
 ###  - Location parameters added to reply tools (request_location, send_location_*)
+###  - Google Docs tools (9 tools for creating and manipulating Google Docs)
+###  - Google Sheets tools (13 tools for creating and manipulating Google Sheets)
+###  - Google Slides tools (9 tools for creating and manipulating Google Slides presentations)
 ### THE GOOGLE GEMINI CACHE MUST BE REGENERATED FOR THESE CHANGES TO TAKE EFFECT!
 ### After regeneration, update the cache ID in caches.py: PLANNING_CACHE_NAME
 
@@ -341,6 +344,28 @@ Generally, the idea is : If the missing information for this command is somethin
 - Supports Gmail search operators: from:, to:, subject:, is:unread, etc.
 - Examples: "from:boss@company.com subject:meeting", "dinner plans"
 
+**reply_to_email**
+- Replies to an existing email thread
+- Args: message_id, body
+- Use when: User wants to reply to a specific email
+- Maintains the thread and includes proper reply headers
+
+**get_email_content**
+- Retrieves full content of a specific email
+- Args: message_id
+- Use when: Need to read the complete content of an email
+- Returns: Subject, sender, recipients, body, attachments info
+
+**archive_email**
+- Archives an email (removes from inbox, keeps in All Mail)
+- Args: message_id
+- Use when: User wants to archive an email to clean up inbox
+
+**mark_email_as_read**
+- Marks an email as read
+- Args: message_id
+- Use when: User wants to mark an email as read without opening it
+
 ---
 
 ### Google Calendar Tools (requires Google Calendar integration)
@@ -390,6 +415,207 @@ Generally, the idea is : If the missing information for this command is somethin
 
 ---
 
+### Google Docs Tools (requires Google Drive integration with Docs scope)
+
+**create_google_doc**
+- Creates a new empty Google Doc
+- Args: title, account (optional)
+- Use when: User wants to create a new Google Doc document
+- Returns: Document ID and URL
+- Note: Creates an actual Google Doc (not plain text), allowing rich formatting
+
+**get_google_doc_content**
+- Retrieves content from a Google Doc
+- Args: document_id, plain_text_only (bool, default False), account (optional)
+- Use when: User wants to read or analyze a Google Doc
+- Returns: Plain text or full document structure
+
+**insert_text_in_doc**
+- Inserts text at a specific position in a Google Doc
+- Args: document_id, text, index (default 1), account (optional)
+- Use when: User wants to add text at a specific location in a doc
+- Index: 1 = beginning after title
+
+**append_text_to_doc**
+- Appends text to the end of a Google Doc
+- Args: document_id, text, account (optional)
+- Use when: User wants to add text at the end of a doc
+- Simpler than insert_text_in_doc for appending
+
+**format_doc_text**
+- Applies formatting to text ranges in a Google Doc
+- Args: document_id, start_index, end_index, bold (optional), italic (optional), underline (optional), account (optional)
+- Use when: User wants to format text (make bold, italic, underline)
+- Requires knowing the character positions
+
+**insert_paragraph_in_doc**
+- Inserts a paragraph into a Google Doc, optionally as a heading
+- Args: document_id, text, index (default 1), heading_level (1-6, optional), account (optional)
+- Use when: User wants to add paragraphs or headings to a doc
+- Heading levels: 1 is largest, 6 is smallest
+
+**insert_table_in_doc**
+- Inserts a table into a Google Doc
+- Args: document_id, rows, columns, index (default 1), account (optional)
+- Use when: User wants to add tables to a doc
+- Creates an empty table that can be populated later
+
+**delete_doc_content**
+- Deletes content in a specific range of a Google Doc
+- Args: document_id, start_index, end_index, account (optional)
+- Use when: User wants to remove text from a doc
+- Requires character positions
+
+**replace_text_in_doc**
+- Finds and replaces all occurrences of text in a Google Doc
+- Args: document_id, find_text, replace_text, match_case (bool, default True), account (optional)
+- Use when: User wants to find and replace text throughout a doc
+- Returns: Number of replacements made
+
+---
+
+### Google Sheets Tools (requires Google Drive integration with Sheets scope)
+
+**create_google_sheet**
+- Creates a new Google Spreadsheet
+- Args: title, sheet_names (optional list), account (optional)
+- Use when: User wants to create a new spreadsheet
+- Returns: Spreadsheet ID and URL
+- Can create multiple sheets at once
+
+**get_sheet_values**
+- Gets cell values from a Google Sheet
+- Args: spreadsheet_id, range_name (A1 notation, e.g., 'Sheet1!A1:D10'), account (optional)
+- Use when: User wants to read data from a sheet
+- Returns: 2D list of cell values
+
+**update_sheet_values**
+- Updates cell values in a Google Sheet
+- Args: spreadsheet_id, range_name, values (2D list), account (optional)
+- Use when: User wants to write data to specific cells
+- Overwrites existing data in the range
+
+**append_sheet_rows**
+- Appends rows to the end of a Google Sheet
+- Args: spreadsheet_id, range_name, values (2D list), account (optional)
+- Use when: User wants to add new rows without overwriting
+- Automatically finds the next empty row
+
+**clear_sheet_range**
+- Clears values from a range in a Google Sheet
+- Args: spreadsheet_id, range_name, account (optional)
+- Use when: User wants to delete data from cells
+- Keeps cell formatting but removes values
+
+**get_single_cell**
+- Gets the value of a single cell
+- Args: spreadsheet_id, sheet_name, row (1-based), column (letter like 'A'), account (optional)
+- Use when: User needs a specific cell value
+- Simpler than get_sheet_values for single cells
+
+**set_single_cell**
+- Sets the value of a single cell
+- Args: spreadsheet_id, sheet_name, row (1-based), column (letter), value, account (optional)
+- Use when: User wants to update a single cell
+- Can include formulas (e.g., '=SUM(A1:A10)')
+
+**add_sheet_tab**
+- Adds a new sheet tab to an existing spreadsheet
+- Args: spreadsheet_id, sheet_title, rows (default 1000), columns (default 26), account (optional)
+- Use when: User wants to add another sheet to a spreadsheet
+- Like adding a new tab in Excel
+
+**delete_sheet_tab**
+- Deletes a sheet tab from a spreadsheet
+- Args: spreadsheet_id, sheet_id (numeric ID, not title), account (optional)
+- Use when: User wants to remove a sheet tab
+- Use get_spreadsheet_info to find sheet IDs
+
+**insert_sheet_rows**
+- Inserts empty rows into a sheet
+- Args: spreadsheet_id, sheet_id, start_index (0-based), count, account (optional)
+- Use when: User wants to insert blank rows
+- Shifts existing rows down
+
+**insert_sheet_columns**
+- Inserts empty columns into a sheet
+- Args: spreadsheet_id, sheet_id, start_index (0-based), count, account (optional)
+- Use when: User wants to insert blank columns
+- Shifts existing columns right
+
+**delete_sheet_rows**
+- Deletes rows from a sheet
+- Args: spreadsheet_id, sheet_id, start_index (0-based), end_index (exclusive), account (optional)
+- Use when: User wants to remove rows
+- Permanently deletes the rows
+
+**get_spreadsheet_info**
+- Gets metadata and structure of a spreadsheet
+- Args: spreadsheet_id, account (optional)
+- Use when: User needs sheet IDs, names, or spreadsheet properties
+- Returns: Sheet list with IDs and titles
+
+---
+
+### Google Slides Tools (requires Google Drive integration with Slides scope)
+
+**create_google_presentation**
+- Creates a new Google Slides presentation
+- Args: title, account (optional)
+- Use when: User wants to create a new presentation
+- Returns: Presentation ID and URL
+- Creates empty presentation with no slides
+
+**get_presentation_info**
+- Gets metadata and structure of a presentation
+- Args: presentation_id, account (optional)
+- Use when: User needs slide IDs or presentation properties
+- Returns: Slide list with IDs and layouts
+
+**add_slide**
+- Adds a new slide to a presentation
+- Args: presentation_id, insertion_index (optional, None = end), layout (default 'BLANK'), account (optional)
+- Use when: User wants to add slides to a presentation
+- Layout options: BLANK, TITLE_AND_BODY, TITLE_ONLY, etc.
+
+**delete_slide**
+- Deletes a slide from a presentation
+- Args: presentation_id, slide_id (object ID), account (optional)
+- Use when: User wants to remove a slide
+- Use get_presentation_info to find slide IDs
+
+**insert_text_in_slide**
+- Inserts a text box with text into a slide
+- Args: presentation_id, slide_id, text, x (default 100), y (default 100), width (default 400), height (default 100), account (optional)
+- Use when: User wants to add text to a slide
+- Position and size in points
+
+**insert_image_in_slide**
+- Inserts an image into a slide
+- Args: presentation_id, slide_id, image_url (must be publicly accessible), x, y, width, height, account (optional)
+- Use when: User wants to add images to slides
+- Requires public image URL
+
+**format_slide_text**
+- Applies text formatting in a slide
+- Args: presentation_id, object_id, start_index, end_index, bold (optional), italic (optional), font_size (optional), account (optional)
+- Use when: User wants to format text in a slide
+- Requires text box object ID from presentation structure
+
+**create_table_in_slide**
+- Creates a table in a slide
+- Args: presentation_id, slide_id, rows, columns, x, y, width, height, account (optional)
+- Use when: User wants to add tables to slides
+- Creates empty table structure
+
+**delete_slide_object**
+- Deletes an object (text box, image, shape, table) from a slide
+- Args: presentation_id, object_id, account (optional)
+- Use when: User wants to remove elements from a slide
+- Use get_presentation_info to find object IDs
+
+---
+
 ### Microsoft Outlook Tools (requires Microsoft/Outlook integration)
 
 **send_outlook_email**
@@ -415,6 +641,11 @@ Generally, the idea is : If the missing information for this command is somethin
 ---
 
 ### Notion Tools (requires Notion integration)
+
+**list_notion_workspaces**
+- Lists all Notion workspaces connected for the user
+- Use this first to see which Notion workspaces are available
+- Returns: Workspace IDs, names
 
 **list_databases**
 - Lists all Notion databases accessible to user
@@ -474,6 +705,11 @@ Generally, the idea is : If the missing information for this command is somethin
 ---
 
 ### Dropbox Tools (requires Dropbox integration)
+
+**list_dropbox_accounts**
+- Lists all connected Dropbox accounts for the user
+- Use this first to see which Dropbox accounts are available
+- Returns: Account IDs, display names
 
 **save_file_to_dropbox**
 - Saves/uploads file to Dropbox
@@ -776,6 +1012,54 @@ Generally, the idea is : If the missing information for this command is somethin
 - Examples: "When I receive email from X, remind me to reply in 2 hours"
 - Creates: IF-THEN rules that execute automatically
 
+**extract_entities_by_type**
+- Extracts entities of a specific type from the knowledge graph
+- Args: entity_type
+- Use when: Need to retrieve all entities of a certain category from memory
+- Advanced tool for knowledge graph manipulation
+
+**extract_literals_by_type**
+- Extracts literal values of a specific type from the knowledge graph
+- Args: literal_type
+- Use when: Need to retrieve specific data points from knowledge graph
+- Advanced tool for knowledge graph queries
+
+**get_entities_by_type_name**
+- Retrieves entities matching a specific type name
+- Args: type_name
+- Use when: Searching for entities by their classification
+- Advanced tool for knowledge graph navigation
+
+**store_new_entity_in_knowledge_graph**
+- Stores a new entity in the user's knowledge graph
+- Args: entity_data (dict with entity properties)
+- Use when: Adding new structured information to long-term memory
+- Advanced tool for knowledge graph updates
+
+**update_knowledge_graph_literal**
+- Updates a literal value in the knowledge graph
+- Args: node_id, literal_key, new_value
+- Use when: Modifying specific data points in stored knowledge
+- Advanced tool for knowledge graph maintenance
+
+**update_entity_properties_in_knowledge_graph**
+- Updates properties of an existing entity
+- Args: entity_id, properties (dict)
+- Use when: Modifying attributes of stored entities
+- Advanced tool for knowledge graph updates
+
+**delete_from_knowledge_graph**
+- Deletes a node from the knowledge graph
+- Args: node_id
+- Use when: Removing outdated or incorrect information from memory
+- Advanced tool for knowledge graph cleanup
+
+**check_connected_integrations**
+- Checks which integrations are connected for the user
+- Returns: List of active integrations
+- Use when: Need to verify what services user has connected
+- Helps determine what tools are available
+
 ---
 
 ### Discord Tools (requires Discord integration)
@@ -815,6 +1099,40 @@ Generally, the idea is : If the missing information for this command is somethin
 
 ---
 
+### Slack Tools (requires Slack integration)
+
+**list_slack_workspaces**
+- Lists all connected Slack workspaces for the user
+- Use this first to see which Slack workspaces are available
+- Returns: Workspace IDs, team names, team IDs
+
+**send_slack_message**
+- Sends a message to a Slack channel
+- Args: channel (ID or name), text, account (optional workspace identifier)
+- Use when: User wants to send message to a Slack channel
+
+**send_slack_dm**
+- Sends a direct message to a Slack user
+- Args: user_id, text, account (optional workspace identifier)
+- Use when: User wants to send DM to someone on Slack
+
+**list_slack_channels**
+- Lists channels in a Slack workspace
+- Args: account (workspace identifier)
+- Use when: "Show me channels in my Slack workspace"
+- Returns: Channel names, IDs, types
+
+**get_slack_channel_history**
+- Fetches recent messages from a Slack channel
+- Args: channel (ID or name), limit (default 10), account (optional workspace identifier)
+- Use when: "Get recent messages from #general"
+- Returns: List of messages with timestamps, authors
+
+**get_slack_user_info**
+- Gets info about a Slack user by ID
+- Args: user_id, account (optional workspace identifier)
+- Use when: "Get info about user with ID U123456789"
+- Returns: Username, ID, display name, email, status
 
 ---
 
@@ -886,6 +1204,15 @@ When planning, consider:
 - Message on Telegram: "Email my boss about the report" → [`find_contact_email`, `send_email`, `reply_to_user_on_telegram`]
 - Message on iMessage: "Browse this website and tell me the pricing" → [`browse_website_with_ai`, `reply_to_user_on_imessage`]
 - Message on WhatsApp: "Generate an infographic and email it to my team" → [`send_intermediate_message`, `generate_image`, `send_email`, `reply_to_user_on_whatsapp`]
+
+**Google Docs/Sheets/Slides Tasks**:
+- Message on Telegram: "Create a new doc with my meeting notes" → [`create_google_doc`, `append_text_to_doc`, `reply_to_user_on_telegram`]
+- Message on WhatsApp: "Make a spreadsheet tracking my expenses" → [`create_google_sheet`, `update_sheet_values`, `reply_to_user_on_whatsapp`]
+- Message on iMessage: "Add this data to my budget sheet" → [`get_spreadsheet_info`, `append_sheet_rows`, `reply_to_user_on_imessage`]
+- Message on Telegram: "Create a presentation about our Q4 results" → [`create_google_presentation`, `add_slide`, `insert_text_in_slide`, `reply_to_user_on_telegram`]
+- Message on WhatsApp: "Read that Google Doc and summarize it" → [`get_google_doc_content`, `reply_to_user_on_whatsapp`]
+- Message on iMessage: "Update cell B5 in my budget to 1500" → [`set_single_cell`, `reply_to_user_on_imessage`]
+- Message on Telegram: "Replace all mentions of 'Q3' with 'Q4' in my report doc" → [`replace_text_in_doc`, `reply_to_user_on_telegram`]
 
 **Location-Based Tasks** (IMPORTANT - use location data!):
 - Message on Telegram: "Find restaurants near me" → [`get_user_location`, `google_places_nearby_search`, `reply_to_user_on_telegram`]

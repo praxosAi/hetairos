@@ -187,6 +187,49 @@ def create_browser_tool(request_id, user_id, metadata):
 
     return browse_website_with_ai
 
+@tool
+def google_search(query: str) -> ToolExecutionResponse:
+    """
+    Searches Google for information using the Google Search API.
+    Returns top search results with titles, snippets, and URLs.
+
+    Args:
+        query: The search query string
+
+    Examples:
+        - "latest news about AI"
+        - "weather in New York"
+        - "Python programming tutorials"
+    """
+    try:
+        from langchain_google_community import GoogleSearchAPIWrapper
+
+        logger.info(f"Executing Google search for query: {query}")
+        search = GoogleSearchAPIWrapper()
+        results = search.run(query)
+
+        return ToolExecutionResponse(
+            status="success",
+            result=results
+        )
+
+    except ImportError as e:
+        logger.error(f"Failed to import Google Search API wrapper: {e}", exc_info=True)
+        return ErrorResponseBuilder.from_exception(
+            operation="google_search",
+            exception=e,
+            integration="google_search_api",
+            context={"query": query, "error": "Google Search API dependencies not installed"}
+        )
+    except Exception as e:
+        logger.error(f"Google search failed for query '{query}': {e}", exc_info=True)
+        return ErrorResponseBuilder.from_exception(
+            operation="google_search",
+            exception=e,
+            integration="google_search_api",
+            context={"query": query}
+        )
+
 def create_web_tools(request_id: str, user_id: str, metadata: dict) -> list:
     """
     Create web tools including AI browser tool that publishes to browser_tasks queue.
@@ -196,7 +239,7 @@ def create_web_tools(request_id: str, user_id: str, metadata: dict) -> list:
         user_id: User ID
         metadata: Request metadata including conversation_id, source, etc.
     """
-    tools = [read_webpage_content]
+    tools = [read_webpage_content, google_search]
 
     if request_id is not None:
         # Add AI browser tool that publishes to queue

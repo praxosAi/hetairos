@@ -3,7 +3,6 @@ from src.core.context import UserContext
 from src.services.conversation_manager import ConversationManager
 from src.utils.logging import setup_logger
 from langchain_core.tools import Tool
-from langchain_google_community import GoogleSearchAPIWrapper
 import asyncio
 # Integration Clients
 from src.integrations.notion.notion_client import NotionIntegration
@@ -207,14 +206,6 @@ class AgentToolsFactory:
                 tools.extend(create_database_access_tools(user_id))
             except Exception as e:
                 logger.error(f"Error creating database access tools: {e}", exc_info=True)
-
-        # Google Search
-        if is_tool_required('google_search'):
-            try:
-                search = GoogleSearchAPIWrapper()
-                tools.append(Tool(name="google_search", description="Search Google for recent results.", func=search.run))
-            except Exception as e:
-                logger.error(f"Error creating Google search tool: {e}", exc_info=True)
 
         # Google Places
         if needs_category(['google_places_text_search', 'google_places_nearby_search', 'google_places_find_place', 'google_places_get_details']):

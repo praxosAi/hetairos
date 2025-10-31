@@ -1,19 +1,5 @@
 
 ### NOTE: WE ARE NOT USING THIS IN THIS FORM, INSTEAD USING A CACHED TOOL. THIS IMPROVES LATENCY. NOTE THAT EDITTING THIS DOES EXACTLY NOTHING, but you may cache it for yourself and change the cache name in the adjacent caches.py file.
-### IMPORTANT UPDATE (Phase 1-3 Implementation):
-### This file has been updated with new tools:
-###  - Platform messaging tools (reply_to_user_on_whatsapp, reply_to_user_on_telegram, reply_to_user_on_imessage)
-###  - Media generation tools (generate_image, generate_audio, generate_video)
-###  - Media bus tools (list_available_media, get_media_by_id, get_recent_images)
-###  - Location tools (get_user_location, get_user_location_history)
-###  - Google Places tools suite (google_places_text_search, google_places_nearby_search, google_places_find_place, google_places_get_details)
-###  - Location parameters added to reply tools (request_location, send_location_*)
-###  - Google Docs tools (9 tools for creating and manipulating Google Docs)
-###  - Google Sheets tools (13 tools for creating and manipulating Google Sheets)
-###  - Google Slides tools (9 tools for creating and manipulating Google Slides presentations)
-### THE GOOGLE GEMINI CACHE MUST BE REGENERATED FOR THESE CHANGES TO TAKE EFFECT!
-### After regeneration, update the cache ID in caches.py: PLANNING_CACHE_NAME
-
 """
 Granular tooling capabilities with specific function IDs and descriptions.
 Used by the granular planning agent to select precise tools needed for each task.
@@ -1237,6 +1223,7 @@ NOTES:
 ### If the user seems to be saying that you are not correctly handling a task, or that you are  providing the wrong information, you should unlock more tools, for example google search if the info is incorrect, or browse website if the info is not available. Take note of the user's feedback and sentiment during the conversation.
 ### In the event that the user's query requires an integration which is this list, but the list of the user's integrations do not include the required provider, it means that the user has not integrated that service yet. In such cases, you must use the integration management tool to help the user integrate that service, before you can perform the task.
 ### Take into account the previous tool calls and their results. The plan must only indicate what needs to be done moving forward, not what has already been done.
+### consider if prior messages by the user indicated that we needed a tool, and whether that tool was already used, with results obtained. Do not include tools that have already been used and obtained results for. Conversely, if the user's query had indicated the need for a tool, but we had to ask questions, and they have now provided the needed info, you should now include the tool again.
 """
 
 

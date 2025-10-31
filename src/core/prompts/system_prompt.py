@@ -120,6 +120,8 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
         task_prompt = "\nIMPORTANT NOTE: this message was received on the 'websocket' channel. You must respond on the websocket channel. if they asked for sending an email or a message or similar, you must use the appropriate tools. Note that there is no way to send intermediate messages on websocket, so you should focus on performing the task."
     elif source == "mcp":
         task_prompt = "\nIMPORTANT NOTE: this message was received via MCP (Model Context Protocol) from an external AI client (like Claude Code). The requesting AI needs you to help with a task on behalf of the user. Perform the requested action using your available tools and integrations. The response will be sent back to the requesting AI, which will then present it to the user. Focus on providing complete, actionable information. If you're missing an integration that's needed, explain clearly what integration is required and how the user can connect it."
+    elif source == "browser_tool":
+        task_prompt = f"\n\nThis user is messaged us on the '{metadata.get('original_source')}' channel. The result of the all the browse_website_with_ai tools are recieved and put it in to the context.\n\n"
     else:
         task_prompt = f"\n\nThis message was received on the '{source}' channel. \n\n"
     logger.info(f"Task prompt: {task_prompt}")

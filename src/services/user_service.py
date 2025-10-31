@@ -478,12 +478,16 @@ class UserService:
                 "connected_account": telegram_username or f"telegram_{telegram_chat_id}",
                 "telegram_chat_id": telegram_chat_id,
                 "status": "active",
+                "settings": {
+                    "username": telegram_username,
+                    "notifications": True,
+                    "consent_given": True,
+                    "integration_method": "username"
+                },
                 "metadata": {
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "language": language,
-                    "registered_via": "telegram_start",
-                    "connected_at": datetime.utcnow().isoformat()
+                    "connected_at": datetime.utcnow().isoformat(),
+                    "consent_timestamp": datetime.utcnow().isoformat(),
+                    "phone_verified": False
                 }
             }
 

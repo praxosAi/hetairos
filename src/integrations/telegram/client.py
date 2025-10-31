@@ -107,6 +107,77 @@ class TelegramClient:
         self.logger.info(f"Requesting location from chat {chat_id}")
         return await self._make_request("sendMessage", payload)
 
+    async def send_message_with_inline_keyboard(self, chat_id: int, text: str, inline_keyboard: dict):
+        """Send text message with inline keyboard buttons."""
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "reply_markup": inline_keyboard
+        }
+        return await self._make_request("sendMessage", payload)
+
+    async def send_account_selection_prompt(self, chat_id: int, first_name: str):
+        """Send interactive prompt asking if user has existing account."""
+        inline_keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "✅ Yes, I have an account", "callback_data": "link_account"}
+                ],
+                [
+                    {"text": "🆕 No, create my account", "callback_data": "create_account"}
+                ]
+            ]
+        }
+
+        welcome_text = f"👋 Hello {first_name}!\n\nAre you already registered on Praxos?"
+
+        return await self.send_message_with_inline_keyboard(
+            chat_id=chat_id,
+            text=welcome_text,
+            inline_keyboard=inline_keyboard
+        )
+
+    async def send_language_selection(self, chat_id: int, first_name: str):
+        """Send language selection prompt to new user."""
+        inline_keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "🇺🇸 English", "callback_data": "lang_en"},
+                    {"text": "🇪🇸 Español", "callback_data": "lang_es"}
+                ],
+                [
+                    {"text": "🇫🇷 Français", "callback_data": "lang_fr"},
+                    {"text": "🇩🇪 Deutsch", "callback_data": "lang_de"}
+                ],
+                [
+                    {"text": "🇵🇹 Português", "callback_data": "lang_pt"},
+                    {"text": "🇮🇹 Italiano", "callback_data": "lang_it"}
+                ],
+                [
+                    {"text": "🇨🇳 中文", "callback_data": "lang_zh"},
+                    {"text": "🇯🇵 日本語", "callback_data": "lang_ja"}
+                ]
+            ]
+        }
+
+        text = f"👋 Welcome, {first_name}!\n\n🌍 Please select your preferred language:"
+
+        return await self.send_message_with_inline_keyboard(
+            chat_id=chat_id,
+            text=text,
+            inline_keyboard=inline_keyboard
+        )
+
+    async def answer_callback_query(self, callback_query_id: str, text: Optional[str] = None):
+        """Answer a callback query from inline keyboard button."""
+        payload = {
+            "callback_query_id": callback_query_id,
+        }
+        if text:
+            payload["text"] = text
+
+        return await self._make_request("answerCallbackQuery", payload)
+
     async def _make_request(self, method: str, payload: dict, is_json: bool = True):
         """Make a request to the Telegram Bot API"""
         url = f"{self.base_url}/{method}"

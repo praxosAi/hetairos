@@ -289,8 +289,8 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                     response.raise_for_status()
                     result = response.json()
 
-                link_url = result['link_url']
-                expires_in = result['expires_in']
+                link_url = result['data']['link_url']
+                expires_in = result['data']['expires_in']
 
                 # Send message with inline button linking to webapp
                 link_keyboard = {

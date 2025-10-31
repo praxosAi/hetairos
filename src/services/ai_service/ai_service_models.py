@@ -251,20 +251,3 @@ class GranularPlanningResponse(BaseModel):
 
 
 
-class PlanStep(BaseModel):
-    """Represents a single step in a plan."""
-    step_number: int = Field(..., description="The step number in the sequence.")
-    description: str = Field(..., description="A detailed description of the step.")
-    done: bool = Field(..., description="The status of the step: 'DONE', 'IN PROGRESS', or 'NOT STARTED'.")
-class GranularPlanningResponse(BaseModel):
-    """Enhanced planning response with specific tool function IDs."""
-    reason: str = Field(..., description="A short reason for the planning decision.")
-    query_type: str = Field(..., description="The type of query: 'command' or 'conversational'.", enum=['command', 'conversational'])
-    tooling_need: bool = Field(False, description="Indicates whether external tools are needed.")
-    missing_data_for_tools: Optional[bool] = Field(False, description="Indicates if any required data for the tools is missing.")
-    steps: Optional[List[PlanStep]] = Field(default_factory=list, description="Actionable steps for the task.")
-    plan: Optional[str] = Field(None, description="A detailed plan outlining the steps, if needed.")
-    required_tools: List[ToolFunctionID] = Field(
-        default_factory=list,
-        description="Specific tool function IDs required for this task. Only include tools that are ACTUALLY needed. Be precise and minimal."
-    )

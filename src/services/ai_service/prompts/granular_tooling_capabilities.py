@@ -1284,9 +1284,11 @@ NOTES:
 ### FURTHER NOTE: If the query has variables or other data that you need to fill in, you should use the appropriate tools to obtain the data, then, perform the task. You should be chaining tools together as needed.
 ### If the user seems to be saying that you are not correctly handling a task, or that you are  providing the wrong information, you should unlock more tools, for example google search if the info is incorrect, or browse website if the info is not available. Take note of the user's feedback and sentiment during the conversation.
 ### In the event that the user's query requires an integration which is this list, but the list of the user's integrations do not include the required provider, it means that the user has not integrated that service yet. In such cases, you must use the integration management tool to help the user integrate that service, before you can perform the task.
-### Take into account the previous tool calls and their results. The plan must only indicate what needs to be done moving forward, not what has already been done.
+### Take into account the previous tool calls and their results. The plan must only indicate what needs to be done moving forward, not what has already been done. if a tool has already been called and results obtained, you may add it in the steps as "done", but do not include it in the list of tools to be used.
 ### consider if prior messages by the user indicated that we needed a tool, and whether that tool was already used, with results obtained. Do not include tools that have already been used and obtained results for. Conversely, if the user's query had indicated the need for a tool, but we had to ask questions, and they have now provided the needed info, you should now include the tool again.
+### indicate explicitly if a step is done or needs to be done. steps are necessary when multiple tools are present.
 """
+
 
 
 

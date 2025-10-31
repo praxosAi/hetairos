@@ -697,3 +697,184 @@ class GmailIntegration(BaseIntegration):
             labels_to_remove=['INBOX'],
             account=account
         )
+
+    async def mark_as_unread(self, message_id: str, *, account: Optional[str] = None) -> Dict:
+        """
+        Marks a message as unread by adding the 'UNREAD' label.
+        """
+        return await self.modify_message_labels(
+            message_id=message_id,
+            labels_to_add=['UNREAD'],
+            account=account
+        )
+
+    async def add_star(self, message_id: str, *, account: Optional[str] = None) -> Dict:
+        """
+        Stars a message by adding the 'STARRED' label.
+        """
+        return await self.modify_message_labels(
+            message_id=message_id,
+            labels_to_add=['STARRED'],
+            account=account
+        )
+
+    async def remove_star(self, message_id: str, *, account: Optional[str] = None) -> Dict:
+        """
+        Removes the star from a message by removing the 'STARRED' label.
+        """
+        return await self.modify_message_labels(
+            message_id=message_id,
+            labels_to_remove=['STARRED'],
+            account=account
+        )
+
+    async def move_to_spam(self, message_id: str, *, account: Optional[str] = None) -> Dict:
+        """
+        Moves a message to spam by adding the 'SPAM' label.
+        """
+        return await self.modify_message_labels(
+            message_id=message_id,
+            labels_to_add=['SPAM'],
+            account=account
+        )
+
+    async def move_to_trash(self, message_id: str, *, account: Optional[str] = None) -> Dict:
+        """
+        Moves a message to trash by adding the 'TRASH' label.
+        """
+        return await self.modify_message_labels(
+            message_id=message_id,
+            labels_to_add=['TRASH'],
+            account=account
+        )
+
+    async def create_draft(self, recipient: str, subject: str, body: str, *, account: Optional[str] = None) -> Dict:
+        """
+        Creates a draft email in Gmail.
+        """
+        service, _, resolved_account = self._get_services_for_account(account)
+
+        message = EmailMessage()
+        if '<' in body and '>' in body:
+            html_body = body.replace('\n', '<br>')
+            message.add_alternative(html_body, subtype='html')
+        else:
+            message.set_content(body)
+
+        message['To'] = recipient
+        message['From'] = resolved_account
+        message['Subject'] = subject
+
+        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        draft_body = {
+            'message': {
+                'raw': encoded_message
+            }
+        }
+
+        try:
+            draft = service.users().drafts().create(
+                userId='me',
+                body=draft_body
+            ).execute()
+            return {
+                "draft_id": draft['id'],
+                "message_id": draft['message']['id'],
+                "status": "draft_created"
+            }
+        except HttpError as e:
+            logger.error(f"Error creating draft for {resolved_account}: {e}")
+            raise Exception("Failed to create draft.") from e
+
+    async def list_labels(self, *, account: Optional[str] = None) -> List[Dict]:
+        """
+        Lists all labels (folders) in the Gmail account.
+        """
+        service, _, resolved_account = self._get_services_for_account(account)
+
+        try:
+            results = service.users().labels().list(userId='me').execute()
+            labels = results.get('labels', [])
+            return [
+                {
+                    "id": label['id'],
+                    "name": label['name'],
+                    "type": label.get('type', 'user')
+                }
+                for label in labels
+            ]
+        except HttpError as e:
+            logger.error(f"Error listing labels for {resolved_account}: {e}")
+            raise Exception("Failed to list labels.") from e
+
+    async def add_label_to_message(self, message_id: str, label_name: str, *, account: Optional[str] = None) -> Dict:
+        """
+        Adds a specific label to a message. Creates the label if it doesn't exist.
+        """
+        service, _, resolved_account = self._get_services_for_account(account)
+
+        try:
+            # First, check if label exists
+            labels = await self.list_labels(account=account)
+            label_id = None
+
+            for label in labels:
+                if label['name'].lower() == label_name.lower():
+                    label_id = label['id']
+                    break
+
+            # If label doesn't exist, create it
+            if not label_id:
+                label_body = {
+                    'name': label_name,
+                    'labelListVisibility': 'labelShow',
+                    'messageListVisibility': 'show'
+                }
+                created_label = service.users().labels().create(
+                    userId='me',
+                    body=label_body
+                ).execute()
+                label_id = created_label['id']
+                logger.info(f"Created new label '{label_name}' for {resolved_account}")
+
+            # Add the label to the message
+            return await self.modify_message_labels(
+                message_id=message_id,
+                labels_to_add=[label_id],
+                account=account
+            )
+        except HttpError as e:
+            logger.error(f"Error adding label to message for {resolved_account}: {e}")
+            raise Exception(f"Failed to add label '{label_name}'.") from e
+
+    async def remove_label_from_message(self, message_id: str, label_name: str, *, account: Optional[str] = None) -> Dict:
+        """
+        Removes a specific label from a message.
+        """
+        service, _, resolved_account = self._get_services_for_account(account)
+
+        try:
+            # Find the label ID
+            labels = await self.list_labels(account=account)
+            label_id = None
+
+            for label in labels:
+                if label['name'].lower() == label_name.lower():
+                    label_id = label['id']
+                    break
+
+            if not label_id:
+                return {
+                    "status": "error",
+                    "message": f"Label '{label_name}' not found."
+                }
+
+            # Remove the label from the message
+            return await self.modify_message_labels(
+                message_id=message_id,
+                labels_to_remove=[label_id],
+                account=account
+            )
+        except HttpError as e:
+            logger.error(f"Error removing label from message for {resolved_account}: {e}")
+            raise Exception(f"Failed to remove label '{label_name}'.") from e

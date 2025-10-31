@@ -464,8 +464,8 @@ class UserService:
                 response = await client.post(endpoint, json=payload, timeout=30)
                 response.raise_for_status()
                 backend_response = response.json()
-
-            user_id = backend_response["user_id"]
+                logger.info(f"Telegram registration response: {backend_response}")
+            user_id = backend_response['data']["user_id"]
 
             # Step 2: Create integration record in hetairos
             from src.services.integration_service import integration_service
@@ -495,8 +495,8 @@ class UserService:
 
             # Step 3: Update milestones
             from src.services.milestone_service import milestone_service
-            await milestone_service.user_create_account(user_id)
-            await milestone_service.user_connect_integration(user_id, "telegram")
+            await milestone_service.user_setup_messaging(user_id)
+
 
             logger.info(f"Successfully registered Telegram user {telegram_chat_id} as user_id {user_id}")
 

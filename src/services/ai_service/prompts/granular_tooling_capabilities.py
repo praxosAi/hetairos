@@ -349,8 +349,62 @@ Generally, the idea is : If the missing information for this command is somethin
 
 **mark_email_as_read**
 - Marks an email as read
-- Args: message_id
+- Args: message_id, account (optional)
 - Use when: User wants to mark an email as read without opening it
+
+**mark_email_as_unread**
+- Marks an email as unread
+- Args: message_id, account (optional)
+- Use when: User wants to mark an email as unread
+
+**star_email**
+- Adds a star to an email
+- Args: message_id, account (optional)
+- Use when: User wants to star/flag an important email
+- Makes it easier to find later
+
+**unstar_email**
+- Removes the star from an email
+- Args: message_id, account (optional)
+- Use when: User wants to remove the star from an email
+
+**move_email_to_spam**
+- Moves an email to spam folder
+- Args: message_id, account (optional)
+- Use when: User wants to mark an email as spam
+- Helps train Gmail's spam filter
+
+**move_email_to_trash**
+- Moves an email to trash
+- Args: message_id, account (optional)
+- Use when: User wants to delete an email
+- Email can be recovered from trash for 30 days
+
+**create_email_draft**
+- Creates a draft email without sending it
+- Args: recipient, subject, body, account (optional)
+- Use when: User wants to prepare an email to send later
+- Draft can be edited and sent from Gmail interface
+- Good for preparing emails to review before sending
+
+**list_gmail_labels**
+- Lists all labels (folders/categories) in Gmail account
+- Args: account (optional)
+- Use when: User asks "What folders do I have?" or needs to know available labels
+- Returns both system labels (Inbox, Sent, etc.) and custom labels
+
+**add_label_to_email**
+- Adds a label/folder to an email (moves it to that folder)
+- Args: message_id, label_name, account (optional)
+- Use when: User wants to organize emails by moving them to folders
+- Creates the label if it doesn't already exist
+- Examples: "Move this to Work folder", "Add Project X label"
+
+**remove_label_from_email**
+- Removes a label/folder from an email
+- Args: message_id, label_name, account (optional)
+- Use when: User wants to remove an email from a folder
+- Examples: "Remove from Archive", "Take out of Work folder"
 
 ---
 

@@ -338,11 +338,19 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                     language=language
                 )
 
-                success_msg = f"""🎉 Welcome to Praxos, {first_name}!
+                # Welcome messages in each language
+                welcome_messages = {
+                    "en": f"🎉 Welcome to Praxos, {first_name}!\n\nYour account has been created successfully!\n\nYou can now start chatting with me here. How can I help you today?",
+                    "es": f"🎉 ¡Bienvenido a Praxos, {first_name}!\n\n¡Tu cuenta ha sido creada exitosamente!\n\nAhora puedes comenzar a chatear conmigo aquí. ¿Cómo puedo ayudarte hoy?",
+                    "pt": f"🎉 Bem-vindo ao Praxos, {first_name}!\n\nSua conta foi criada com sucesso!\n\nVocê já pode começar a conversar comigo aqui. Como posso ajudá-lo hoje?",
+                    "ru": f"🎉 Добро пожаловать в Praxos, {first_name}!\n\nВаш аккаунт успешно создан!\n\nТеперь вы можете общаться со мной здесь. Чем могу помочь сегодня?",
+                    "fa": f"🎉 به Praxos خوش آمدید، {first_name}!\n\nحساب شما با موفقیت ایجاد شد!\n\nاکنون می‌توانید اینجا با من چت کنید. امروز چطور می‌تونم کمکتون کنم؟",
+                    "fr": f"🎉 Bienvenue sur Praxos, {first_name}!\n\nVotre compte a été créé avec succès!\n\nVous pouvez maintenant commencer à discuter avec moi ici. Comment puis-je vous aider aujourd'hui?",
+                    "de": f"🎉 Willkommen bei Praxos, {first_name}!\n\nIhr Konto wurde erfolgreich erstellt!\n\nSie können jetzt hier mit mir chatten. Wie kann ich Ihnen heute helfen?",
+                    "ar": f"🎉 مرحباً بك في Praxos، {first_name}!\n\nتم إنشاء حسابك بنجاح!\n\nيمكنك الآن بدء الدردشة معي هنا. كيف يمكنني مساعدتك اليوم؟"
+                }
 
-                    Your account has been created successfully!
-
-                    You can now start chatting with me here. How can I help you today?"""
+                success_msg = welcome_messages.get(language, welcome_messages["en"])
 
                 await telegram_client.send_message(chat_id, success_msg)
 
@@ -359,7 +367,20 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
 
             except Exception as e:
                 logger.error(f"Registration failed: {str(e)}")
-                error_msg = "Sorry, registration failed. Please try again later or contact support."
+
+                # Error messages in each language
+                error_messages = {
+                    "en": "Sorry, registration failed. Please try again later or contact support.",
+                    "es": "Lo sentimos, el registro falló. Por favor, inténtalo de nuevo más tarde o contacta a soporte.",
+                    "pt": "Desculpe, o registro falhou. Por favor, tente novamente mais tarde ou entre em contato com o suporte.",
+                    "ru": "Извините, регистрация не удалась. Пожалуйста, попробуйте позже или свяжитесь с поддержкой.",
+                    "fa": "متاسفیم، ثبت‌نام ناموفق بود. لطفاً بعداً دوباره امتحان کنید یا با پشتیبانی تماس بگیرید.",
+                    "fr": "Désolé, l'inscription a échoué. Veuillez réessayer plus tard ou contacter le support.",
+                    "de": "Entschuldigung, die Registrierung ist fehlgeschlagen. Bitte versuchen Sie es später erneut oder kontaktieren Sie den Support.",
+                    "ar": "عذراً، فشل التسجيل. يرجى المحاولة مرة أخرى لاحقاً أو الاتصال بالدعم."
+                }
+
+                error_msg = error_messages.get(language, error_messages["en"])
                 await telegram_client.send_message(chat_id, error_msg)
 
         return {"status": "ok"}

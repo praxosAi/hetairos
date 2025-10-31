@@ -67,6 +67,15 @@ class ToolFunctionID(str, Enum):
     GET_EMAIL_CONTENT = "get_email_content"
     ARCHIVE_EMAIL = "archive_email"
     MARK_EMAIL_AS_READ = "mark_email_as_read"
+    MARK_EMAIL_AS_UNREAD = "mark_email_as_unread"
+    STAR_EMAIL = "star_email"
+    UNSTAR_EMAIL = "unstar_email"
+    MOVE_EMAIL_TO_SPAM = "move_email_to_spam"
+    MOVE_EMAIL_TO_TRASH = "move_email_to_trash"
+    CREATE_EMAIL_DRAFT = "create_email_draft"
+    LIST_GMAIL_LABELS = "list_gmail_labels"
+    ADD_LABEL_TO_EMAIL = "add_label_to_email"
+    REMOVE_LABEL_FROM_EMAIL = "remove_label_from_email"
 
     # Google Calendar tools
     GET_CALENDAR_EVENTS = "get_calendar_events"

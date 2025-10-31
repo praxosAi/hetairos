@@ -450,7 +450,7 @@ class UserService:
         try:
             # Step 1: Call mypraxos-backend
             backend_url = settings.PRAXOS_BASE_URL
-            endpoint = f"{backend_url}/auth/register/telegram"
+            endpoint = f"{backend_url}/api/auth/register/telegram"
 
             payload = {
                 "telegram_chat_id": telegram_chat_id,

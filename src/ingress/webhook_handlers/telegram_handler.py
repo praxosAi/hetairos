@@ -274,8 +274,8 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                 from src.config.settings import settings
                 import httpx
 
-                backend_url = settings.MYPRAXOS_BACKEND_URL
-                endpoint = f"{backend_url}/auth/telegram/generate-link-token"
+                backend_url = settings.PRAXOS_BASE_URL
+                endpoint = f"{backend_url}/api/auth/telegram/generate-link-token"
 
                 payload = {
                     "telegram_chat_id": chat_id,

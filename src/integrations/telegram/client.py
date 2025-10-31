@@ -146,16 +146,16 @@ class TelegramClient:
                     {"text": "🇪🇸 Español", "callback_data": "lang_es"}
                 ],
                 [
-                    {"text": "🇫🇷 Français", "callback_data": "lang_fr"},
-                    {"text": "🇩🇪 Deutsch", "callback_data": "lang_de"}
-                ],
-                [
                     {"text": "🇵🇹 Português", "callback_data": "lang_pt"},
-                    {"text": "🇮🇹 Italiano", "callback_data": "lang_it"}
+                    {"text": "🇷🇺 Русский", "callback_data": "lang_ru"}
                 ],
                 [
-                    {"text": "🇨🇳 中文", "callback_data": "lang_zh"},
-                    {"text": "🇯🇵 日本語", "callback_data": "lang_ja"}
+                    {"text": "🇮🇷 فارسی", "callback_data": "lang_fa"},
+                    {"text": "🇫🇷 Français", "callback_data": "lang_fr"}
+                ],
+                [
+                    {"text": "🇩🇪 Deutsch", "callback_data": "lang_de"},
+                    {"text": "🇸🇦 العربية", "callback_data": "lang_ar"}
                 ]
             ]
         }

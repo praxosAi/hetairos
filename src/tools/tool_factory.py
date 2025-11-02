@@ -10,6 +10,9 @@ from src.integrations.microsoft.graph_client import MicrosoftGraphIntegration
 from src.integrations.calendar.google_calendar import GoogleCalendarIntegration
 from src.integrations.email.gmail_client import GmailIntegration
 from src.integrations.gdrive.gdrive_client import GoogleDriveIntegration
+from src.integrations.gdrive.google_docs_client import GoogleDocsIntegration
+from src.integrations.gdrive.google_sheets_client import GoogleSheetsIntegration
+from src.integrations.gdrive.google_slides_client import GoogleSlidesIntegration
 from src.integrations.dropbox.dropbox_client import DropboxIntegration
 from src.integrations.trello.trello_client import TrelloIntegration
 from src.core.praxos_client import PraxosClient
@@ -18,6 +21,9 @@ from src.core.praxos_client import PraxosClient
 from src.tools.google_calendar import create_calendar_tools
 from src.tools.google_mail import create_gmail_tools
 from src.tools.google_drive import create_drive_tools
+from src.tools.google_docs import create_docs_tools
+from src.tools.google_sheets import create_sheets_tools
+from src.tools.google_slides import create_slides_tools
 from src.tools.microsoft_graph import create_outlook_tools
 from src.tools.notion import create_notion_tools
 from src.tools.trello import create_trello_tools
@@ -67,7 +73,7 @@ class AgentToolsFactory:
             required_tool_ids: List of specific tool function IDs to load. If None, loads all tools.
         """
         tools = []
-
+        logger.info(f"minimal_tools={minimal_tools}, required_tool_ids={required_tool_ids}")
         user_id = user_context.user_id
         user_email = user_context.user_record.get('email')
         have_email_tool = False
@@ -239,22 +245,20 @@ class AgentToolsFactory:
             return tools
 
         # Determine which integrations need authentication based on required tools
-        needs_gmail = needs_category([
-        'send_email', 'reply_to_email', 'search_gmail', 'get_email_content',
-            'get_emails_from_sender', 'find_contact_email', 'archive_email', 'mark_email_as_read',
-            'mark_email_as_unread', 'star_email', 'unstar_email', 'move_email_to_spam',
-            'move_email_to_trash', 'create_email_draft', 'list_gmail_labels',
-            'add_label_to_email', 'remove_label_from_email'
-        ])
+        needs_gmail = needs_category(['send_email', 'reply_to_email', 'search_gmail', 'get_email_content','get_emails_from_sender', 'find_contact_email', 'archive_email', 'mark_email_as_read','mark_email_as_unread', 'star_email', 'unstar_email', 'move_email_to_spam','move_email_to_trash', 'create_email_draft', 'list_gmail_labels','add_label_to_email', 'remove_label_from_email'])
         needs_gcal = needs_category(['get_calendar_events', 'create_calendar_event'])
         needs_gdrive = needs_category(['search_google_drive_files', 'save_file_to_drive', 'create_text_file_in_drive', 'read_file_content_by_id', 'list_drive_files'])
+        needs_gdocs = needs_category(['create_google_doc', 'get_google_doc_content', 'insert_text_in_doc', 'append_text_to_doc', 'format_doc_text', 'insert_paragraph_in_doc', 'insert_table_in_doc', 'delete_doc_content', 'replace_text_in_doc'])
+        needs_gsheets = needs_category(['create_google_sheet', 'get_sheet_values', 'update_sheet_values', 'append_sheet_rows', 'clear_sheet_range', 'get_single_cell', 'set_single_cell', 'add_sheet_tab', 'delete_sheet_tab', 'insert_sheet_rows', 'insert_sheet_columns', 'delete_sheet_rows', 'get_spreadsheet_info'])
+        needs_gslides = needs_category(['create_google_presentation', 'get_presentation_info', 'add_slide', 'delete_slide', 'insert_text_in_slide', 'insert_image_in_slide', 'format_slide_text', 'create_table_in_slide', 'delete_slide_object'])
         needs_outlook = needs_category(['send_outlook_email', 'fetch_outlook_calendar_events', 'get_outlook_emails_from_sender', 'find_outlook_contact_email'])
         needs_notion = needs_category(['list_databases', 'list_notion_pages', 'query_notion_database', 'get_all_workspace_entries', 'search_notion_pages_by_keyword', 'create_notion_page', 'create_notion_database_entry', 'create_notion_database', 'append_to_notion_page', 'update_notion_page_properties', 'get_notion_page_content'])
         needs_dropbox = needs_category(['save_file_to_dropbox', 'read_file_from_dropbox','list_dropbox_files','search_dropbox_files'])
         needs_trello = needs_category(['list_trello_accounts','list_trello_organizations','list_trello_boards','get_trello_board_details','create_trello_board','share_trello_board','create_trello_list','list_trello_cards','get_trello_card','create_trello_card','update_trello_card','move_trello_card','add_trello_comment','create_trello_checklist','get_board_members','get_card_members','assign_member_to_card','unassign_member_from_card','search_trello']) 
+        logger.info(f'needs_gmail: {needs_gmail}')
          # If no specific tools requested, authenticate all (backward compatibility)
         if required_tool_ids is None:
-            needs_gmail = needs_gcal = needs_gdrive = needs_outlook = needs_notion = needs_dropbox = needs_trello = True
+            needs_gmail = needs_gcal = needs_gdrive = needs_gdocs = needs_gsheets = needs_gslides = needs_outlook = needs_notion = needs_dropbox = needs_trello = True
 
         # Only authenticate integrations that are actually needed
         auth_tasks = []
@@ -274,6 +278,21 @@ class AgentToolsFactory:
             gdrive_integration = GoogleDriveIntegration(user_id)
             auth_tasks.append(gdrive_integration.authenticate())
             integration_map['gdrive'] = (len(auth_tasks) - 1, gdrive_integration)
+
+        if needs_gdocs:
+            gdocs_integration = GoogleDocsIntegration(user_id)
+            auth_tasks.append(gdocs_integration.authenticate())
+            integration_map['gdocs'] = (len(auth_tasks) - 1, gdocs_integration)
+
+        if needs_gsheets:
+            gsheets_integration = GoogleSheetsIntegration(user_id)
+            auth_tasks.append(gsheets_integration.authenticate())
+            integration_map['gsheets'] = (len(auth_tasks) - 1, gsheets_integration)
+
+        if needs_gslides:
+            gslides_integration = GoogleSlidesIntegration(user_id)
+            auth_tasks.append(gslides_integration.authenticate())
+            integration_map['gslides'] = (len(auth_tasks) - 1, gslides_integration)
 
         if needs_outlook:
             outlook_integration = MicrosoftGraphIntegration(user_id)
@@ -332,6 +351,33 @@ class AgentToolsFactory:
                     logger.info("Google Drive tools loaded")
                 except Exception as e:
                     logger.error(f"Error creating drive tools: {e}", exc_info=True)
+
+        if 'gdocs' in integration_map:
+            idx, gdocs_integration = integration_map['gdocs']
+            if authenticated_integrations[idx] is True:
+                try:
+                    tools.extend(create_docs_tools(gdocs_integration))
+                    logger.info("Google Docs tools loaded")
+                except Exception as e:
+                    logger.error(f"Error creating docs tools: {e}", exc_info=True)
+
+        if 'gsheets' in integration_map:
+            idx, gsheets_integration = integration_map['gsheets']
+            if authenticated_integrations[idx] is True:
+                try:
+                    tools.extend(create_sheets_tools(gsheets_integration))
+                    logger.info("Google Sheets tools loaded")
+                except Exception as e:
+                    logger.error(f"Error creating sheets tools: {e}", exc_info=True)
+
+        if 'gslides' in integration_map:
+            idx, gslides_integration = integration_map['gslides']
+            if authenticated_integrations[idx] is True:
+                try:
+                    tools.extend(create_slides_tools(gslides_integration))
+                    logger.info("Google Slides tools loaded")
+                except Exception as e:
+                    logger.error(f"Error creating slides tools: {e}", exc_info=True)
 
         if 'outlook' in integration_map:
             idx, outlook_integration = integration_map['outlook']

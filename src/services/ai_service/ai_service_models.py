@@ -39,7 +39,7 @@ class ToolFunctionID(str, Enum):
     # Basic tools
     GET_CURRENT_TIME = "get_current_time"
     GET_CURRENT_TASK_PLAN_AND_STEP = "get_current_task_plan_and_step"
-    ASK_USER_FOR_MISSING_PARAMS = "ask_user_for_missing_params"
+    # ASK_USER_FOR_MISSING_PARAMS = "ask_user_for_missing_params"
     CONSULT_DEFAULTS_AND_PREFERENCES_FOR_MISSING_PARAMS = "consult_defaults_and_preferences_for_missing_params"
     CONSULT_PRAXOS_LONG_TERM_MEMORY = "consult_praxos_long_term_memory"
     # Preference tools

@@ -228,11 +228,6 @@ Below is a comprehensive list of ALL available tool functions with their IDs and
 - Examples: The user wants to find their  glucose levels, which could be available in their health tracking data that has been ingested into their long-term memory. Or, the assistant needs to find the name of their alma mater university.
 
 
-**ask_user_for_missing_params**
-- Use this when you have determined that we are missing parameters for other needed tools, and that the info should be provided by the user. 
-- Generally, this is the first line of action when the info you are seeking is unlikely to be available in the user's preferences, be a default data point or long-term memory.
-- This is recordkeeping tool, and we use to know when this happens. If it's needed, it must always be indicated.
-
 Generally, the idea is : If the missing information for this command is something that is SPECIFIC to this current task, and not prior iterations, such as the subject of an email, or the recipient of a message, then it should be asked from the user. If it's something that could be available in the user's preferences, such as which email account to use, or which trello board to use, then consult preferences. If it's something that is more general knowledge about the user, such as their favorite restaurant, or their health data, then consult long-term memory.
 ---
 

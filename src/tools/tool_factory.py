@@ -239,7 +239,13 @@ class AgentToolsFactory:
             return tools
 
         # Determine which integrations need authentication based on required tools
-        needs_gmail = needs_category(['send_email', 'get_emails_from_sender', 'find_contact_email', 'search_gmail'])
+        needs_gmail = needs_category([
+        'send_email', 'reply_to_email', 'search_gmail', 'get_email_content',
+            'get_emails_from_sender', 'find_contact_email', 'archive_email', 'mark_email_as_read',
+            'mark_email_as_unread', 'star_email', 'unstar_email', 'move_email_to_spam',
+            'move_email_to_trash', 'create_email_draft', 'list_gmail_labels',
+            'add_label_to_email', 'remove_label_from_email'
+        ])
         needs_gcal = needs_category(['get_calendar_events', 'create_calendar_event'])
         needs_gdrive = needs_category(['search_google_drive_files', 'save_file_to_drive', 'create_text_file_in_drive', 'read_file_content_by_id', 'list_drive_files'])
         needs_outlook = needs_category(['send_outlook_email', 'fetch_outlook_calendar_events', 'get_outlook_emails_from_sender', 'find_outlook_contact_email'])

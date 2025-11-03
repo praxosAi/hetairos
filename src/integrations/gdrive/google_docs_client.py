@@ -437,6 +437,74 @@ class GoogleDocsIntegration(BaseIntegration):
             logger.error(f"Error replacing text in document {document_id}: {e}")
             raise Exception(f"Failed to replace text: {e}")
 
+    async def search_in_document(self, document_id: str, search_text: str,
+                                match_case: bool = False, *, account: Optional[str] = None) -> Dict:
+        """Searches for text within a Google Doc and returns all occurrences with context.
+
+        Args:
+            document_id: ID of the document
+            search_text: Text to search for
+            match_case: Whether to match case (default False)
+            account: Google account to use
+
+        Returns:
+            Dict with occurrences count and list of matches with positions and context
+        """
+        doc = await self.get_document(document_id, account=account)
+
+        # Extract all text with positions
+        text_content = []
+        for element in doc.get('body', {}).get('content', []):
+            if 'paragraph' in element:
+                paragraph = element['paragraph']
+                for elem in paragraph.get('elements', []):
+                    if 'textRun' in elem:
+                        text = elem['textRun'].get('content', '')
+                        start_index = elem.get('startIndex', 0)
+                        end_index = elem.get('endIndex', 0)
+                        if text:
+                            text_content.append({
+                                'text': text,
+                                'start_index': start_index,
+                                'end_index': end_index
+                            })
+
+        # Build full text
+        full_text = ''.join([t['text'] for t in text_content])
+
+        # Search for occurrences
+        search_lower = search_text if match_case else search_text.lower()
+        text_to_search = full_text if match_case else full_text.lower()
+
+        matches = []
+        start_pos = 0
+        while True:
+            pos = text_to_search.find(search_lower, start_pos)
+            if pos == -1:
+                break
+
+            # Find context (50 chars before and after)
+            context_start = max(0, pos - 50)
+            context_end = min(len(full_text), pos + len(search_text) + 50)
+            context = full_text[context_start:context_end]
+
+            matches.append({
+                'position': pos,
+                'context': context.strip(),
+                'match_text': full_text[pos:pos + len(search_text)]
+            })
+
+            start_pos = pos + 1
+
+        logger.info(f"Found {len(matches)} occurrences of '{search_text}' in document {document_id}")
+
+        return {
+            'document_id': document_id,
+            'search_text': search_text,
+            'occurrences_found': len(matches),
+            'matches': matches
+        }
+
     async def fetch_recent_data(self) -> None:
         """Fetches recent data for all connected accounts to refresh tokens if needed."""
         logger.info(f"Fetching recent data for Google Docs accounts of user {self.user_id}")

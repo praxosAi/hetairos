@@ -318,6 +318,41 @@ def create_docs_tools(docs_integration: GoogleDocsIntegration) -> List:
                 context={"document_id": document_id, "find_text": find_text}
             )
 
+    @tool
+    async def search_google_doc(
+        document_id: str,
+        search_text: str,
+        match_case: bool = False,
+        account: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """
+        Searches for text within a Google Doc and returns all occurrences with context.
+
+        Args:
+            document_id: ID of the document
+            search_text: Text to search for
+            match_case: Whether to match case (default False for case-insensitive)
+            account: The specific account to use if the user has multiple
+
+        Returns:
+            Dict with number of occurrences and list of matches with position and context
+        """
+        try:
+            result = await docs_integration.search_in_document(
+                document_id, search_text,
+                match_case=match_case,
+                account=account
+            )
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            logger.error(f"Error searching Google Doc: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="search_google_doc",
+                exception=e,
+                integration="Google Docs",
+                context={"document_id": document_id, "search_text": search_text}
+            )
+
     # Dynamic account description logic
     accounts = docs_integration.get_connected_accounts()
     if not accounts:
@@ -332,7 +367,8 @@ def create_docs_tools(docs_integration: GoogleDocsIntegration) -> List:
         insert_paragraph_in_doc,
         insert_table_in_doc,
         delete_doc_content,
-        replace_text_in_doc
+        replace_text_in_doc,
+        search_google_doc
     ]
 
     if len(accounts) == 1:

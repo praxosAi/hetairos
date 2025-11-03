@@ -515,6 +515,13 @@ Generally, the idea is : If the missing information for this command is somethin
 - Use when: User wants to find and replace text throughout a doc
 - Returns: Number of replacements made
 
+**search_google_doc**
+- Searches for text within a Google Doc and returns all occurrences with context
+- Args: document_id, search_text, match_case (bool, default False), account (optional)
+- Use when: User wants to find where specific text appears in a document
+- Returns: Number of occurrences, each match with position and 50-character context
+- Note: Case-insensitive by default, useful for locating content before editing
+
 ---
 
 ### Google Sheets Tools (requires Google Drive integration with Sheets scope)
@@ -598,6 +605,13 @@ Generally, the idea is : If the missing information for this command is somethin
 - Use when: User needs sheet IDs, names, or spreadsheet properties
 - Returns: Sheet list with IDs and titles
 
+**search_google_sheet**
+- Searches for text within a Google Spreadsheet and returns all matching cells
+- Args: spreadsheet_id, search_text, match_case (bool, default False), sheet_name (optional), account (optional)
+- Use when: User wants to find where specific text appears in a spreadsheet
+- Returns: Number of cells containing the text, each with sheet, cell address (e.g., 'Sheet1!A5'), and value
+- Note: Searches all sheets by default, or specify sheet_name to search only one sheet
+
 ---
 
 ### Google Slides Tools (requires Google Drive integration with Slides scope)
@@ -656,6 +670,13 @@ Generally, the idea is : If the missing information for this command is somethin
 - Args: presentation_id, object_id, account (optional)
 - Use when: User wants to remove elements from a slide
 - Use get_presentation_info to find object IDs
+
+**search_google_presentation**
+- Searches for text within a Google Slides presentation and returns all matching slides
+- Args: presentation_id, search_text, match_case (bool, default False), account (optional)
+- Use when: User wants to find which slides contain specific text
+- Returns: Number of slides with matches, slide numbers, and text snippets with context
+- Note: Searches in both text boxes and table cells on all slides
 
 ---
 
@@ -1256,6 +1277,9 @@ When planning, consider:
 - Message on WhatsApp: "Read that Google Doc and summarize it" → [`get_google_doc_content`, `reply_to_user_on_whatsapp`]
 - Message on iMessage: "Update cell B5 in my budget to 1500" → [`set_single_cell`, `reply_to_user_on_imessage`]
 - Message on Telegram: "Replace all mentions of 'Q3' with 'Q4' in my report doc" → [`replace_text_in_doc`, `reply_to_user_on_telegram`]
+- Message on WhatsApp: "Find where I mentioned 'budget' in my report doc" → [`search_google_doc`, `reply_to_user_on_whatsapp`]
+- Message on Telegram: "Which cells in my expense sheet contain 'lunch'?" → [`search_google_sheet`, `reply_to_user_on_telegram`]
+- Message on iMessage: "Which slides in my presentation mention 'Q4 goals'?" → [`search_google_presentation`, `reply_to_user_on_imessage`]
 
 **Location-Based Tasks** (IMPORTANT - use location data!):
 - Message on Telegram: "Find restaurants near me" → [`get_user_location`, `google_places_nearby_search`, `reply_to_user_on_telegram`]

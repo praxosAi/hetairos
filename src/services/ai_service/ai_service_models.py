@@ -98,6 +98,7 @@ class ToolFunctionID(str, Enum):
     INSERT_TABLE_IN_DOC = "insert_table_in_doc"
     DELETE_DOC_CONTENT = "delete_doc_content"
     REPLACE_TEXT_IN_DOC = "replace_text_in_doc"
+    SEARCH_GOOGLE_DOC = "search_google_doc"
 
     # Google Sheets tools
     CREATE_GOOGLE_SHEET = "create_google_sheet"
@@ -113,6 +114,7 @@ class ToolFunctionID(str, Enum):
     INSERT_SHEET_COLUMNS = "insert_sheet_columns"
     DELETE_SHEET_ROWS = "delete_sheet_rows"
     GET_SPREADSHEET_INFO = "get_spreadsheet_info"
+    SEARCH_GOOGLE_SHEET = "search_google_sheet"
 
     # Google Slides tools
     CREATE_GOOGLE_PRESENTATION = "create_google_presentation"
@@ -124,6 +126,7 @@ class ToolFunctionID(str, Enum):
     FORMAT_SLIDE_TEXT = "format_slide_text"
     CREATE_TABLE_IN_SLIDE = "create_table_in_slide"
     DELETE_SLIDE_OBJECT = "delete_slide_object"
+    SEARCH_GOOGLE_PRESENTATION = "search_google_presentation"
 
     # Microsoft Outlook tools
     SEND_OUTLOOK_EMAIL = "send_outlook_email"

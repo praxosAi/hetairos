@@ -463,6 +463,44 @@ def create_sheets_tools(sheets_integration: GoogleSheetsIntegration) -> List:
                 context={"spreadsheet_id": spreadsheet_id}
             )
 
+    @tool
+    async def search_google_sheet(
+        spreadsheet_id: str,
+        search_text: str,
+        match_case: bool = False,
+        sheet_name: Optional[str] = None,
+        account: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """
+        Searches for text within a Google Spreadsheet and returns all matching cells.
+
+        Args:
+            spreadsheet_id: ID of the spreadsheet
+            search_text: Text to search for
+            match_case: Whether to match case (default False for case-insensitive)
+            sheet_name: Optional specific sheet name to search in (default: all sheets)
+            account: The specific account to use if the user has multiple
+
+        Returns:
+            Dict with number of occurrences and list of matching cells with their positions
+        """
+        try:
+            result = await sheets_integration.search_in_spreadsheet(
+                spreadsheet_id, search_text,
+                match_case=match_case,
+                sheet_name=sheet_name,
+                account=account
+            )
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            logger.error(f"Error searching Google Sheet: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="search_google_sheet",
+                exception=e,
+                integration="Google Sheets",
+                context={"spreadsheet_id": spreadsheet_id, "search_text": search_text}
+            )
+
     # Dynamic account description logic
     accounts = sheets_integration.get_connected_accounts()
     if not accounts:
@@ -481,7 +519,8 @@ def create_sheets_tools(sheets_integration: GoogleSheetsIntegration) -> List:
         insert_sheet_rows,
         insert_sheet_columns,
         delete_sheet_rows,
-        get_spreadsheet_info
+        get_spreadsheet_info,
+        search_google_sheet
     ]
 
     if len(accounts) == 1:

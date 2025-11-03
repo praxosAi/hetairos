@@ -523,6 +523,108 @@ class GoogleSlidesIntegration(BaseIntegration):
             logger.error(f"Error deleting object from presentation {presentation_id}: {e}")
             raise Exception(f"Failed to delete object: {e}")
 
+    async def search_in_presentation(self, presentation_id: str, search_text: str,
+                                    match_case: bool = False, *, account: Optional[str] = None) -> Dict:
+        """Searches for text within a Google Slides presentation and returns all matches.
+
+        Args:
+            presentation_id: ID of the presentation
+            search_text: Text to search for
+            match_case: Whether to match case (default False)
+            account: Google account to use
+
+        Returns:
+            Dict with occurrences count and list of matching slides with text
+        """
+        presentation = await self.get_presentation(presentation_id, account=account)
+
+        matches = []
+        search_lower = search_text if match_case else search_text.lower()
+
+        # Search through each slide
+        for slide_idx, slide in enumerate(presentation.get('slides', [])):
+            slide_id = slide['objectId']
+            slide_number = slide_idx + 1
+            slide_matches = []
+
+            # Search through page elements
+            for element in slide.get('pageElements', []):
+                text_found = self._extract_text_from_element(element, search_lower, match_case)
+                if text_found:
+                    slide_matches.extend(text_found)
+
+            if slide_matches:
+                matches.append({
+                    'slide_number': slide_number,
+                    'slide_id': slide_id,
+                    'occurrences': len(slide_matches),
+                    'text_snippets': slide_matches
+                })
+
+        logger.info(f"Found {len(matches)} slides containing '{search_text}' in presentation {presentation_id}")
+
+        return {
+            'presentation_id': presentation_id,
+            'search_text': search_text,
+            'slides_with_matches': len(matches),
+            'total_occurrences': sum(m['occurrences'] for m in matches),
+            'matches': matches
+        }
+
+    def _extract_text_from_element(self, element: Dict, search_text: str, match_case: bool) -> List[Dict]:
+        """Extracts text from a page element and checks for matches."""
+        matches = []
+
+        # Check if element has shape with text
+        if 'shape' in element:
+            shape = element['shape']
+            if 'text' in shape:
+                text_content = shape['text']
+                full_text = ""
+
+                # Extract text from all text elements
+                for text_elem in text_content.get('textElements', []):
+                    if 'textRun' in text_elem:
+                        full_text += text_elem['textRun'].get('content', '')
+
+                # Search in the extracted text
+                text_to_search = full_text if match_case else full_text.lower()
+                if search_text in text_to_search:
+                    # Find context
+                    pos = text_to_search.find(search_text)
+                    context_start = max(0, pos - 30)
+                    context_end = min(len(full_text), pos + len(search_text) + 30)
+                    context = full_text[context_start:context_end].strip()
+
+                    matches.append({
+                        'element_type': 'text_box',
+                        'context': context,
+                        'full_text': full_text[:200]  # Limit to 200 chars
+                    })
+
+        # Check if element has table
+        elif 'table' in element:
+            table = element['table']
+            for row_idx, row in enumerate(table.get('tableRows', [])):
+                for cell_idx, cell in enumerate(row.get('tableCells', [])):
+                    if 'text' in cell:
+                        text_content = cell['text']
+                        cell_text = ""
+
+                        for text_elem in text_content.get('textElements', []):
+                            if 'textRun' in text_elem:
+                                cell_text += text_elem['textRun'].get('content', '')
+
+                        text_to_search = cell_text if match_case else cell_text.lower()
+                        if search_text in text_to_search:
+                            matches.append({
+                                'element_type': 'table_cell',
+                                'row': row_idx + 1,
+                                'column': cell_idx + 1,
+                                'context': cell_text.strip()
+                            })
+
+        return matches
 
     async def fetch_recent_data(self) -> None:
         """Fetches recent data for all connected accounts to refresh tokens if needed."""

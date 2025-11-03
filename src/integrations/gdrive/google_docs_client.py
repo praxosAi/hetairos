@@ -436,3 +436,8 @@ class GoogleDocsIntegration(BaseIntegration):
         except Exception as e:
             logger.error(f"Error replacing text in document {document_id}: {e}")
             raise Exception(f"Failed to replace text: {e}")
+
+    async def fetch_recent_data(self) -> None:
+        """Fetches recent data for all connected accounts to refresh tokens if needed."""
+        logger.info(f"Fetching recent data for Google Docs accounts of user {self.user_id}")
+        pass

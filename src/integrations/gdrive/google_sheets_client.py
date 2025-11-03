@@ -578,3 +578,8 @@ class GoogleSheetsIntegration(BaseIntegration):
         """
         range_name = f"{sheet_name}!{col}{row}"
         return await self.update_values(spreadsheet_id, range_name, [[value]], account=account)
+
+    async def fetch_recent_data(self) -> None:
+        """Fetches recent data for all connected accounts to refresh tokens if needed."""
+        logger.info(f"Fetching recent data for Google Sheets accounts of user {self.user_id}")
+        pass

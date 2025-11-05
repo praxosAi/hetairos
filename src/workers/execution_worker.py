@@ -7,7 +7,7 @@ import re
 
 from src.core.agent_runner_langgraph import LangGraphAgentRunner
 from src.core.context import create_user_context
-from src.tools.tool_types import ToolExecutionResponse
+from src.tools.tool_types import ErrorDetails, ToolExecutionResponse, ErrorCategory
 from src.utils.logging.base_logger import setup_logger, user_id_var, modality_var, request_id_var
 from src.services.scheduling_service import scheduling_service
 from src.ingest.ingestion_worker import InitialIngestionCoordinator
@@ -163,7 +163,15 @@ class ExecutionWorker:
         if not prev_message.get("metadata", {}).get("asynchronous_task_status") == "success":
             tool_result_json = prev_message.get("content", "")
             tool_result = ToolExecutionResponse.model_validate_json(tool_result_json)
-            tool_result.result = event.get('payload', {}).get('text','')
+
+            event_payload = event.get('payload', {})
+            tool_result.result = event_payload.get('text','')
+            if event_payload.get('error'):
+                tool_result.error_details = ErrorDetails(
+                    error_message=event_payload.get('error'),
+                    operation="browser_tool_execution",
+                    category=ErrorCategory.IINTERNAL_ERROR
+                )
 
             await conversation_db.messages.update_one(
                 {"_id": prev_message["_id"]},

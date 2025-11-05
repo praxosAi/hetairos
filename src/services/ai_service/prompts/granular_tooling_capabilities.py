@@ -77,10 +77,15 @@ GRANULAR_TOOLING_CAPABILITIES = PREFIX + TOOL_DOCS + POSTFIX
 
 def get_tool_docs_hash() -> str:
     """
-    Get hash of tool documentation for cache invalidation.
-    Only the TOOL_DOCS portion is hashed (not PREFIX/POSTFIX).
+    Get hash of complete prompt content for cache invalidation.
+    Includes PREFIX + TOOL_DOCS + POSTFIX (everything that goes into the cache).
 
     Returns:
         12-character hash string
     """
-    return tool_registry.get_version_hash()
+    import hashlib
+
+    # Hash the complete prompt content
+    complete_content = PREFIX + TOOL_DOCS + POSTFIX
+    hash_obj = hashlib.sha256(complete_content.encode())
+    return hash_obj.hexdigest()[:12]

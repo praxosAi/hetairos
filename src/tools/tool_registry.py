@@ -450,14 +450,14 @@ if __name__ == "__main__":
     registry = ToolRegistry()
     registry.load()
 
-    print(f"\nLoaded {len(registry.get_all())} tools")
-    print(f"Categories: {', '.join(registry.get_categories())}")
-    print(f"Version hash: {registry.get_version_hash()}")
+    logger.info(f"\nLoaded {len(registry.get_all())} tools")
+    logger.info(f"Categories: {', '.join(registry.get_categories())}")
+    logger.info(f"Version hash: {registry.get_version_hash()}")
 
     # Show a sample tool
     tool = registry.get('google_search')
     if tool:
-        print(f"\nSample tool: {tool.tool_id}")
-        print(f"  Category: {tool.category}")
-        print(f"  Description: {tool.short_description}")
-        print(f"  Arguments: {[arg.name for arg in tool.arguments]}")
+        logger.info(f"\nSample tool: {tool.tool_id}")
+        logger.info(f"  Category: {tool.category}")
+        logger.info(f"  Description: {tool.short_description}")
+        logger.info(f"  Arguments: {[arg.name for arg in tool.arguments]}")

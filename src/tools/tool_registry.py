@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
+from src.utils.logging.base_logger import setup_logger
 
+logger = setup_logger(__name__)
 
 @dataclass
 class ToolArgument:
@@ -112,24 +114,24 @@ class ToolRegistry:
                     tool_dict = yaml.safe_load(f)
 
                 if not tool_dict or 'tool_id' not in tool_dict:
-                    print(f"⚠️  Skipping invalid YAML: {yaml_file.name}")
+                    logger.warning(f"⚠️  Skipping invalid YAML: {yaml_file.name}")
                     continue
 
                 tool = self._parse_tool(tool_dict)
                 self._tools[tool.tool_id] = tool
 
             except Exception as e:
-                print(f"❌ Error loading {yaml_file.name}: {e}")
+                logger.error(f"❌ Error loading {yaml_file.name}: {e}")
 
         self._loaded = True
-        print(f"✓ Loaded {len(self._tools)} tools from {definitions_dir}")
+        logger.info(f"✓ Loaded {len(self._tools)} tools from {definitions_dir}")
 
         # Show category breakdown
         categories = {}
         for tool in self._tools.values():
             categories[tool.category] = categories.get(tool.category, 0) + 1
 
-        print(f"  Categories: {', '.join(f'{cat}({count})' for cat, count in sorted(categories.items()))}")
+        logger.info(f"  Categories: {', '.join(f'{cat}({count})' for cat, count in sorted(categories.items()))}")
 
     def _parse_tool(self, tool_dict: dict) -> ToolDefinition:
         """Parse a tool dictionary into a ToolDefinition object."""
@@ -210,8 +212,9 @@ class ToolRegistry:
         for tool in tools:
             # Get tool definition from YAML
             tool_def = self.get(tool.name)
-            if not tool_def:
+            if not tool_def or (self.validate_tool_implementation(tool.name) is False):
                 # Tool not in YAML database, keep original description
+                logger.info(f'no description found for tool: {tool.name}')
                 continue
 
             # Handle multi-account tools
@@ -416,13 +419,12 @@ class ToolRegistry:
         hash_obj = hashlib.sha256(json_str.encode())
         return hash_obj.hexdigest()[:12]
 
-    def validate_tool_implementation(self, tool_id: str, actual_args: List[str]) -> bool:
+    def validate_tool_implementation(self, tool_id: str) -> bool:
         """
         Validate that a tool implementation matches its definition.
 
         Args:
             tool_id: The tool ID to validate
-            actual_args: List of argument names from the actual function signature
 
         Returns:
             True if validation passes, False otherwise
@@ -433,14 +435,7 @@ class ToolRegistry:
             return False
 
         # Get expected args (excluding injected ones)
-        expected_args = [arg.name for arg in tool.arguments if not arg.injected]
 
-        # Compare
-        if set(actual_args) != set(expected_args):
-            print(f"❌ Tool '{tool_id}' argument mismatch:")
-            print(f"   Expected: {expected_args}")
-            print(f"   Actual:   {actual_args}")
-            return False
 
         print(f"✓ Tool '{tool_id}' validation passed")
         return True

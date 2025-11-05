@@ -170,7 +170,7 @@ class ExecutionWorker:
                 tool_result.error_details = ErrorDetails(
                     error_message=event_payload.get('error'),
                     operation="browser_tool_execution",
-                    category=ErrorCategory.IINTERNAL_ERROR
+                    category=ErrorCategory.INTERNAL_ERROR
                 )
 
             await conversation_db.messages.update_one(

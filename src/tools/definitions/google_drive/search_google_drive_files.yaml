@@ -1,0 +1,36 @@
+tool_id: search_google_drive_files
+category: google_drive
+display_name: search_google_drive_files
+
+short_description: Searches for files/folders in Google Drive
+
+supports_multi_account: true
+description_template: "Searches for files in Google Drive. {account_info}"
+
+arguments:
+  - name: query
+    type: str
+    description: Search query using Google Drive search operators (e.g., "name contains 'report'", "fullText contains 'keyword'")
+    required: true
+  - name: max_results
+    type: int
+    description: Maximum number of results to return
+    required: false
+    default: 20
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: File names, IDs, types, modified dates
+
+examples:
+  - '"Find my tax documents"'
+  - '"Search for presentation about Q4"'
+
+use_cases:
+  - Finding files by name or content
+  - Searching within Drive
+
+requires_integration: google_drive
+requires_auth: true

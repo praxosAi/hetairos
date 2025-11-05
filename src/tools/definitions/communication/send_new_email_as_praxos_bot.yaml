@@ -1,0 +1,37 @@
+tool_id: send_new_email_as_praxos_bot
+category: communication
+display_name: send_new_email_as_praxos_bot
+short_description: Sends a new email using the Praxos bot
+
+detailed_description: |
+  Sends a new email using the Praxos bot. This is specifically for sending a new email to someone,
+  as yourself, the mypraxos assistant. The email will be sent from the Praxos bot email address.
+
+arguments:
+  - name: recipients
+    type: list
+    description: List of recipient email addresses
+    required: true
+
+  - name: subject
+    type: str
+    description: Email subject line
+    required: true
+
+  - name: body
+    type: str
+    description: Email body content
+    required: true
+
+returns: Success confirmation
+
+examples:
+  - 'send_new_email_as_praxos_bot(["user@example.com"], "Meeting Reminder", "Your meeting is scheduled for tomorrow at 2pm")'
+
+use_cases:
+  - When sending a new email on behalf of the user
+  - When the user requests to send an email to specific recipients
+
+requires_integration: email_service
+requires_auth: false
+is_long_running: false

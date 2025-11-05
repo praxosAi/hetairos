@@ -1,0 +1,36 @@
+tool_id: list_drive_files
+category: google_drive
+display_name: list_drive_files
+
+short_description: Lists files in Drive, optionally filtered by folder
+
+supports_multi_account: true
+description_template: "Lists files in Google Drive. {account_info}"
+
+arguments:
+  - name: folder_id
+    type: str
+    description: ID of the folder to list (optional, lists all if not provided)
+    required: false
+  - name: max_results
+    type: int
+    description: Maximum number of files to return
+    required: false
+    default: 50
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: List of files with names, IDs, types
+
+examples:
+  - '"List files in my Documents folder"'
+  - '"Show recent files"'
+
+use_cases:
+  - Browse files in Drive
+  - List files in a specific folder
+
+requires_integration: google_drive
+requires_auth: true

@@ -1,0 +1,27 @@
+tool_id: get_entities_by_type_name
+category: praxos_memory
+display_name: Get Entities by Type Name
+short_description: Get all entities of a specific exact type from the knowledge graph
+arguments:
+  - name: type_name
+    type: str
+    description: Exact type name of entities to retrieve (e.g., "schema:Person", "Vehicle", "schema:Integration")
+    required: true
+  - name: max_results
+    type: int
+    description: Maximum number of entities to return
+    required: false
+    default: 50
+returns: List of all entities matching the exact type with their properties
+use_cases:
+  - Getting all "schema:Person" entities (all people)
+  - Retrieving all "Vehicle" entities
+  - Listing all "schema:Integration" entities
+  - Extracting all "Organization" entities
+  - When you know the exact schema type name
+notes:
+  - Requires exact type name (e.g., "schema:Person" not "person")
+  - Use extract_entities_by_type for natural language queries
+  - Includes literals (properties) for each entity
+  - More efficient when exact type name is known
+requires_auth: true

@@ -1,0 +1,34 @@
+tool_id: google_search
+category: web
+display_name: google_search
+
+short_description: Searches Google for information
+
+detailed_description: |
+  Searches Google for information using the Google Search API.
+  Returns top search results with titles, snippets, and URLs.
+
+arguments:
+  - name: query
+    type: str
+    description: The search query string
+    required: true
+
+returns: Top search results with titles, snippets, URLs
+
+examples:
+  - '"latest news about AI"'
+  - '"weather in New York"'
+  - '"Python programming tutorials"'
+
+use_cases:
+  - Need current information, facts, news, or web content
+  - Basic searches (not for complex site-specific searches)
+
+notes:
+  - Use browse_website_with_ai for complex searches within specific websites
+
+requires_integration: google_search_api
+requires_auth: true
+is_long_running: false
+requires_intermediate_message: false

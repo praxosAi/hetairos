@@ -1,0 +1,28 @@
+tool_id: list_dropbox_files
+category: dropbox
+display_name: list_dropbox_files
+short_description: Lists files and folders in a Dropbox directory
+supports_multi_account: true
+arguments:
+  - name: folder_path
+    type: str
+    description: Path to the folder (empty string for root folder)
+    required: false
+    default: ""
+  - name: recursive
+    type: bool
+    description: If True, lists all files recursively in subfolders
+    required: false
+    default: false
+  - name: account
+    type: str
+    description: Optional Dropbox account email/identifier. If not specified and user has only one Dropbox account, that account will be used.
+    required: false
+returns: JSON object with list of files, count, and folder path
+use_cases:
+  - Browse Dropbox folder contents
+  - List all files in a directory
+  - Recursively scan folder structures in Dropbox
+  - Discover available files before reading or processing
+requires_integration: dropbox
+requires_auth: true

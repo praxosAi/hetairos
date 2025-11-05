@@ -1,0 +1,31 @@
+tool_id: query_praxos_memory
+category: praxos_memory
+display_name: Query Praxos Memory
+short_description: Queries the Praxos knowledge base to retrieve context and information about past conversations and user preferences
+arguments:
+  - name: query
+    type: str
+    description: Search query for the knowledge base. Make the query rich and detailed for better results.
+    required: true
+  - name: top_k
+    type: int
+    description: Number of results to return
+    required: false
+    default: 4
+  - name: exclude_seen_node_ids
+    type: list
+    description: Optional list of node IDs to exclude from results (useful for iterative searches)
+    required: false
+    default: null
+returns: List of relevant memory nodes with context from past conversations and stored knowledge
+use_cases:
+  - Questions about past interactions with the user
+  - Retrieving user preferences and stored information
+  - Finding context from previous conversations
+  - Initial step when gathering information about the user
+notes:
+  - Make queries rich and detailed - short queries are unlikely to get good results
+  - Use exclude_seen_node_ids for iterative searches to avoid duplicate results
+  - This is often a good first step but don't use blindly if more info is not necessary
+  - Uses node_vec search modality for fast vector-based retrieval
+requires_auth: true

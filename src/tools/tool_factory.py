@@ -72,6 +72,10 @@ class AgentToolsFactory:
             minimal_tools: Legacy parameter - load only core tools (deprecated, use required_tool_ids instead)
             required_tool_ids: List of specific tool function IDs to load. If None, loads all tools.
         """
+        # Load tool registry ONCE for all tools
+        from src.tools.tool_registry import tool_registry
+        tool_registry.load()
+
         tools = []
         logger.info(f"minimal_tools={minimal_tools}, required_tool_ids={required_tool_ids}")
         user_id = user_context.user_id
@@ -327,7 +331,7 @@ class AgentToolsFactory:
             idx, gcal_integration = integration_map['gcal']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_calendar_tools(gcal_integration,user_time_zone))
+                    tools.extend(create_calendar_tools(gcal_integration, user_time_zone, tool_registry))
                     have_calendar_tool = True
                     logger.info("Google Calendar tools loaded")
                 except Exception as e:
@@ -337,7 +341,7 @@ class AgentToolsFactory:
             idx, gmail_integration = integration_map['gmail']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_gmail_tools(gmail_integration))
+                    tools.extend(create_gmail_tools(gmail_integration, tool_registry))
                     have_email_tool = True
                     logger.info("Gmail tools loaded")
                 except Exception as e:
@@ -347,7 +351,7 @@ class AgentToolsFactory:
             idx, gdrive_integration = integration_map['gdrive']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_drive_tools(gdrive_integration))
+                    tools.extend(create_drive_tools(gdrive_integration, tool_registry))
                     logger.info("Google Drive tools loaded")
                 except Exception as e:
                     logger.error(f"Error creating drive tools: {e}", exc_info=True)
@@ -356,7 +360,7 @@ class AgentToolsFactory:
             idx, gdocs_integration = integration_map['gdocs']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_docs_tools(gdocs_integration))
+                    tools.extend(create_docs_tools(gdocs_integration, tool_registry))
                     logger.info("Google Docs tools loaded")
                 except Exception as e:
                     logger.error(f"Error creating docs tools: {e}", exc_info=True)
@@ -365,7 +369,7 @@ class AgentToolsFactory:
             idx, gsheets_integration = integration_map['gsheets']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_sheets_tools(gsheets_integration))
+                    tools.extend(create_sheets_tools(gsheets_integration, tool_registry))
                     logger.info("Google Sheets tools loaded")
                 except Exception as e:
                     logger.error(f"Error creating sheets tools: {e}", exc_info=True)
@@ -374,7 +378,7 @@ class AgentToolsFactory:
             idx, gslides_integration = integration_map['gslides']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_slides_tools(gslides_integration))
+                    tools.extend(create_slides_tools(gslides_integration, tool_registry))
                     logger.info("Google Slides tools loaded")
                 except Exception as e:
                     logger.error(f"Error creating slides tools: {e}", exc_info=True)
@@ -383,7 +387,7 @@ class AgentToolsFactory:
             idx, outlook_integration = integration_map['outlook']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_outlook_tools(outlook_integration))
+                    tools.extend(create_outlook_tools(outlook_integration, tool_registry))
                     have_email_tool = True
                     have_calendar_tool = True
                     logger.info("Outlook tools loaded")
@@ -394,7 +398,7 @@ class AgentToolsFactory:
             idx, notion_integration = integration_map['notion']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_notion_tools(notion_integration))
+                    tools.extend(create_notion_tools(notion_integration, tool_registry))
                     logger.info("Notion tools loaded")
                 except Exception as e:
                     logger.error(f"Error creating Notion tools: {e}", exc_info=True)
@@ -403,7 +407,7 @@ class AgentToolsFactory:
             idx, dropbox_integration = integration_map['dropbox']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_dropbox_tools(dropbox_integration))
+                    tools.extend(create_dropbox_tools(dropbox_integration, tool_registry))
                     logger.info("Dropbox tools loaded")
                 except Exception as e:
                     logger.error(f"Error creating Dropbox tools: {e}", exc_info=True)
@@ -412,7 +416,7 @@ class AgentToolsFactory:
             idx, trello_integration = integration_map['trello']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_trello_tools(trello_integration))
+                    tools.extend(create_trello_tools(trello_integration, tool_registry))
                     logger.info("Trello tools loaded")
                 except Exception as e:
                     logger.error(f"Error creating Trello tools: {e}", exc_info=True)

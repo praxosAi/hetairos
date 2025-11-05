@@ -1,0 +1,27 @@
+tool_id: setup_new_trigger
+category: praxos_memory
+display_name: Setup New Trigger
+short_description: Setup a conditional trigger in Praxos memory for automated actions
+arguments:
+  - name: trigger_conditional_statement
+    type: str
+    description: The conditional statement in plain English (e.g., "If I receive an email from X, then do Y")
+    required: true
+  - name: one_time
+    type: bool
+    description: Whether the trigger should be one-time or persistent. Use False for persistent triggers with keywords like "any time" or "whenever"
+    required: false
+    default: true
+returns: Trigger setup response with rule_id
+use_cases:
+  - Setting up automated responses to events
+  - Creating reminders based on conditions
+  - Building workflows triggered by specific events
+  - One-time or recurring conditional actions
+notes:
+  - Statement should be complete and descriptive in plain English
+  - Default is one-time trigger (one_time=true)
+  - Set one_time=false if user says "any time" or "whenever"
+  - Ask user if unclear whether trigger should be persistent
+  - Trigger is stored in database with conversation context
+requires_auth: true

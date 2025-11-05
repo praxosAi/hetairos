@@ -1,0 +1,21 @@
+tool_id: read_file_from_dropbox
+category: dropbox
+display_name: read_file_from_dropbox
+short_description: Reads the content of a file from Dropbox
+supports_multi_account: true
+arguments:
+  - name: file_path
+    type: str
+    description: Path to the file in Dropbox
+    required: true
+  - name: account
+    type: str
+    description: Optional Dropbox account email/identifier. If not specified and user has only one Dropbox account, that account will be used.
+    required: false
+returns: Text content of the file from Dropbox
+use_cases:
+  - Read documents stored in Dropbox
+  - Access file content from Dropbox storage
+  - Retrieve text files for processing or analysis
+requires_integration: dropbox
+requires_auth: true

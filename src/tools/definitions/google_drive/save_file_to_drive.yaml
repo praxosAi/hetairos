@@ -1,0 +1,35 @@
+tool_id: save_file_to_drive
+category: google_drive
+display_name: save_file_to_drive
+
+short_description: Uploads a file from URL to Google Drive
+
+supports_multi_account: true
+description_template: "Uploads file to Google Drive. {account_info}"
+
+arguments:
+  - name: file_url
+    type: str
+    description: URL of the file to download and upload
+    required: true
+  - name: file_name
+    type: str
+    description: Name to save the file as
+    required: true
+  - name: drive_folder_id
+    type: str
+    description: ID of the folder to save in (optional)
+    required: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Confirmation of file saved with Drive link
+
+use_cases:
+  - User wants to save something to their Drive
+  - Upload file from URL to Drive
+
+requires_integration: google_drive
+requires_auth: true

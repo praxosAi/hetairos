@@ -1,0 +1,25 @@
+tool_id: send_discord_message
+category: discord
+display_name: send_discord_message
+short_description: Send a message to a Discord channel
+supports_multi_account: true
+arguments:
+  - name: channel
+    type: str
+    description: Channel ID or channel name (e.g., "#general" or "C1234567890")
+    required: true
+  - name: text
+    type: str
+    description: Message text to send
+    required: true
+  - name: account
+    type: str
+    description: Discord server identifier. If not specified and user has only one server, that server will be used.
+    required: false
+returns: JSON object with success message, message_ts, and channel information
+use_cases:
+  - Send messages to Discord channels
+  - Post notifications to specific channels
+  - Communicate with team members in Discord channels
+requires_integration: discord
+requires_auth: true

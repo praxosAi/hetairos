@@ -1,0 +1,30 @@
+tool_id: create_trello_board
+category: trello
+display_name: create_trello_board
+short_description: Creates a new Trello board
+supports_multi_account: true
+arguments:
+  - name: name
+    type: str
+    description: Name of the board
+    required: true
+  - name: description
+    type: str
+    description: Board description
+    required: false
+    default: ""
+  - name: organization_id
+    type: str
+    description: ID of the organization/workspace to create the board in (defaults to personal workspace)
+    required: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected). If not specified and user has only one Trello account, that account will be used.
+    required: false
+returns: JSON object containing the created board details including ID
+use_cases:
+  - Create new project boards
+  - Set up boards in specific organizations
+  - Initialize new workspaces
+requires_integration: trello
+requires_auth: true

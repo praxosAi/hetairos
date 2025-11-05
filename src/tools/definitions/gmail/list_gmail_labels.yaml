@@ -1,0 +1,20 @@
+tool_id: list_gmail_labels
+category: gmail
+display_name: list_gmail_labels
+
+short_description: Lists all labels (folders) in Gmail account
+
+arguments:
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: List of all labels/folders including system and custom labels
+
+use_cases:
+  - User wants to see their Gmail labels/folders
+  - Need to find label name before adding/removing labels
+
+requires_integration: gmail
+requires_auth: true

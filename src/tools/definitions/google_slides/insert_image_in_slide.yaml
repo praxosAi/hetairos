@@ -1,0 +1,50 @@
+tool_id: insert_image_in_slide
+category: google_slides
+display_name: insert_image_in_slide
+short_description: Inserts an image into a slide
+supports_multi_account: true
+arguments:
+  - name: presentation_id
+    type: str
+    description: ID of the presentation
+    required: true
+  - name: slide_id
+    type: str
+    description: ID of the slide
+    required: true
+  - name: image_url
+    type: str
+    description: URL of the image (must be publicly accessible)
+    required: true
+  - name: x
+    type: float
+    description: X position in points
+    required: false
+    default: 100
+  - name: y
+    type: float
+    description: Y position in points
+    required: false
+    default: 100
+  - name: width
+    type: float
+    description: Width in points
+    required: false
+    default: 300
+  - name: height
+    type: float
+    description: Height in points
+    required: false
+    default: 300
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Confirmation of image insertion
+use_cases:
+  - When adding visual content to slides
+  - When inserting logos, diagrams, or photos
+  - When positioning images at specific locations
+  - When creating visually rich presentations
+requires_integration: google_drive
+requires_auth: true

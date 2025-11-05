@@ -1,0 +1,37 @@
+tool_id: google_places_get_details
+category: google_places
+display_name: google_places_get_details
+
+short_description: Get detailed info about a place (hours, phone, website, reviews, photos)
+
+detailed_description: |
+  Get detailed information about a specific place using its Place ID.
+  Use this after getting a place_id from other search results.
+
+arguments:
+  - name: place_id
+    type: str
+    description: The Google Place ID (from text_search, nearby_search, or find_place results)
+    required: true
+
+returns: Complete info including opening hours, price level, phone, website, reviews
+
+examples:
+  - 'google_places_get_details("ChIJN1t_tDeuEmsRUsoyG83frY4")  # Sydney Opera House'
+
+use_cases:
+  - Need full details after finding a place
+  - Getting opening hours, phone, website
+  - Reading reviews
+
+notes:
+  - Requires place_id from other search tools
+  - Returns full details including hours, reviews, photos, price level
+
+workflow: |
+  1) Search with text_search/nearby_search
+  2) Get place_id from results
+  3) Call get_details for full info
+
+requires_integration: google_places_api
+requires_auth: true

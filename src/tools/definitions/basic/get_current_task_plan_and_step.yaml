@@ -1,0 +1,17 @@
+tool_id: get_current_task_plan_and_step
+category: basic
+display_name: get_current_task_plan_and_step
+
+short_description: Returns the current plan and step from planning phase
+
+arguments:
+  - name: plan
+    type: str
+    description: The plan string to return
+    required: true
+
+returns: Current plan with step statuses
+
+use_cases:
+  - Rarely needed - mostly for debugging
+  - Returns plan with step markers (DONE, IN PROGRESS, NOT STARTED)

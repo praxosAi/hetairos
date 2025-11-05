@@ -1,0 +1,56 @@
+tool_id: create_calendar_event
+category: google_calendar
+display_name: create_calendar_event
+short_description: Creates a new event on the user's Google Calendar
+supports_multi_account: true
+arguments:
+  - name: title
+    type: str
+    description: Event title/summary
+    required: true
+  - name: start_time
+    type: datetime
+    description: Start time as datetime object
+    required: true
+  - name: end_time
+    type: datetime
+    description: End time as datetime object
+    required: true
+  - name: attendees
+    type: list
+    description: List of attendee email addresses
+    required: false
+    default: []
+  - name: description
+    type: str
+    description: Event description
+    required: false
+    default: 
+  - name: location
+    type: str
+    description: Event location
+    required: false
+    default: 
+  - name: calendar_id
+    type: str
+    description: Calendar ID (default 'primary')
+    required: false
+    default: primary
+  - name: account
+    type: str
+    description: Account email for multi-account users
+    required: false
+  - name: recurrence_rule
+    type: str
+    description: 'Optional RRULE string for recurring events (RFC 5545 format). Examples: FREQ=DAILY;COUNT=5, FREQ=WEEKLY;BYDAY=MO,WE,FR'
+    required: false
+
+returns: Success status and event link
+use_cases:
+  - Schedule a new meeting or appointment
+  - Create one-time or recurring events
+  - Set up team meetings with attendees
+  - Block time on calendar
+  - Schedule events with location details
+requires_integration: google_calendar
+requires_auth: true

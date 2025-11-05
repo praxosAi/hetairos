@@ -1,0 +1,29 @@
+tool_id: append_sheet_rows
+category: google_sheets
+display_name: append_sheet_rows
+short_description: Appends rows to the end of a Google Sheet
+supports_multi_account: true
+arguments:
+  - name: spreadsheet_id
+    type: str
+    description: ID of the spreadsheet
+    required: true
+  - name: range_name
+    type: str
+    description: A1 notation range to append to (e.g., 'Sheet1!A:D')
+    required: true
+  - name: values
+    type: list
+    description: 2D list of rows to append (e.g., [['Alice', 30], ['Bob', 25]])
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Range where data was appended and number of cells updated
+use_cases:
+  - When you need to add new data without overwriting existing content
+  - When logging or tracking new entries
+  - When building a dataset incrementally
+requires_integration: google_drive
+requires_auth: true

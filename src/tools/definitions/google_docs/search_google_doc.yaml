@@ -1,0 +1,35 @@
+tool_id: search_google_doc
+category: google_docs
+display_name: search_google_doc
+
+short_description: Searches for text within a Google Doc
+
+supports_multi_account: true
+
+arguments:
+  - name: document_id
+    type: str
+    description: ID of the document
+    required: true
+  - name: search_text
+    type: str
+    description: Text to search for
+    required: true
+  - name: match_case
+    type: bool
+    description: Whether to match case (default False for case-insensitive)
+    required: false
+    default: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Number of occurrences and list of matches with position and context
+
+use_cases:
+  - User wants to find text in a doc
+  - Locate specific content
+
+requires_integration: google_drive
+requires_auth: true

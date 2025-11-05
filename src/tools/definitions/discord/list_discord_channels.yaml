@@ -1,0 +1,22 @@
+tool_id: list_discord_channels
+category: discord
+display_name: list_discord_channels
+short_description: List all channels in the Discord server
+supports_multi_account: true
+arguments:
+  - name: types
+    type: str
+    description: Comma-separated channel types - "public_channel", "private_channel", "im", "mpim"
+    required: false
+    default: "public_channel,private_channel"
+  - name: account
+    type: str
+    description: Discord server identifier. If not specified and user has only one server, that server will be used.
+    required: false
+returns: JSON object with list of channels and count
+use_cases:
+  - Discover available channels in a Discord server
+  - Get channel IDs for sending messages
+  - Browse server structure and available communication channels
+requires_integration: discord
+requires_auth: true

@@ -1,0 +1,26 @@
+tool_id: query_praxos_memory_intelligent_search
+category: praxos_memory
+display_name: Query Praxos Memory (Intelligent Search)
+short_description: Queries the Praxos knowledge base with computationally expensive intelligent search for complex queries
+arguments:
+  - name: query
+    type: str
+    description: Search query for the knowledge base
+    required: true
+  - name: top_k
+    type: int
+    description: Number of results to return
+    required: false
+    default: 10
+returns: List of relevant memory nodes with context from past conversations and stored knowledge
+use_cases:
+  - When normal search does not yield good results
+  - Complex queries requiring deeper understanding of context
+  - Second step after normal search fails to find relevant information
+  - Queries requiring semantic understanding beyond simple vector matching
+notes:
+  - Much more computationally expensive than normal search
+  - Use only when normal search is insufficient
+  - Often a good second step if normal search doesn't yield results
+  - Uses intelligent search modality for deeper semantic understanding
+requires_auth: true

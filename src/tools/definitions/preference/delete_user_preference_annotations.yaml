@@ -1,0 +1,19 @@
+tool_id: delete_user_preference_annotations
+category: preference
+display_name: delete_user_preference_annotations
+
+short_description: Removes specific user preference annotations
+
+arguments:
+  - name: annotations_to_delete
+    type: list
+    description: List of exact annotation strings to remove
+    required: true
+
+returns: Confirmation of annotations deleted with updated list
+
+use_cases:
+  - User wants to remove saved preferences
+  - Delete outdated information
+
+requires_auth: true

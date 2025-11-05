@@ -1,0 +1,13 @@
+tool_id: list_dropbox_accounts
+category: dropbox
+display_name: list_dropbox_accounts
+short_description: Lists all connected Dropbox accounts for the user
+supports_multi_account: true
+arguments: []
+returns: JSON object with list of connected Dropbox accounts
+use_cases:
+  - Use this first to see which Dropbox accounts are available
+  - Check which Dropbox accounts the user has connected
+  - Determine which account identifier to use for other operations
+requires_integration: dropbox
+requires_auth: true

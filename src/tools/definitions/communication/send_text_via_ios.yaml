@@ -1,0 +1,33 @@
+tool_id: send_text_via_ios
+category: communication
+display_name: send_text_via_ios
+short_description: Send a text message via iOS Shortcuts
+
+detailed_description: |
+  Send a text message via iOS Shortcuts.
+  This tool sends a command to the user's iOS device to send a text message to another phone number.
+  The iOS Shortcuts automation will execute the command.
+
+arguments:
+  - name: message
+    type: str
+    description: The text message to send
+    required: true
+
+  - name: target_phone
+    type: str
+    description: 'Phone number to send the message to (format: +1234567890)'
+    required: true
+
+returns: Success confirmation or error message
+
+examples:
+  - 'send_text_via_ios("Meeting moved to 3pm", "+19292717338")'
+
+use_cases:
+  - When user wants to send a text message via their iOS device
+  - When automating text message sending through iOS Shortcuts
+
+requires_integration: ios
+requires_auth: true
+is_long_running: false

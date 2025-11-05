@@ -1,0 +1,27 @@
+tool_id: reply_to_user_via_email
+category: communication
+display_name: reply_to_user_via_email
+short_description: Sends an email reply using the Praxos bot
+
+detailed_description: |
+  Sends an email using the Praxos bot. This is specifically for replying to a user's email.
+  The email will be sent from the Praxos bot email address as a reply to the original message.
+
+arguments:
+  - name: body
+    type: str
+    description: The email body content
+    required: true
+
+returns: Success confirmation
+
+examples:
+  - 'reply_to_user_via_email("Thank you for your email. I have processed your request.")'
+
+use_cases:
+  - When replying to a user's email
+  - When sending a response via email to the user's query
+
+requires_integration: email_service
+requires_auth: false
+is_long_running: false

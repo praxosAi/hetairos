@@ -1,0 +1,21 @@
+tool_id: get_spreadsheet_info
+category: google_sheets
+display_name: get_spreadsheet_info
+short_description: Gets metadata and structure information about a Google Spreadsheet
+supports_multi_account: true
+arguments:
+  - name: spreadsheet_id
+    type: str
+    description: ID of the spreadsheet
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Complete spreadsheet metadata including sheet IDs and names
+use_cases:
+  - When you need to get sheet IDs for operations that require them
+  - When discovering the structure of a spreadsheet
+  - When getting sheet names and properties before performing operations
+requires_integration: google_drive
+requires_auth: true

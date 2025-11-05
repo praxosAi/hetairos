@@ -1,0 +1,33 @@
+tool_id: delete_sheet_rows
+category: google_sheets
+display_name: delete_sheet_rows
+short_description: Deletes rows from a Google Sheet
+supports_multi_account: true
+arguments:
+  - name: spreadsheet_id
+    type: str
+    description: ID of the spreadsheet
+    required: true
+  - name: sheet_id
+    type: int
+    description: Numeric ID of the sheet
+    required: true
+  - name: start_index
+    type: int
+    description: Starting row index (0-based, inclusive)
+    required: true
+  - name: end_index
+    type: int
+    description: Ending row index (exclusive, e.g., to delete rows 1-3, use start=0, end=3)
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Confirmation of deletion
+use_cases:
+  - When removing specific rows of data
+  - When cleaning up invalid or duplicate entries
+  - When trimming down datasets
+requires_integration: google_drive
+requires_auth: true

@@ -8,7 +8,7 @@ from src.utils.logging import setup_logger
 
 logger = setup_logger(__name__)
 
-def create_notion_tools(notion_client: NotionIntegration) -> List:
+def create_notion_tools(notion_client: NotionIntegration, tool_registry) -> List:
     """Create a comprehensive suite of Notion-related tools."""
 
     @tool
@@ -403,7 +403,13 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
                 context={"page_id": page_id}
             )
 
-    return [
+    # Tool registry is passed in and already loaded
+
+    accounts = notion_client.get_connected_accounts()
+    if not accounts:
+        return []
+
+    all_tools = [
         list_notion_workspaces,
         list_databases,
         list_notion_pages,
@@ -417,3 +423,8 @@ def create_notion_tools(notion_client: NotionIntegration) -> List:
         get_notion_page_content,
         get_all_workspace_entries,
     ]
+
+    # Apply descriptions from YAML database
+    tool_registry.apply_descriptions_to_tools(all_tools, accounts=accounts)
+
+    return all_tools

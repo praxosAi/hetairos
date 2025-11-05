@@ -1,0 +1,21 @@
+tool_id: get_board_members
+category: trello
+display_name: get_board_members
+short_description: Gets all members of a Trello board
+supports_multi_account: true
+arguments:
+  - name: board_id
+    type: str
+    description: The ID of the board
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected). If not specified and user has only one Trello account, that account will be used.
+    required: false
+returns: JSON object with members array containing member IDs, names, and usernames
+use_cases:
+  - Find member IDs for assigning cards
+  - View board collaborators
+  - Check who has access to a board
+requires_integration: trello
+requires_auth: true

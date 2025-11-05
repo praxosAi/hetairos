@@ -1,0 +1,27 @@
+tool_id: get_discord_channel_history
+category: discord
+display_name: get_discord_channel_history
+short_description: Get message history from a Discord channel
+supports_multi_account: true
+arguments:
+  - name: channel
+    type: str
+    description: Channel ID (e.g., "C1234567890")
+    required: true
+  - name: limit
+    type: int
+    description: Maximum number of messages to fetch (max 1000)
+    required: false
+    default: 50
+  - name: account
+    type: str
+    description: Discord server identifier. If not specified and user has only one server, that server will be used.
+    required: false
+returns: JSON object with list of messages and count
+use_cases:
+  - Read past messages in a Discord channel
+  - Review conversation history
+  - Search for information in previous discussions
+  - Monitor channel activity
+requires_integration: discord
+requires_auth: true

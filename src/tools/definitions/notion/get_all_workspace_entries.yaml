@@ -1,0 +1,17 @@
+tool_id: get_all_workspace_entries
+category: notion
+display_name: get_all_workspace_entries
+short_description: Retrieves all pages and databases in the Notion workspace
+supports_multi_account: true
+arguments:
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: JSON object containing all pages and databases in workspace
+use_cases:
+  - Exhaustive search when you need to find something but don't know where it is
+  - Get complete view of entire workspace
+  - Discover all available resources
+requires_integration: notion
+requires_auth: true

@@ -1,0 +1,23 @@
+tool_id: star_email
+category: gmail
+display_name: star_email
+
+short_description: Stars an email
+
+arguments:
+  - name: message_id
+    type: str
+    description: ID of the email to star
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Confirmation of starred email
+
+use_cases:
+  - User wants to mark email as important/starred
+
+requires_integration: gmail
+requires_auth: true

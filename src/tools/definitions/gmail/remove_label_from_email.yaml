@@ -1,0 +1,28 @@
+tool_id: remove_label_from_email
+category: gmail
+display_name: remove_label_from_email
+
+short_description: Removes a label/folder from an email
+
+arguments:
+  - name: message_id
+    type: str
+    description: ID of the email
+    required: true
+  - name: label_name
+    type: str
+    description: Name of the label to remove
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Confirmation of label removed
+
+use_cases:
+  - User wants to remove label/folder from email
+  - Uncategorize email
+
+requires_integration: gmail
+requires_auth: true

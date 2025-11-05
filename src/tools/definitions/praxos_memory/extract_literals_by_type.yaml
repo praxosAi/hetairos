@@ -1,0 +1,27 @@
+tool_id: extract_literals_by_type
+category: praxos_memory
+display_name: Extract Literals by Type
+short_description: Extract literal values (emails, phones, addresses) from the knowledge graph using intelligent extraction
+arguments:
+  - name: literal_description
+    type: str
+    description: Natural language description of literals to extract (e.g., "email addresses", "phone numbers", "addresses")
+    required: true
+  - name: max_results
+    type: int
+    description: Maximum number of literals to return
+    required: false
+    default: 20
+returns: List of matching literal values with their properties
+use_cases:
+  - Finding "all email addresses" in the knowledge graph
+  - Extracting "phone numbers I have stored"
+  - Listing "postal addresses"
+  - Finding "dates I've mentioned"
+  - Retrieving any literal values by natural language description
+notes:
+  - Uses AI to understand what type of literal you're looking for
+  - Works with emails, phones, addresses, dates, and other literal values
+  - More flexible than exact type matching
+  - Uses literal_extraction strategy
+requires_auth: true

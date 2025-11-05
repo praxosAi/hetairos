@@ -1,0 +1,27 @@
+tool_id: extract_entities_by_type
+category: praxos_memory
+display_name: Extract Entities by Type
+short_description: Extract entities from the knowledge graph using intelligent type-based extraction with natural language
+arguments:
+  - name: type_description
+    type: str
+    description: Natural language description of entities to extract (e.g., "people I know", "vehicles", "meetings")
+    required: true
+  - name: max_results
+    type: int
+    description: Maximum number of entities to return
+    required: false
+    default: 20
+returns: List of matching entities with their properties and relationships
+use_cases:
+  - Finding all entities of a certain type using natural language
+  - Discovering "people I've communicated with"
+  - Listing "companies I've mentioned"
+  - Finding "vehicles I own" or "calendar events"
+  - Extracting entities without knowing exact schema types
+notes:
+  - Uses AI to understand natural language type descriptions
+  - More flexible than exact type matching
+  - Retrieves all matching entities based on semantic understanding
+  - Uses entity_extraction strategy
+requires_auth: true

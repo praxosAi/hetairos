@@ -1,0 +1,12 @@
+tool_id: list_notion_workspaces
+category: notion
+display_name: list_notion_workspaces
+short_description: Lists all connected Notion workspaces for the user
+supports_multi_account: true
+arguments: []
+returns: JSON object containing list of connected Notion workspaces
+use_cases:
+  - Use this first to see which Notion workspaces are available
+  - Check what accounts are connected before performing other operations
+requires_integration: notion
+requires_auth: true

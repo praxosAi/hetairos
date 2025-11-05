@@ -1,0 +1,23 @@
+tool_id: set_language_response
+category: preference
+display_name: set_language_response
+
+short_description: Sets the preferred response language
+
+arguments:
+  - name: language_code
+    type: str
+    description: Short language code
+    required: true
+    enum_values: [en, es, fr, de, it, pt, ja, vi, fa]
+
+returns: Confirmation of language updated
+
+use_cases:
+  - User requests responses in a specific language
+
+examples:
+  - 'set_language_response("es")'
+  - 'set_language_response("fr")'
+
+requires_auth: true

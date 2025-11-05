@@ -1,0 +1,26 @@
+tool_id: get_outlook_emails_from_sender
+category: microsoft_graph
+display_name: get_outlook_emails_from_sender
+short_description: Fetches the most recent emails from a specific sender
+supports_multi_account: true
+arguments:
+  - name: sender_email
+    type: str
+    description: Email address of the sender to search for
+    required: true
+  - name: max_results
+    type: int
+    description: Maximum number of emails to retrieve
+    required: false
+    default: 10
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: List of recent emails from the specified sender
+use_cases:
+  - Find emails from a specific person
+  - Retrieve recent communications from a sender
+  - Search inbox for messages from a particular email address
+requires_integration: microsoft
+requires_auth: true

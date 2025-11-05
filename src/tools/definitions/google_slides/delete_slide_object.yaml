@@ -1,0 +1,26 @@
+tool_id: delete_slide_object
+category: google_slides
+display_name: delete_slide_object
+short_description: Deletes an object (text box, image, shape, table, etc.) from a slide
+supports_multi_account: true
+arguments:
+  - name: presentation_id
+    type: str
+    description: ID of the presentation
+    required: true
+  - name: object_id
+    type: str
+    description: ID of the object to delete
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Confirmation of deletion
+use_cases:
+  - When removing text boxes, images, shapes, or tables from slides
+  - When cleaning up slide content
+  - When reorganizing slide elements
+  - When removing outdated or unwanted objects
+requires_integration: google_drive
+requires_auth: true

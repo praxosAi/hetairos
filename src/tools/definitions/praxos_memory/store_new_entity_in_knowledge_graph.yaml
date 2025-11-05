@@ -1,0 +1,30 @@
+tool_id: store_new_entity_in_knowledge_graph
+category: praxos_memory
+display_name: Store New Entity in Knowledge Graph
+short_description: Store a new entity in the knowledge graph for future reference
+arguments:
+  - name: entity_type
+    type: str
+    description: Type of entity (e.g., "schema:Person", "Vehicle", "Organization", "Event")
+    required: true
+  - name: label
+    type: str
+    description: Human-readable name/label for the entity
+    required: true
+  - name: properties_json
+    type: str
+    description: JSON string of properties, format - [{"key":"email","value":"...","type":"EmailType"}]. Types are optional and auto-inferred if not provided.
+    required: true
+returns: Success message with number of nodes created
+use_cases:
+  - User wants to remember information about people, places, organizations
+  - Storing new contacts with properties
+  - Adding vehicles or possessions to memory
+  - Creating events or reminders in the knowledge graph
+  - Any time user says "remember that..." or "store..."
+notes:
+  - properties_json must be valid JSON array
+  - Each property has key, value, and optional type
+  - Types are auto-inferred if not provided
+  - Example - Remember "Sarah works at Google" becomes entity_type="schema:Person", label="Sarah", properties=[{"key":"employer","value":"Google"}]
+requires_auth: true

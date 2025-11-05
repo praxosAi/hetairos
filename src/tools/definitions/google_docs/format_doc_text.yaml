@@ -1,0 +1,48 @@
+tool_id: format_doc_text
+category: google_docs
+display_name: format_doc_text
+
+short_description: Applies formatting to text ranges in a Google Doc
+
+supports_multi_account: true
+
+arguments:
+  - name: document_id
+    type: str
+    description: ID of the document
+    required: true
+  - name: start_index
+    type: int
+    description: Start of the range to format
+    required: true
+  - name: end_index
+    type: int
+    description: End of the range to format
+    required: true
+  - name: bold
+    type: bool
+    description: Whether to make text bold
+    required: false
+  - name: italic
+    type: bool
+    description: Whether to make text italic
+    required: false
+  - name: underline
+    type: bool
+    description: Whether to underline text
+    required: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Confirmation of formatting applied
+
+use_cases:
+  - User wants to format text (make bold, italic, underline)
+
+notes:
+  - Requires knowing the character positions
+
+requires_integration: google_drive
+requires_auth: true

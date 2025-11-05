@@ -1,0 +1,29 @@
+tool_id: update_knowledge_graph_literal
+category: praxos_memory
+display_name: Update Knowledge Graph Literal
+short_description: Update a literal value (email, phone, etc.) in the knowledge graph
+arguments:
+  - name: node_id
+    type: str
+    description: The node ID of the literal to update (obtained from search results)
+    required: true
+  - name: new_value
+    type: str
+    description: The new value for the literal
+    required: true
+  - name: new_type
+    type: str
+    description: Optional new type for the literal (e.g., "EmailType", "PhoneNumberType")
+    required: false
+    default: null
+returns: Success message with number of nodes modified
+use_cases:
+  - User wants to update email address
+  - Changing phone numbers
+  - Correcting stored information
+  - Updating any literal property value
+notes:
+  - Requires workflow - 1) Search for the literal to get node_id, 2) Call this tool to update
+  - Use query_praxos_memory or extract_literals_by_type to find the node first
+  - new_type is optional and will preserve existing type if not specified
+requires_auth: true

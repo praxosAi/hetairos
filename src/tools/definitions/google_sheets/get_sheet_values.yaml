@@ -1,0 +1,25 @@
+tool_id: get_sheet_values
+category: google_sheets
+display_name: get_sheet_values
+short_description: Gets cell values from a Google Sheet
+supports_multi_account: true
+arguments:
+  - name: spreadsheet_id
+    type: str
+    description: ID of the spreadsheet
+    required: true
+  - name: range_name
+    type: str
+    description: A1 notation range (e.g., 'Sheet1!A1:D10' or 'Sheet1!A:D')
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: 2D list of cell values
+use_cases:
+  - When you need to read data from a specific range in a spreadsheet
+  - When analyzing or processing existing spreadsheet data
+  - When retrieving table data for further manipulation
+requires_integration: google_drive
+requires_auth: true

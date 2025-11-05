@@ -1,0 +1,25 @@
+tool_id: add_trello_comment
+category: trello
+display_name: add_trello_comment
+short_description: Adds a comment to a Trello card
+supports_multi_account: true
+arguments:
+  - name: card_id
+    type: str
+    description: The ID of the card to comment on
+    required: true
+  - name: text
+    type: str
+    description: The comment text
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected). If not specified and user has only one Trello account, that account will be used.
+    required: false
+returns: JSON object containing the created comment details
+use_cases:
+  - Add notes or updates to a card
+  - Leave feedback on tasks
+  - Document progress or decisions
+requires_integration: trello
+requires_auth: true

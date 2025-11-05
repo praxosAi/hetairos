@@ -1,0 +1,22 @@
+tool_id: get_discord_user_info
+category: discord
+display_name: get_discord_user_info
+short_description: Get information about a Discord user
+supports_multi_account: true
+arguments:
+  - name: user_id
+    type: str
+    description: Discord user ID (e.g., "U1234567890")
+    required: true
+  - name: account
+    type: str
+    description: Discord server identifier. If not specified and user has only one server, that server will be used.
+    required: false
+returns: JSON object with user information including profile details
+use_cases:
+  - Get details about a Discord user
+  - Look up user profiles and information
+  - Find contact information for team members
+  - Verify user identities
+requires_integration: discord
+requires_auth: true

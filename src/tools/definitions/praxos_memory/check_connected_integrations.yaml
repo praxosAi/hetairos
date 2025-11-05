@@ -1,0 +1,17 @@
+tool_id: check_connected_integrations
+category: praxos_memory
+display_name: Check Connected Integrations
+short_description: Check which integrations the user has connected (Gmail, Slack, Notion, etc.)
+arguments: []
+returns: List of connected integrations with their status, capabilities, and account information
+use_cases:
+  - Checking if user has required integrations before attempting operations
+  - Discovering available integrations to suggest to the user
+  - Understanding the user's connected ecosystem
+  - Determining what capabilities are available
+notes:
+  - No arguments required - returns all connected integrations
+  - Use before planning actions that require specific integrations
+  - Returns integration name, type, status, capabilities, and account
+  - Queries for entities of type "schema:Integration"
+requires_auth: true

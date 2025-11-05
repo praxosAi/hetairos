@@ -1,0 +1,34 @@
+tool_id: list_available_media
+category: media_bus
+display_name: list_available_media
+short_description: List media items currently available in this conversation
+
+detailed_description: |
+  List media items currently available in this conversation.
+    This tool shows all media that has been generated or received during the current conversation.
+    Use this to see what media exists that you can reference or build upon.
+
+arguments:
+  - name: media_type
+    type: str
+    description: Optional filter by type - 'image', 'audio', 'video', or 'document'
+    required: false
+  - name: limit
+    type: int
+    description: Maximum number of items to return (default 10, max 50)
+    required: false
+    default: 10
+
+returns: ToolExecutionResponse with formatted string describing available media
+
+examples:
+  - 'list_available_media(media_type="image")'
+  - 'list_available_media()'
+
+use_cases:
+  - Check what images were generated
+  - See all recent media
+  - Get specific media details
+
+requires_integration: media_bus
+requires_auth: false

@@ -1,0 +1,25 @@
+tool_id: send_slack_dm
+category: slack
+display_name: send_slack_dm
+short_description: Send a direct message to a Slack user
+supports_multi_account: true
+arguments:
+  - name: user_id
+    type: str
+    description: Slack user ID (e.g., "U1234567890")
+    required: true
+  - name: text
+    type: str
+    description: Message text to send
+    required: true
+  - name: account
+    type: str
+    description: Slack workspace identifier. If not specified and user has only one workspace, that workspace will be used
+    required: false
+returns: JSON object with success message and message_ts (timestamp)
+use_cases:
+  - Send direct messages to individual Slack users
+  - Private communication with team members
+  - Personal notifications or reminders
+requires_integration: slack
+requires_auth: true

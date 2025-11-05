@@ -1,0 +1,25 @@
+tool_id: send_slack_message
+category: slack
+display_name: send_slack_message
+short_description: Send a message to a Slack channel
+supports_multi_account: true
+arguments:
+  - name: channel
+    type: str
+    description: Channel ID or channel name (e.g., "#general" or "C1234567890")
+    required: true
+  - name: text
+    type: str
+    description: Message text to send
+    required: true
+  - name: account
+    type: str
+    description: Slack workspace identifier. If not specified and user has only one workspace, that workspace will be used
+    required: false
+returns: JSON object with success message, message_ts (timestamp), and channel ID
+use_cases:
+  - Send messages to public or private Slack channels
+  - Post notifications or updates to team channels
+  - Share information with specific channels
+requires_integration: slack
+requires_auth: true

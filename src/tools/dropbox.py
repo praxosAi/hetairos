@@ -8,7 +8,7 @@ import json
 
 logger = setup_logger(__name__)
 
-def create_dropbox_tools(dropbox_integration: DropboxIntegration) -> list:
+def create_dropbox_tools(dropbox_integration: DropboxIntegration, tool_registry) -> list:
     """Creates Dropbox related tools with multi-account support."""
 
     @tool
@@ -154,10 +154,21 @@ def create_dropbox_tools(dropbox_integration: DropboxIntegration) -> list:
                 integration="Dropbox"
             )
 
-    return [
+    # Tool registry is passed in and already loaded
+
+    accounts = dropbox_integration.get_connected_accounts()
+    if not accounts:
+        return []
+
+    all_tools = [
         list_dropbox_accounts,
         save_file_to_dropbox,
         read_file_from_dropbox,
         list_dropbox_files,
         search_dropbox_files
     ]
+
+    # Apply descriptions from YAML database
+    tool_registry.apply_descriptions_to_tools(all_tools, accounts=accounts)
+
+    return all_tools

@@ -1,0 +1,38 @@
+tool_id: replace_text_in_doc
+category: google_docs
+display_name: replace_text_in_doc
+
+short_description: Finds and replaces all occurrences of text in a Google Doc
+
+supports_multi_account: true
+
+arguments:
+  - name: document_id
+    type: str
+    description: ID of the document
+    required: true
+  - name: find_text
+    type: str
+    description: Text to find
+    required: true
+  - name: replace_text
+    type: str
+    description: Text to replace with
+    required: true
+  - name: match_case
+    type: bool
+    description: Whether to match case
+    required: false
+    default: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Number of replacements made
+
+use_cases:
+  - User wants to find and replace text throughout a doc
+
+requires_integration: google_drive
+requires_auth: true

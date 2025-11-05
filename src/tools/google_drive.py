@@ -8,7 +8,7 @@ from src.utils.logging import setup_logger
 
 logger = setup_logger(__name__)
 
-def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
+def create_drive_tools(gdrive_integration: GoogleDriveIntegration, tool_registry) -> List:
     """Creates all Google Drive related tools, dynamically configured for the user's accounts."""
 
     @tool
@@ -128,29 +128,20 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration) -> List:
                 context={"folder_id": folder_id}
             )
     
-    # 3. New logic to dynamically update descriptions for single vs. multiple accounts
+    # Tool registry is passed in and already loaded
     accounts = gdrive_integration.get_connected_accounts()
     if not accounts:
         return []
 
     all_tools = [
-        search_google_drive_files, 
-        save_file_to_drive, 
-        create_text_file_in_drive, 
-        read_file_content_by_id, 
+        search_google_drive_files,
+        save_file_to_drive,
+        create_text_file_in_drive,
+        read_file_content_by_id,
         list_drive_files
     ]
 
-    if len(accounts) == 1:
-        user_email = accounts[0]
-        for t in all_tools:
-            t.description += f" The user's connected Google Drive account is {user_email}."
-    else:
-        account_list_str = ", ".join(f"'{acc}'" for acc in accounts)
-        for t in all_tools:
-            t.description += (
-                f" The user has multiple accounts. You MUST use the 'account' parameter to specify which one to use. "
-                f"Available accounts are: [{account_list_str}]."
-            )
+    # Apply descriptions from YAML database
+    tool_registry.apply_descriptions_to_tools(all_tools, accounts=accounts)
 
     return all_tools

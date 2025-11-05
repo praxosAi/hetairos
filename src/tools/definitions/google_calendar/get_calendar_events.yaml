@@ -1,0 +1,37 @@
+tool_id: get_calendar_events
+category: google_calendar
+display_name: get_calendar_events
+short_description: Fetches events from the user's Google Calendar within a specified time window
+supports_multi_account: true
+arguments:
+  - name: time_min
+    type: datetime
+    description: Start of time window
+    required: true
+  - name: time_max
+    type: datetime
+    description: End of time window
+    required: true
+  - name: max_results
+    type: int
+    description: Maximum number of events to return
+    required: false
+    default: 10
+  - name: calendar_id
+    type: str
+    description: Calendar ID (default 'primary')
+    required: false
+    default: primary
+  - name: account
+    type: str
+    description: Account email for multi-account users
+    required: false
+
+returns: List of calendar events or empty message
+use_cases:
+  - Check upcoming meetings and appointments
+  - View schedule for a specific date range
+  - Find events in a particular time window
+  - Review calendar availability
+requires_integration: google_calendar
+requires_auth: true

@@ -1,0 +1,31 @@
+tool_id: add_slide
+category: google_slides
+display_name: add_slide
+short_description: Adds a new slide to a Google Slides presentation
+supports_multi_account: true
+arguments:
+  - name: presentation_id
+    type: str
+    description: ID of the presentation
+    required: true
+  - name: insertion_index
+    type: int
+    description: Position to insert slide (None = end of presentation)
+    required: false
+  - name: layout
+    type: str
+    description: Layout type - BLANK, TITLE_AND_BODY, TITLE_ONLY, etc.
+    required: false
+    default: BLANK
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Confirmation of slide creation with slide ID
+use_cases:
+  - When adding a new slide to an existing presentation
+  - When building presentations programmatically
+  - When inserting slides at specific positions
+  - When creating slides with specific layouts
+requires_integration: google_drive
+requires_auth: true

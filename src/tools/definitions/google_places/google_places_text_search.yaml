@@ -1,0 +1,47 @@
+tool_id: google_places_text_search
+category: google_places
+display_name: google_places_text_search
+
+short_description: Search for places using text query
+
+detailed_description: |
+  Searches for places using text query (e.g., "pizza in Boston", "Starbucks near Times Square").
+  Good for general searches. If you have user's location, pass latitude and longitude for accurate results!
+
+arguments:
+  - name: query
+    type: str
+    description: Search query (e.g., "coffee shops", "Pizza Hut", "restaurants")
+    required: true
+  - name: latitude
+    type: float
+    description: Latitude for location-based search
+    required: false
+  - name: longitude
+    type: float
+    description: Longitude for location-based search
+    required: false
+  - name: radius
+    type: int
+    description: Search radius in meters
+    required: false
+    default: 5000
+
+returns: List of places matching the query with addresses, ratings, and place IDs
+
+examples:
+  - 'google_places_text_search("pizza in Boston")'
+  - 'google_places_text_search("coffee shops", latitude=40.7128, longitude=-74.0060)'
+  - 'google_places_text_search("Starbucks near Times Square")'
+
+use_cases:
+  - General place searches
+  - Finding specific businesses by name
+  - '"pizza in Boston" type queries'
+
+notes:
+  - IMPORTANT - If you have user's location, ALWAYS pass latitude/longitude for accurate results
+  - Returns top 10 results
+
+requires_integration: google_places_api
+requires_auth: true

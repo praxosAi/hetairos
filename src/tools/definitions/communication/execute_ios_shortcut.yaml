@@ -1,0 +1,35 @@
+tool_id: execute_ios_shortcut
+category: communication
+display_name: execute_ios_shortcut
+short_description: Execute a named iOS Shortcut on the user's device
+
+detailed_description: |
+  Execute a named iOS Shortcut on the user's device.
+  This triggers a specific Shortcut by name, optionally passing input text.
+  The user must have a Shortcut with the specified name on their device.
+
+arguments:
+  - name: shortcut_name
+    type: str
+    description: Name of the Shortcut to execute
+    required: true
+
+  - name: input_text
+    type: str
+    description: Optional input text to pass to the Shortcut
+    required: false
+
+returns: Success confirmation or error message
+
+examples:
+  - 'execute_ios_shortcut("Log Water Intake", "500ml")'
+  - 'execute_ios_shortcut("Turn On Smart Lights")'
+
+use_cases:
+  - When user wants to trigger a custom iOS Shortcut
+  - When automating iOS device actions through Shortcuts
+  - When executing predefined workflows on iOS
+
+requires_integration: ios
+requires_auth: true
+is_long_running: false

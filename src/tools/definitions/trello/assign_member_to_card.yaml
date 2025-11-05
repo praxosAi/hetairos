@@ -1,0 +1,25 @@
+tool_id: assign_member_to_card
+category: trello
+display_name: assign_member_to_card
+short_description: Assigns a member to a Trello card
+supports_multi_account: true
+arguments:
+  - name: card_id
+    type: str
+    description: The ID of the card
+    required: true
+  - name: member_id
+    type: str
+    description: The ID of the member to assign (use get_board_members to find member_id)
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected). If not specified and user has only one Trello account, that account will be used.
+    required: false
+returns: JSON object containing the operation result
+use_cases:
+  - Assign tasks to team members
+  - Add collaborators to cards
+  - Delegate card responsibilities
+requires_integration: trello
+requires_auth: true

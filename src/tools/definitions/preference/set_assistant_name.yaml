@@ -1,0 +1,18 @@
+tool_id: set_assistant_name
+category: preference
+display_name: set_assistant_name
+
+short_description: Changes the assistant's name
+
+arguments:
+  - name: assistant_name
+    type: str
+    description: The new assistant name (max 50 characters)
+    required: true
+
+returns: Confirmation of assistant name updated
+
+use_cases:
+  - User wants to call the assistant something specific
+
+requires_auth: true

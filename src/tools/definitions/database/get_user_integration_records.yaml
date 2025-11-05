@@ -1,0 +1,14 @@
+tool_id: get_user_integration_records
+category: database
+display_name: get_user_integration_records
+
+short_description: Gets list of user's connected integrations
+
+arguments: []
+
+returns: List of active integrations
+
+use_cases:
+  - User asks "What integrations do I have?"
+  - You are already provided with this list during planning
+  - Not needed when objective is to perform a different task

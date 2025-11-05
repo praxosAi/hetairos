@@ -1,0 +1,37 @@
+tool_id: reply_to_email
+category: gmail
+display_name: reply_to_email
+
+short_description: Replies to an existing email thread
+
+arguments:
+  - name: original_message_id
+    type: str
+    description: ID of the email to reply to
+    required: true
+  - name: body
+    type: str
+    description: Reply message content
+    required: true
+  - name: reply_all
+    type: bool
+    description: If True, reply to everyone on the thread
+    required: false
+    default: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Confirmation of reply sent
+
+use_cases:
+  - User wants to reply to a specific email
+  - Reply to everyone on a thread
+
+notes:
+  - Maintains the thread and includes proper reply headers
+  - Automatically adds Praxos signature
+
+requires_integration: gmail
+requires_auth: true

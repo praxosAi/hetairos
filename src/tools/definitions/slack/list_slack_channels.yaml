@@ -1,0 +1,23 @@
+tool_id: list_slack_channels
+category: slack
+display_name: list_slack_channels
+short_description: List all channels in the Slack workspace
+supports_multi_account: true
+arguments:
+  - name: types
+    type: str
+    description: Comma-separated channel types - "public_channel", "private_channel", "im", "mpim"
+    required: false
+    default: "public_channel,private_channel"
+  - name: account
+    type: str
+    description: Slack workspace identifier. If not specified and user has only one workspace, that workspace will be used
+    required: false
+returns: JSON object containing list of channels and total count
+use_cases:
+  - Discover available channels in the workspace
+  - Find channel IDs for sending messages
+  - Browse public and private channels
+  - List direct message channels
+requires_integration: slack
+requires_auth: true

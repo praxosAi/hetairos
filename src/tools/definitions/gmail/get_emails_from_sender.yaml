@@ -1,0 +1,31 @@
+tool_id: get_emails_from_sender
+category: gmail
+display_name: get_emails_from_sender
+
+short_description: Fetches recent emails from a specific sender
+
+arguments:
+  - name: sender_email
+    type: str
+    description: Email address of the sender
+    required: true
+  - name: max_results
+    type: int
+    description: Maximum number of emails to return
+    required: false
+    default: 10
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: List of emails from the specified sender
+
+examples:
+  - '"Show me emails from john@example.com"'
+
+use_cases:
+  - Fetching emails from a specific person
+
+requires_integration: gmail
+requires_auth: true

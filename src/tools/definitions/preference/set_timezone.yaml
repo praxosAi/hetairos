@@ -1,0 +1,22 @@
+tool_id: set_timezone
+category: preference
+display_name: set_timezone
+
+short_description: Sets the user's timezone
+
+arguments:
+  - name: timezone_name
+    type: str
+    description: Valid pytz timezone string (e.g., "America/New_York", "Europe/London", "US/Eastern")
+    required: true
+
+returns: Confirmation of timezone updated
+
+use_cases:
+  - User specifies their timezone
+
+examples:
+  - 'set_timezone("America/New_York")'
+  - 'set_timezone("Europe/London")'
+
+requires_auth: true

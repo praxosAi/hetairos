@@ -1,0 +1,37 @@
+tool_id: insert_text_in_doc
+category: google_docs
+display_name: insert_text_in_doc
+
+short_description: Inserts text at a specific position in a Google Doc
+
+supports_multi_account: true
+
+arguments:
+  - name: document_id
+    type: str
+    description: ID of the document
+    required: true
+  - name: text
+    type: str
+    description: Text to insert
+    required: true
+  - name: index
+    type: int
+    description: Character index where to insert (1 = beginning after title)
+    required: false
+    default: 1
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Confirmation of insertion
+
+use_cases:
+  - User wants to add text at a specific location in a doc
+
+notes:
+  - Index 1 = beginning after title
+
+requires_integration: google_drive
+requires_auth: true

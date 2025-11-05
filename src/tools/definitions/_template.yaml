@@ -1,0 +1,127 @@
+# Template for tool definition YAML files
+# Copy this file to create a new tool definition
+# File name should be: [category]/[tool_id].yaml
+
+# ============================================================================
+# REQUIRED FIELDS
+# ============================================================================
+
+tool_id: example_tool  # Unique identifier (snake_case)
+category: example      # Category for grouping (web, gmail, scheduling, etc.)
+display_name: example_tool  # Name shown in docs (usually same as tool_id)
+short_description: Short one-line description of what this tool does
+
+# ============================================================================
+# OPTIONAL FIELDS
+# ============================================================================
+
+# Detailed multi-line description
+detailed_description: |
+  Longer, more detailed explanation of what the tool does.
+  Can span multiple lines using YAML multi-line syntax.
+  Explain the purpose, behavior, and any important details.
+
+# Arguments (list of argument definitions)
+arguments:
+  - name: arg_name        # Argument name (snake_case)
+    type: str             # Type: str, int, bool, float, list, dict, datetime
+    description: What this argument is for
+    required: true        # Whether argument is required (default: true)
+
+  - name: optional_arg
+    type: int
+    description: An optional argument
+    required: false
+    default: 10           # Default value
+
+  - name: enum_arg
+    type: str
+    description: An argument with specific valid values
+    required: false
+    enum_values: [option1, option2, option3]  # Valid values
+
+  - name: injected_arg
+    type: str
+    description: Framework-injected parameter (like tool_call_id)
+    required: true
+    injected: true        # Don't show in docs, injected by framework
+
+# What the tool returns
+returns: Description of what the tool returns
+
+# Usage examples (list of strings)
+examples:
+  - 'example_tool("input")'
+  - 'example_tool("input", optional_arg=20)'
+
+# When to use this tool (list of strings)
+use_cases:
+  - When user needs to do X
+  - For tasks involving Y
+  - When Z condition is met
+
+# Important notes, caveats, tips (list of strings)
+notes:
+  - Important note about usage
+  - Limitation or caveat
+  - Best practice tip
+
+# Integration requirements
+requires_integration: optional_integration_name  # e.g., "gmail", "notion"
+requires_auth: false  # Whether authentication is required
+
+# Performance characteristics
+is_long_running: false  # If operation takes 30+ seconds
+requires_intermediate_message: false  # Should send status updates
+estimated_duration_seconds: 30  # Estimated runtime in seconds
+
+# Multi-account support (for tools like Gmail, Dropbox, etc.)
+supports_multi_account: false
+description_template: "Tool description. {account_info}"  # Template for dynamic descriptions
+
+# ============================================================================
+# EXAMPLE: Complete tool definition
+# ============================================================================
+
+# tool_id: translate_text
+# category: utility
+# display_name: translate_text
+#
+# short_description: Translates text between languages
+#
+# detailed_description: |
+#   Translates text from one language to another using Google Translate API.
+#   Supports 100+ languages with automatic source language detection.
+#
+# arguments:
+#   - name: text
+#     type: str
+#     description: Text to translate
+#     required: true
+#
+#   - name: target_language
+#     type: str
+#     description: Target language code (e.g., 'es', 'fr')
+#     required: true
+#
+#   - name: source_language
+#     type: str
+#     description: Source language code (auto-detected if not specified)
+#     required: false
+#     default: auto
+#
+# returns: Translated text string
+#
+# examples:
+#   - 'translate_text("Hello", "es")'
+#   - 'translate_text("Bonjour", "en", source_language="fr")'
+#
+# use_cases:
+#   - User wants to translate a message
+#   - Need to translate email content
+#
+# notes:
+#   - Auto-detects source language if not specified
+#
+# requires_integration: google_translate
+# requires_auth: true

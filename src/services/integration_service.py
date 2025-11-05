@@ -682,5 +682,26 @@ class IntegrationService:
             logger.error(f"Failed to remove integration {integration_name} from KG for user {user_id}: {e}", exc_info=True)
             return {"error": str(e)}
 
+    # iOS Shortcuts integration methods
+    async def get_integration_by_ios_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Look up user integration by iOS webhook token."""
+        integration = await self.db_manager.db["integrations"].find_one({
+            "name": "ios",
+            "ios_webhook_token": token,
+            "status": "active"
+        })
+        return integration
+
+    async def update_ios_user_phone(self, integration_id: str, phone_number: str) -> None:
+        """Store the user's phone number for iOS integration (used to send commands back)."""
+        await self.db_manager.db["integrations"].update_one(
+            {"_id": ObjectId(integration_id)},
+            {"$set": {
+                "ios_user_phone": phone_number,
+                "updated_at": datetime.now(timezone.utc)
+            }}
+        )
+        logger.info(f"Updated iOS integration {integration_id} with user phone {phone_number}")
+
 # Global instance
 integration_service = IntegrationService()

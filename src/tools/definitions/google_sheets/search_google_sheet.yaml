@@ -1,0 +1,34 @@
+tool_id: search_google_sheet
+category: google_sheets
+display_name: search_google_sheet
+short_description: Searches for text within a Google Spreadsheet and returns all matching cells
+supports_multi_account: true
+arguments:
+  - name: spreadsheet_id
+    type: str
+    description: ID of the spreadsheet
+    required: true
+  - name: search_text
+    type: str
+    description: Text to search for
+    required: true
+  - name: match_case
+    type: bool
+    description: Whether to match case (default False for case-insensitive)
+    required: false
+    default: false
+  - name: sheet_name
+    type: str
+    description: Optional specific sheet name to search in (default is all sheets)
+    required: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Dict with number of occurrences and list of matching cells with their positions
+use_cases:
+  - When you need to find specific text across a spreadsheet
+  - When locating data without knowing exact cell positions
+  - When performing content-based queries on spreadsheet data
+requires_integration: google_drive
+requires_auth: true

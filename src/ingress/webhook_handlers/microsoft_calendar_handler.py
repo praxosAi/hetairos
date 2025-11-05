@@ -35,7 +35,7 @@ async def handle_microsoft_calendar_webhook(request: Request):
         for notification in body.get("value", []):
             # Validate client state
             client_state = notification.get("clientState")
-            expected_state = settings.CALENDAR_VALIDATION_TOKEN  # From environment
+            expected_state = settings.OUTLOOK_VALIDATION_TOKEN  # From environment
 
             if client_state != expected_state:
                 logger.warning(f"Invalid clientState in Microsoft Calendar notification: {client_state}")

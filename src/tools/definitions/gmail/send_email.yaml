@@ -1,0 +1,39 @@
+tool_id: send_email
+category: gmail
+display_name: send_email
+
+short_description: Sends email via user's Gmail account
+
+detailed_description: |
+  Sends an email via the user's connected Gmail account.
+  Automatically adds Praxos signature.
+
+# Multi-account support
+supports_multi_account: true
+description_template: "Sends email via user's Gmail account. {account_info}"
+
+arguments:
+  - name: recipient
+    type: str
+    description: Email address of the recipient
+    required: true
+  - name: subject
+    type: str
+    description: Email subject line
+    required: true
+  - name: body
+    type: str
+    description: Email body content
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (required when multiple Gmail accounts connected)
+    required: false
+
+returns: Confirmation of email sent
+
+use_cases:
+  - User wants to send email from their own Gmail
+
+requires_integration: gmail
+requires_auth: true

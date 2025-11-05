@@ -1,0 +1,13 @@
+tool_id: list_discord_servers
+category: discord
+display_name: list_discord_servers
+short_description: Lists all connected Discord servers for the user
+supports_multi_account: true
+arguments: []
+returns: JSON object containing list of servers with server_id, team_name, and team_id
+use_cases:
+  - Use this first to see which Discord servers are available
+  - Check which Discord servers the user is connected to
+  - Get server IDs for use in other Discord tools
+requires_integration: discord
+requires_auth: true

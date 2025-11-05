@@ -1,0 +1,29 @@
+tool_id: read_webpage_content
+category: web
+display_name: read_webpage_content
+
+short_description: Quickly fetches and parses static webpage content
+
+detailed_description: |
+  Fetches and parses content from static webpages (2-5 seconds).
+  Best for articles, documentation, and static content.
+
+arguments:
+  - name: url
+    type: str
+    description: The URL of the webpage to read
+    required: true
+
+returns: Text content from the page
+
+examples:
+  - '"https://en.wikipedia.org/wiki/Python_(programming_language)"'
+
+use_cases:
+  - Reading articles, documentation, static websites
+
+notes:
+  - NOT for JavaScript-heavy sites (use browse_website_with_ai instead)
+
+is_long_running: false
+requires_intermediate_message: false

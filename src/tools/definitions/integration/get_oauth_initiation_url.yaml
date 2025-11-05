@@ -1,0 +1,31 @@
+tool_id: get_oauth_initiation_url
+category: integration
+display_name: get_oauth_initiation_url
+
+short_description: Gets OAuth URL for connecting new integrations
+
+detailed_description: |
+  Generates a secure, single-use URL for initiating OAuth flow.
+  Useful when a user wants to connect a new service (gmail, notion, dropbox, trello, etc)
+  and they are not yet integrated, or else if they request a tool which belongs to an integration they have not yet connected.
+
+arguments:
+  - name: integration_name
+    type: str
+    description: Name of the integration to connect
+    required: true
+    enum_values: [gmail, google_calendar, google_drive, notion, dropbox, trello, outlook, onedrive, microsoft_calendar, telegram, whatsapp, imessage]
+
+returns: OAuth URL for user to complete OAuth flow
+
+examples:
+  - 'get_oauth_initiation_url("gmail")'
+  - 'get_oauth_initiation_url("notion")'
+
+use_cases:
+  - User needs to connect a service they haven't integrated yet
+  - User requests a tool that requires an integration they don't have
+
+notes:
+  - You can tell them about app.mypraxos.com/integrations
+  - But you must also generate the link using this tool as the primary option

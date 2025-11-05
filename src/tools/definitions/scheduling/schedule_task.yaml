@@ -1,0 +1,36 @@
+tool_id: schedule_task
+category: scheduling
+display_name: schedule_task
+
+short_description: Schedules a one-time future task
+
+arguments:
+  - name: time_to_do
+    type: datetime
+    description: The time to run the task (timestamp in the future)
+    required: true
+  - name: command_to_perform
+    type: str
+    description: The command/task to perform (detailed description with parameters)
+    required: true
+  - name: delivery_platform
+    type: str
+    description: Platform for output delivery
+    required: true
+    enum_values: [whatsapp, telegram, email, imessage]
+
+returns: Confirmation of scheduled task
+
+examples:
+  - 'schedule_task(time_to_do="2024-01-15T15:00:00-05:00", command_to_perform="Remind user to call John", delivery_platform="whatsapp")'
+
+use_cases:
+  - "Remind me at 3pm"
+  - "Send email tomorrow at 9am"
+
+notes:
+  - Always assume time in EST timezone
+  - Add -05:00 to datetime strings for correct parsing
+  - If user asks to be reminded to do something themselves, prefix command with "Remind user to "
+
+requires_auth: true

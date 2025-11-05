@@ -1,0 +1,33 @@
+tool_id: send_intermediate_message
+category: communication
+display_name: send_intermediate_message
+short_description: Sends an intermediate message to the user during long-running operations
+
+detailed_description: |
+  Sends an intermediate status update message to the user during long-running operations.
+  Use this to notify users that you're working on something that will take time (browsing web, generating media, etc.)
+  DO NOT USE THIS IF SIMPLY SENDING AN OUTPUT AT THE END OF YOUR EXECUTION WILL SUFFICE. USE THIS IF THE GOAL IS TO BROWSE WEB OR GENERATE MEDIA.
+  BUT IF THE GOAL IS TO SEND THE MESSAGE TO INFORM THE USER, WHILE WE CONTINUE WORKING ON THEIR REQUEST, THEN YOU MUST USE THIS INSTEAD OF THE FINAL RESPONSE.
+
+arguments:
+  - name: message
+    type: str
+    description: The status update message to send
+    required: true
+
+returns: Success confirmation
+
+examples:
+  - 'send_intermediate_message("I''m browsing that website now, this will take about 30 seconds...")'
+  - 'send_intermediate_message("Generating your image, this may take a minute...")'
+  - 'send_intermediate_message("Searching the web for that information...")'
+
+use_cases:
+  - When browsing web and the operation will take time
+  - When generating media (images, audio, video)
+  - When performing search operations that require waiting
+  - When you need to inform the user you're working on their request
+
+requires_integration: messaging_service
+requires_auth: false
+is_long_running: false

@@ -1,0 +1,29 @@
+tool_id: get_scheduled_tasks
+category: scheduling
+display_name: get_scheduled_tasks
+
+short_description: Retrieves scheduled, recurring, and trigger-based tasks
+
+arguments:
+  - name: future_only
+    type: bool
+    description: If true, only returns future scheduled tasks
+    required: false
+    default: true
+  - name: task_type
+    type: str
+    description: Filter by task type
+    required: false
+    enum_values: [one_time, recurring, trigger]
+
+returns: List of tasks with IDs, descriptions, schedules, next run times
+
+use_cases:
+  - User asks "What are my scheduled tasks?" or "Show my reminders"
+
+notes:
+  - By default only shows future tasks
+  - Use future_only=false to see all tasks
+  - Use task_type to filter (one_time for scheduled tasks, recurring for recurring tasks, trigger for event-based triggers)
+
+requires_auth: true

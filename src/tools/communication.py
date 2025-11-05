@@ -5,6 +5,7 @@ from src.tools.tool_types import ToolExecutionResponse
 from src.tools.error_helpers import ErrorResponseBuilder
 from src.utils.logging import setup_logger
 from src.services.conversation_manager import ConversationManager
+from src.integrations.ios.client import IOSClient
 logger = setup_logger(__name__)
 
 def create_platform_messaging_tools(
@@ -352,3 +353,138 @@ def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str
     #         return ToolExecutionResponse(status="error", system_error=str(e))
 
     return [send_intermediate_message, reply_to_user_via_email, send_new_email_as_praxos_bot, report_bug_to_developers]
+
+
+def create_ios_command_tools(user_id: str) -> List:
+    """
+    Creates tools for sending commands to iOS Shortcuts.
+
+    These tools allow the agent to trigger actions on the user's iOS device
+    via commands sent through iMessage.
+
+    Args:
+        user_id: The user's ID
+
+    Returns:
+        List of iOS command tools
+    """
+    ios_client = IOSClient()
+
+    @tool
+    async def send_text_via_ios(message: str, target_phone: str) -> ToolExecutionResponse:
+        """
+        Send a text message via iOS Shortcuts.
+
+        This tool sends a command to the user's iOS device to send a text message
+        to another phone number. The iOS Shortcuts automation will execute the command.
+
+        Args:
+            message: The text message to send
+            target_phone: Phone number to send the message to (format: +1234567890)
+
+        Returns:
+            Success confirmation or error message
+
+        Example:
+            send_text_via_ios(
+                message="Meeting moved to 3pm",
+                target_phone="+19292717338"
+            )
+        """
+        try:
+            logger.info(f"Sending iOS text command to user {user_id}: msg to {target_phone}")
+            result = await ios_client.send_text_message(user_id, message, target_phone)
+
+            if result:
+                return ToolExecutionResponse(
+                    status="success",
+                    result=f"Command sent to iOS device to text {target_phone}: {message}"
+                )
+            else:
+                raise Exception("Failed to send iOS command")
+
+        except Exception as e:
+            logger.error(f"Failed to send iOS text command: {e}", exc_info=True)
+            raise Exception(f"Failed to send iOS command: {str(e)}")
+
+    @tool
+    async def execute_ios_shortcut(shortcut_name: str, input_text: Optional[str] = None) -> ToolExecutionResponse:
+        """
+        Execute a named iOS Shortcut on the user's device.
+
+        This triggers a specific Shortcut by name, optionally passing input text.
+        The user must have a Shortcut with the specified name on their device.
+
+        Args:
+            shortcut_name: Name of the Shortcut to execute
+            input_text: Optional input text to pass to the Shortcut
+
+        Returns:
+            Success confirmation or error message
+
+        Example:
+            execute_ios_shortcut(
+                shortcut_name="Log Water Intake",
+                input_text="500ml"
+            )
+        """
+        try:
+            logger.info(f"Sending iOS shortcut command to user {user_id}: {shortcut_name}")
+            result = await ios_client.execute_shortcut(user_id, shortcut_name, input_text)
+
+            if result:
+                input_msg = f" with input: {input_text}" if input_text else ""
+                return ToolExecutionResponse(
+                    status="success",
+                    result=f"Command sent to iOS device to execute shortcut '{shortcut_name}'{input_msg}"
+                )
+            else:
+                raise Exception("Failed to send iOS command")
+
+        except Exception as e:
+            logger.error(f"Failed to send iOS shortcut command: {e}", exc_info=True)
+            raise Exception(f"Failed to execute iOS shortcut: {str(e)}")
+
+    @tool
+    async def create_ios_reminder(
+        title: str,
+        due_date: Optional[str] = None,
+        notes: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """
+        Create a reminder on the user's iOS device.
+
+        This sends a command to create a reminder in the iOS Reminders app.
+
+        Args:
+            title: The reminder title/text
+            due_date: Optional due date in ISO format (e.g., "2025-11-05T14:00:00")
+            notes: Optional additional notes for the reminder
+
+        Returns:
+            Success confirmation or error message
+
+        Example:
+            create_ios_reminder(
+                title="Call dentist",
+                due_date="2025-11-05T14:00:00",
+                notes="Schedule cleaning appointment"
+            )
+        """
+        try:
+            logger.info(f"Sending iOS reminder command to user {user_id}: {title}")
+            result = await ios_client.set_reminder(user_id, title, due_date, notes)
+
+            if result:
+                return ToolExecutionResponse(
+                    status="success",
+                    result=f"Command sent to iOS device to create reminder: {title}"
+                )
+            else:
+                raise Exception("Failed to send iOS command")
+
+        except Exception as e:
+            logger.error(f"Failed to send iOS reminder command: {e}", exc_info=True)
+            raise Exception(f"Failed to create iOS reminder: {str(e)}")
+
+    return [send_text_via_ios, execute_ios_shortcut, create_ios_reminder]

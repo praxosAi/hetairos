@@ -1,0 +1,45 @@
+tool_id: generate_video
+category: media_generation
+display_name: generate_video
+short_description: Generate a video using AI based on a text description
+
+detailed_description: |
+  This tool uses Veo 3.0 to generate videos from text descriptions.
+  WARNING: Video generation is SLOW and can take 1-2 minutes or more.
+  ALWAYS send an intermediate message before calling this tool to set user expectations.
+
+arguments:
+  - name: prompt
+    type: str
+    description: Detailed description of the video to generate, including action, style, duration intent, camera movement, etc.
+    required: true
+
+  - name: media_ids
+    type: list
+    description: Optional list of media IDs from media bus to use as visual references. Only the first valid one will be used.
+    required: false
+
+returns: ToolExecutionResponse with result containing url, file_name, file_type, media_id
+
+examples:
+  - 'generate_video("A time-lapse of a flower blooming, petals opening gradually, soft lighting")'
+
+use_cases:
+  - When user requests video generation
+  - For short video clips and scenes
+  - You CAN generate videos - do not tell users otherwise
+
+notes:
+  - ALWAYS send intermediate message before calling this
+  - Generation time is 1-2 minutes (sometimes longer)
+  - Describe the action/motion clearly
+  - Include camera movement (pan, zoom, static, etc.)
+  - Specify style (cinematic, documentary, artistic, etc.)
+  - Mention lighting and atmosphere
+  - Keep scenes relatively simple for best results
+
+requires_integration: media_generation
+requires_auth: false
+is_long_running: true
+requires_intermediate_message: true
+estimated_duration_seconds: 120

@@ -180,7 +180,7 @@ def create_browser_tool(request_id, user_id, metadata):
 
         Args:
             task: Natural language description of what to do (e.g., "Find pricing information", "Extract product details"), and on what website, if it's a specific one.
-            max_steps: Maximum number of browser actions to take (default: 10)
+            max_steps: Maximum number of browser actions to take (default: 30)
 
         Examples:
             - "Navigate to the pricing page and extract all plan details"
@@ -198,7 +198,7 @@ def create_browser_tool(request_id, user_id, metadata):
             browser_task = {
                 "user_id": user_id,
                 "task": task,
-                "max_steps": max_steps,
+                "max_steps": min(max(max_steps, 20), 100),
                 "metadata": {
                     "conversation_id": metadata.get("conversation_id"),
                     "source": metadata.get("source"),

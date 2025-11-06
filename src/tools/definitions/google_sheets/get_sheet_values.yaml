@@ -2,7 +2,6 @@ tool_id: get_sheet_values
 category: google_sheets
 display_name: get_sheet_values
 short_description: Gets cell values from a Google Sheet
-supports_multi_account: true
 arguments:
   - name: spreadsheet_id
     type: str

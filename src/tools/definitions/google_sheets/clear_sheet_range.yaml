@@ -2,7 +2,6 @@ tool_id: clear_sheet_range
 category: google_sheets
 display_name: clear_sheet_range
 short_description: Clears values from a range in a Google Sheet
-supports_multi_account: true
 arguments:
   - name: spreadsheet_id
     type: str

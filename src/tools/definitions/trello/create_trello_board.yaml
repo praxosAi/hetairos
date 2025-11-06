@@ -2,7 +2,6 @@ tool_id: create_trello_board
 category: trello
 display_name: create_trello_board
 short_description: Creates a new Trello board
-supports_multi_account: true
 arguments:
   - name: name
     type: str

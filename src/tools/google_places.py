@@ -20,7 +20,7 @@ from typing import Optional
 logger = setup_logger(__name__)
 
 
-def create_google_places_tools():
+def create_google_places_tools(tool_registry):
     """
     Creates Google Places tools wrapped in ToolExecutionResponse format.
     Requires GPLACES_API_KEY environment variable.
@@ -312,9 +312,11 @@ def create_google_places_tools():
                 context={"place_id": place_id}
             )
 
-    return [
+    all_tools = [
         google_places_text_search,
         google_places_nearby_search,
         google_places_find_place,
         google_places_get_details
     ]
+    tool_registry.apply_descriptions_to_tools(all_tools)
+    return all_tools

@@ -4,8 +4,6 @@ display_name: list_drive_files
 
 short_description: Lists files in Drive, optionally filtered by folder
 
-supports_multi_account: true
-description_template: "Lists files in Google Drive. {account_info}"
 
 arguments:
   - name: folder_id

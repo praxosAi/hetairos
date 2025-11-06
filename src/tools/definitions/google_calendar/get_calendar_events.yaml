@@ -2,7 +2,6 @@ tool_id: get_calendar_events
 category: google_calendar
 display_name: get_calendar_events
 short_description: Fetches events from the user's Google Calendar within a specified time window
-supports_multi_account: true
 arguments:
   - name: time_min
     type: datetime

@@ -4,7 +4,6 @@ display_name: delete_doc_content
 
 short_description: Deletes content in a specific range of a Google Doc
 
-supports_multi_account: true
 
 arguments:
   - name: document_id

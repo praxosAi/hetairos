@@ -24,7 +24,8 @@ logger = setup_logger(__name__)
 def create_file_retrieval_tools(
     praxos_client: PraxosClient,
     user_id: str,
-    conversation_id: str
+    conversation_id: str,
+    tool_registry = None
 ) -> list:
     """
     Create file retrieval tools for agent access.
@@ -439,4 +440,7 @@ def create_file_retrieval_tools(
             )
 
     logger.info(f"Created file retrieval tools for conversation {conversation_id}")
-    return [search_uploaded_files, retrieve_file_by_source_id, list_recent_uploaded_files]
+    all_tools = [search_uploaded_files, retrieve_file_by_source_id, list_recent_uploaded_files]
+    if tool_registry:
+        tool_registry.apply_descriptions_to_tools(all_tools)
+    return all_tools

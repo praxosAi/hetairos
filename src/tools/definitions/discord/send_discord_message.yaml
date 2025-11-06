@@ -2,7 +2,6 @@ tool_id: send_discord_message
 category: discord
 display_name: send_discord_message
 short_description: Send a message to a Discord channel
-supports_multi_account: true
 arguments:
   - name: channel
     type: str

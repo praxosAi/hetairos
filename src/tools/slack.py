@@ -8,7 +8,7 @@ import json
 
 logger = setup_logger(__name__)
 
-def create_slack_tools(slack_integration: SlackIntegration) -> list:
+def create_slack_tools(slack_integration: SlackIntegration, tool_registry = None) -> list:
     """Creates Slack related tools with multi-workspace support."""
 
     @tool
@@ -209,7 +209,11 @@ def create_slack_tools(slack_integration: SlackIntegration) -> list:
                 context={"user_id": user_id}
             )
 
-    return [
+    accounts = slack_integration.get_connected_accounts()
+    if not accounts:
+        return []
+
+    all_tools = [
         list_slack_workspaces,
         send_slack_message,
         send_slack_dm,
@@ -217,3 +221,6 @@ def create_slack_tools(slack_integration: SlackIntegration) -> list:
         get_slack_channel_history,
         get_slack_user_info
     ]
+    if tool_registry:
+        tool_registry.apply_descriptions_to_tools(all_tools, accounts=accounts)
+    return all_tools

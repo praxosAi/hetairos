@@ -2,7 +2,6 @@ tool_id: get_single_cell
 category: google_sheets
 display_name: get_single_cell
 short_description: Gets the value of a single cell in a Google Sheet
-supports_multi_account: true
 arguments:
   - name: spreadsheet_id
     type: str

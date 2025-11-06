@@ -2,7 +2,6 @@ tool_id: create_trello_list
 category: trello
 display_name: create_trello_list
 short_description: Creates a new list on a Trello board
-supports_multi_account: true
 arguments:
   - name: board_id
     type: str

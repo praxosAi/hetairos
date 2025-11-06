@@ -2,7 +2,6 @@ tool_id: list_notion_pages
 category: notion
 display_name: list_notion_pages
 short_description: Lists all top-level pages in the Notion workspace
-supports_multi_account: true
 arguments:
   - name: account
     type: str

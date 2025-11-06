@@ -2,7 +2,6 @@ tool_id: list_trello_organizations
 category: trello
 display_name: list_trello_organizations
 short_description: Lists all Trello organizations/workspaces accessible to the user
-supports_multi_account: true
 arguments:
   - name: account
     type: str

@@ -2,7 +2,6 @@ tool_id: add_sheet_tab
 category: google_sheets
 display_name: add_sheet_tab
 short_description: Adds a new sheet tab to an existing Google Spreadsheet
-supports_multi_account: true
 arguments:
   - name: spreadsheet_id
     type: str

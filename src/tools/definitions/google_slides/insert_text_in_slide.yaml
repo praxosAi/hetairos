@@ -2,7 +2,6 @@ tool_id: insert_text_in_slide
 category: google_slides
 display_name: insert_text_in_slide
 short_description: Inserts a text box with text into a slide
-supports_multi_account: true
 arguments:
   - name: presentation_id
     type: str

@@ -2,7 +2,6 @@ tool_id: list_dropbox_files
 category: dropbox
 display_name: list_dropbox_files
 short_description: Lists files and folders in a Dropbox directory
-supports_multi_account: true
 arguments:
   - name: folder_path
     type: str

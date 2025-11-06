@@ -2,7 +2,6 @@ tool_id: search_trello
 category: trello
 display_name: search_trello
 short_description: Searches Trello for cards, boards, and other items matching a query
-supports_multi_account: true
 arguments:
   - name: query
     type: str

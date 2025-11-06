@@ -2,7 +2,6 @@ tool_id: create_table_in_slide
 category: google_slides
 display_name: create_table_in_slide
 short_description: Creates a table in a slide
-supports_multi_account: true
 arguments:
   - name: presentation_id
     type: str

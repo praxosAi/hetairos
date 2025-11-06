@@ -2,7 +2,6 @@ tool_id: get_discord_channel_history
 category: discord
 display_name: get_discord_channel_history
 short_description: Get message history from a Discord channel
-supports_multi_account: true
 arguments:
   - name: channel
     type: str

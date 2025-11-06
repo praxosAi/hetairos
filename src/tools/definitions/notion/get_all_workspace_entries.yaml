@@ -2,7 +2,6 @@ tool_id: get_all_workspace_entries
 category: notion
 display_name: get_all_workspace_entries
 short_description: Retrieves all pages and databases in the Notion workspace
-supports_multi_account: true
 arguments:
   - name: account
     type: str

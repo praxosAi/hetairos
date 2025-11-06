@@ -2,7 +2,6 @@ tool_id: unassign_member_from_card
 category: trello
 display_name: unassign_member_from_card
 short_description: Removes a member assignment from a Trello card
-supports_multi_account: true
 arguments:
   - name: card_id
     type: str

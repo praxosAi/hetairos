@@ -2,7 +2,6 @@ tool_id: add_trello_comment
 category: trello
 display_name: add_trello_comment
 short_description: Adds a comment to a Trello card
-supports_multi_account: true
 arguments:
   - name: card_id
     type: str

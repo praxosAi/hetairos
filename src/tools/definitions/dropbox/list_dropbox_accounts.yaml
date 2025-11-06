@@ -2,7 +2,6 @@ tool_id: list_dropbox_accounts
 category: dropbox
 display_name: list_dropbox_accounts
 short_description: Lists all connected Dropbox accounts for the user
-supports_multi_account: true
 arguments: []
 returns: JSON object with list of connected Dropbox accounts
 use_cases:

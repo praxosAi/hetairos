@@ -2,7 +2,6 @@ tool_id: format_slide_text
 category: google_slides
 display_name: format_slide_text
 short_description: Applies text formatting to a text box or shape in a slide
-supports_multi_account: true
 arguments:
   - name: presentation_id
     type: str

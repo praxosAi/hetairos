@@ -2,7 +2,6 @@ tool_id: share_trello_board
 category: trello
 display_name: share_trello_board
 short_description: Shares a Trello board by inviting a user via email
-supports_multi_account: true
 arguments:
   - name: board_id
     type: str

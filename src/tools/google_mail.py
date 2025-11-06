@@ -386,8 +386,8 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry) -> Li
 
     # Apply descriptions from YAML database
     # Note: send_email and reply_to_email use 'from_account', others use 'account'
-    for tool in all_tools:
-        param_name = 'from_account' if tool.name in ["send_email", "reply_to_email"] else 'account'
-        tool_registry.apply_descriptions_to_tools([tool], accounts=accounts, account_param_name=param_name)
+    for t in all_tools:
+        param_name = 'from_account' if t.name in ["send_email", "reply_to_email"] else 'account'
+        tool_registry.apply_descriptions_to_tools([t], accounts=accounts, account_param_name=param_name)
 
     return all_tools

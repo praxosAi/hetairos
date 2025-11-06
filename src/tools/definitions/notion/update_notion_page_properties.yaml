@@ -2,7 +2,6 @@ tool_id: update_notion_page_properties
 category: notion
 display_name: update_notion_page_properties
 short_description: Updates the properties of a Notion page, such as title or database fields
-supports_multi_account: true
 arguments:
   - name: page_id
     type: str

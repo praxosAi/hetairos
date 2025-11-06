@@ -4,8 +4,6 @@ display_name: save_file_to_drive
 
 short_description: Uploads a file from URL to Google Drive
 
-supports_multi_account: true
-description_template: "Uploads file to Google Drive. {account_info}"
 
 arguments:
   - name: file_url

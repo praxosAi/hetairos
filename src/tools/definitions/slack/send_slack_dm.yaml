@@ -2,7 +2,6 @@ tool_id: send_slack_dm
 category: slack
 display_name: send_slack_dm
 short_description: Send a direct message to a Slack user
-supports_multi_account: true
 arguments:
   - name: user_id
     type: str

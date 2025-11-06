@@ -2,7 +2,6 @@ tool_id: list_trello_accounts
 category: trello
 display_name: list_trello_accounts
 short_description: Lists all connected Trello accounts for the user
-supports_multi_account: true
 arguments: []
 returns: JSON object containing list of connected Trello accounts with their identifiers
 use_cases:

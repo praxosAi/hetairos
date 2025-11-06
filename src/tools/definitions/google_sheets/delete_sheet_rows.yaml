@@ -2,7 +2,6 @@ tool_id: delete_sheet_rows
 category: google_sheets
 display_name: delete_sheet_rows
 short_description: Deletes rows from a Google Sheet
-supports_multi_account: true
 arguments:
   - name: spreadsheet_id
     type: str

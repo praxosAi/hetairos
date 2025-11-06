@@ -2,7 +2,6 @@ tool_id: fetch_outlook_calendar_events
 category: microsoft_graph
 display_name: fetch_outlook_calendar_events
 short_description: Fetches calendar events from Outlook
-supports_multi_account: true
 arguments:
   - name: time_min
     type: str

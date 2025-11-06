@@ -2,7 +2,6 @@ tool_id: assign_member_to_card
 category: trello
 display_name: assign_member_to_card
 short_description: Assigns a member to a Trello card
-supports_multi_account: true
 arguments:
   - name: card_id
     type: str

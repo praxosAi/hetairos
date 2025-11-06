@@ -2,7 +2,6 @@ tool_id: append_sheet_rows
 category: google_sheets
 display_name: append_sheet_rows
 short_description: Appends rows to the end of a Google Sheet
-supports_multi_account: true
 arguments:
   - name: spreadsheet_id
     type: str

@@ -2,7 +2,6 @@ tool_id: get_outlook_emails_from_sender
 category: microsoft_graph
 display_name: get_outlook_emails_from_sender
 short_description: Fetches the most recent emails from a specific sender
-supports_multi_account: true
 arguments:
   - name: sender_email
     type: str

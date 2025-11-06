@@ -2,7 +2,6 @@ tool_id: search_google_sheet
 category: google_sheets
 display_name: search_google_sheet
 short_description: Searches for text within a Google Spreadsheet and returns all matching cells
-supports_multi_account: true
 arguments:
   - name: spreadsheet_id
     type: str

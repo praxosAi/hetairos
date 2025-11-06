@@ -2,7 +2,6 @@ tool_id: search_notion_pages_by_keyword
 category: notion
 display_name: search_notion_pages_by_keyword
 short_description: Performs a global keyword search across all pages
-supports_multi_account: true
 arguments:
   - name: query
     type: str

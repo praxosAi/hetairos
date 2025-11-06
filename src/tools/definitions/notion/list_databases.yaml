@@ -2,7 +2,6 @@ tool_id: list_databases
 category: notion
 display_name: list_databases
 short_description: Lists all accessible databases and top-level pages in Notion workspace
-supports_multi_account: true
 arguments:
   - name: account
     type: str

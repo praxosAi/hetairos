@@ -2,7 +2,6 @@ tool_id: get_trello_board_details
 category: trello
 display_name: get_trello_board_details
 short_description: Gets detailed information about a specific Trello board
-supports_multi_account: true
 arguments:
   - name: board_id
     type: str

@@ -4,7 +4,6 @@ display_name: replace_text_in_doc
 
 short_description: Finds and replaces all occurrences of text in a Google Doc
 
-supports_multi_account: true
 
 arguments:
   - name: document_id

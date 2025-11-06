@@ -4,8 +4,6 @@ display_name: get_google_doc_content
 
 short_description: Retrieves content from a Google Doc
 
-supports_multi_account: true
-description_template: "Retrieves Google Doc content. {account_info}"
 
 arguments:
   - name: document_id

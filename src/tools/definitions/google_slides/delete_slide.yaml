@@ -2,7 +2,6 @@ tool_id: delete_slide
 category: google_slides
 display_name: delete_slide
 short_description: Deletes a slide from a Google Slides presentation
-supports_multi_account: true
 arguments:
   - name: presentation_id
     type: str

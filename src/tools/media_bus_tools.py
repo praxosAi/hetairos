@@ -23,7 +23,7 @@ from src.utils.logging import setup_logger
 logger = setup_logger(__name__)
 
 
-def create_media_bus_tools(conversation_id: str, user_id: str) -> list:
+def create_media_bus_tools(conversation_id: str, user_id: str, tool_registry = None) -> list:
     """
     Factory to create media bus tools for a specific conversation.
 
@@ -311,4 +311,7 @@ def create_media_bus_tools(conversation_id: str, user_id: str) -> list:
             )
 
     logger.info(f"Created media bus tools for conversation {conversation_id}")
-    return [list_available_media, get_media_by_id, get_recent_images]
+    all_tools = [list_available_media, get_media_by_id, get_recent_images]
+    if tool_registry:
+        tool_registry.apply_descriptions_to_tools(all_tools)
+    return all_tools

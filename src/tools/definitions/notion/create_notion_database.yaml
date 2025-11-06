@@ -2,7 +2,6 @@ tool_id: create_notion_database
 category: notion
 display_name: create_notion_database
 short_description: Creates a new database in Notion
-supports_multi_account: true
 arguments:
   - name: parent_page_id
     type: str

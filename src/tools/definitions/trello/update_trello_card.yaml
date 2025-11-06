@@ -2,7 +2,6 @@ tool_id: update_trello_card
 category: trello
 display_name: update_trello_card
 short_description: Updates an existing Trello card
-supports_multi_account: true
 arguments:
   - name: card_id
     type: str

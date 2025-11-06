@@ -14,7 +14,7 @@ import os
 logger = setup_logger(__name__)
 
 
-def create_google_lens_tools():
+def create_google_lens_tools(tool_registry):
     """
     Creates Google Lens tools using SerpAPI.
     Requires SERPAPI_API_KEY environment variable.
@@ -61,4 +61,6 @@ def create_google_lens_tools():
                 context={"image_url": image_url}
             )
 
-    return [identify_product_in_image]
+    all_tools = [identify_product_in_image]
+    tool_registry.apply_descriptions_to_tools(all_tools)
+    return all_tools

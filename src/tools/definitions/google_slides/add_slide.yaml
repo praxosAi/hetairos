@@ -2,7 +2,6 @@ tool_id: add_slide
 category: google_slides
 display_name: add_slide
 short_description: Adds a new slide to a Google Slides presentation
-supports_multi_account: true
 arguments:
   - name: presentation_id
     type: str

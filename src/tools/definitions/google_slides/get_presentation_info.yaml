@@ -2,7 +2,6 @@ tool_id: get_presentation_info
 category: google_slides
 display_name: get_presentation_info
 short_description: Gets metadata and structure of a Google Slides presentation
-supports_multi_account: true
 arguments:
   - name: presentation_id
     type: str

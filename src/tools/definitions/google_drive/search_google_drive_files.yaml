@@ -4,8 +4,6 @@ display_name: search_google_drive_files
 
 short_description: Searches for files/folders in Google Drive
 
-supports_multi_account: true
-description_template: "Searches for files in Google Drive. {account_info}"
 
 arguments:
   - name: query

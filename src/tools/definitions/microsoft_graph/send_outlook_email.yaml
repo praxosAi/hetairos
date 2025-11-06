@@ -2,7 +2,6 @@ tool_id: send_outlook_email
 category: microsoft_graph
 display_name: send_outlook_email
 short_description: Sends an email using Outlook
-supports_multi_account: true
 arguments:
   - name: recipient
     type: str

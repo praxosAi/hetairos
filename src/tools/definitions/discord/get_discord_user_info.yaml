@@ -2,7 +2,6 @@ tool_id: get_discord_user_info
 category: discord
 display_name: get_discord_user_info
 short_description: Get information about a Discord user
-supports_multi_account: true
 arguments:
   - name: user_id
     type: str

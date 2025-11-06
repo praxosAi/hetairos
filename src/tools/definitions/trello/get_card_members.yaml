@@ -2,7 +2,6 @@ tool_id: get_card_members
 category: trello
 display_name: get_card_members
 short_description: Gets all members currently assigned to a Trello card
-supports_multi_account: true
 arguments:
   - name: card_id
     type: str

@@ -2,7 +2,6 @@ tool_id: get_notion_page_content
 category: notion
 display_name: get_notion_page_content
 short_description: Retrieves the content (blocks) of a Notion page
-supports_multi_account: true
 arguments:
   - name: page_id
     type: str

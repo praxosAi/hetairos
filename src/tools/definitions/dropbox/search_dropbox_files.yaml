@@ -2,7 +2,6 @@ tool_id: search_dropbox_files
 category: dropbox
 display_name: search_dropbox_files
 short_description: Searches for files in Dropbox by filename or content
-supports_multi_account: true
 arguments:
   - name: query
     type: str

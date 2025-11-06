@@ -4,8 +4,6 @@ display_name: read_file_content_by_id
 
 short_description: Reads text content from a Drive file
 
-supports_multi_account: true
-description_template: "Reads file content from Google Drive. {account_info}"
 
 arguments:
   - name: file_id

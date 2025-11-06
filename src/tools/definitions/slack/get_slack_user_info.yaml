@@ -2,7 +2,6 @@ tool_id: get_slack_user_info
 category: slack
 display_name: get_slack_user_info
 short_description: Get information about a Slack user
-supports_multi_account: true
 arguments:
   - name: user_id
     type: str

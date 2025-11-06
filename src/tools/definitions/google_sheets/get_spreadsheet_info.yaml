@@ -2,7 +2,6 @@ tool_id: get_spreadsheet_info
 category: google_sheets
 display_name: get_spreadsheet_info
 short_description: Gets metadata and structure information about a Google Spreadsheet
-supports_multi_account: true
 arguments:
   - name: spreadsheet_id
     type: str

@@ -14,6 +14,7 @@ def create_platform_messaging_tools(
     metadata: Optional[Dict] = None,
     available_platforms: Optional[List[str]] = None,
     conversation_manager: ConversationManager = None,
+    tool_registry = None,
 ) -> List:
     """
     Create platform-specific messaging tools for communicating with the user.
@@ -40,6 +41,8 @@ def create_platform_messaging_tools(
                 tools.append(platform_tool)
 
     logger.info(f"Created {len(tools)} platform messaging tools for source={source}")
+    if tool_registry:
+        tool_registry.apply_descriptions_to_tools(tools)
     return tools
 
 
@@ -204,7 +207,7 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
     return reply_to_user_on_platform
 
 
-def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str = None) -> List:
+def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str = None, tool_registry = None) -> List:
     """Creates tools for the bot to communicate with users on different platforms."""
 
     @tool
@@ -352,10 +355,13 @@ def create_bot_communication_tools(metadata: Optional[Dict] = None, user_id: str
     #     except Exception as e:
     #         return ToolExecutionResponse(status="error", system_error=str(e))
 
-    return [send_intermediate_message, reply_to_user_via_email, send_new_email_as_praxos_bot, report_bug_to_developers]
+    all_tools = [send_intermediate_message, reply_to_user_via_email, send_new_email_as_praxos_bot, report_bug_to_developers]
+    if tool_registry:
+        tool_registry.apply_descriptions_to_tools(all_tools)
+    return all_tools
 
 
-def create_ios_command_tools(user_id: str) -> List:
+def create_ios_command_tools(user_id: str, tool_registry = None) -> List:
     """
     Creates tools for sending commands to iOS Shortcuts.
 
@@ -487,4 +493,7 @@ def create_ios_command_tools(user_id: str) -> List:
             logger.error(f"Failed to send iOS reminder command: {e}", exc_info=True)
             raise Exception(f"Failed to create iOS reminder: {str(e)}")
 
-    return [send_text_via_ios, execute_ios_shortcut, create_ios_reminder]
+    all_tools = [send_text_via_ios, execute_ios_shortcut, create_ios_reminder]
+    if tool_registry:
+        tool_registry.apply_descriptions_to_tools(all_tools)
+    return all_tools

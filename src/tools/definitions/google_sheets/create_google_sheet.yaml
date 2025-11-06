@@ -2,7 +2,6 @@ tool_id: create_google_sheet
 category: google_sheets
 display_name: create_google_sheet
 short_description: Creates a new Google Spreadsheet
-supports_multi_account: true
 arguments:
   - name: title
     type: str

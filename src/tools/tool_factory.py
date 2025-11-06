@@ -132,7 +132,8 @@ class AgentToolsFactory:
                         user_id=user_id,
                         metadata=metadata,
                         available_platforms=None,
-                        conversation_manager=conversation_manager
+                        conversation_manager=conversation_manager,
+                        tool_registry=tool_registry
                     )
                     tools.extend(platform_tool)
                 except Exception as e:
@@ -146,7 +147,7 @@ class AgentToolsFactory:
         # Legacy Communication tools (intermediate messages, email, etc.)
         if needs_category(['send_intermediate_message', 'reply_to_user_via_email', 'send_new_email_as_praxos_bot', 'report_bug_to_developers']):
             try:
-                tools.extend(create_bot_communication_tools(metadata, user_id))
+                tools.extend(create_bot_communication_tools(metadata, user_id, tool_registry))
             except Exception as e:
                 logger.error(f"Error creating bot communication tools: {e}", exc_info=True)
 
@@ -158,7 +159,8 @@ class AgentToolsFactory:
                     media_tools = create_media_generation_tools(
                         user_id=user_id,
                         source=source,
-                        conversation_id=conversation_id
+                        conversation_id=conversation_id,
+                        tool_registry=tool_registry
                     )
                     tools.extend(media_tools)
                     logger.info(f"Added media generation tools for user={user_id}")
@@ -173,7 +175,8 @@ class AgentToolsFactory:
             try:
                 media_bus_tools = create_media_bus_tools(
                     conversation_id=conversation_id,
-                    user_id=user_id
+                    user_id=user_id,
+                    tool_registry=tool_registry
                 )
                 tools.extend(media_bus_tools)
                 logger.info(f"Added media bus tools for conversation={conversation_id}")
@@ -185,28 +188,28 @@ class AgentToolsFactory:
         # Scheduling tools
         if needs_category(['schedule_task', 'create_recurring_future_task', 'get_scheduled_tasks', 'cancel_scheduled_task', 'update_scheduled_task']):
             try:
-                tools.extend(create_scheduling_tools(user_id, metadata.get('source'), str(metadata.get('conversation_id'))))
+                tools.extend(create_scheduling_tools(user_id, metadata.get('source'), str(metadata.get('conversation_id')), tool_registry))
             except Exception as e:
                 logger.error(f"Error creating scheduling tools: {e}", exc_info=True)
 
         # Basic tools, always include
         if True:
             try:
-                tools.extend(create_basic_tools(user_time_zone))
+                tools.extend(create_basic_tools(user_time_zone, tool_registry))
             except Exception as e:
                 logger.error(f"Error creating basic tools: {e}", exc_info=True)
 
         # Preference tools: this should always be included, as these are essential for user customization
         if True or needs_category(['add_user_preference_annotation', 'set_assistant_name', 'set_timezone', 'set_language_response', 'delete_user_preference_annotations']):
             try:
-                tools.extend(create_preference_tools(user_id))
+                tools.extend(create_preference_tools(user_id, tool_registry))
             except Exception as e:
                 logger.error(f"Error creating preference tools: {e}", exc_info=True)
 
         # Integration tools
         if True:
             try:
-                tools.extend(create_integration_tools(user_id))
+                tools.extend(create_integration_tools(user_id, tool_registry))
                 logger.info("Integration tools created successfully.")
             except Exception as e:
                 logger.error(f"Error creating integration tools: {e}", exc_info=True)
@@ -214,14 +217,14 @@ class AgentToolsFactory:
         # Database tools
         if needs_category(['fetch_latest_messages', 'get_user_integration_records']):
             try:
-                tools.extend(create_database_access_tools(user_id))
+                tools.extend(create_database_access_tools(user_id, tool_registry))
             except Exception as e:
                 logger.error(f"Error creating database access tools: {e}", exc_info=True)
 
         # Google Places
         if needs_category(['google_places_text_search', 'google_places_nearby_search', 'google_places_find_place', 'google_places_get_details']):
             try:
-                tools.extend(create_google_places_tools())
+                tools.extend(create_google_places_tools(tool_registry))
                 logger.info("Google Places tools created successfully.")
             except Exception as e:
                 logger.error(f"Error creating Google places tools: {e}", exc_info=True)
@@ -229,7 +232,7 @@ class AgentToolsFactory:
         # Google Lens
         if is_tool_required('identify_product_in_image'):
             try:
-                tools.extend(create_google_lens_tools())
+                tools.extend(create_google_lens_tools(tool_registry))
                 logger.info("Google Lens product recognition tools created successfully.")
             except Exception as e:
                 logger.error(f"Error creating Google Lens tools: {e}", exc_info=True)
@@ -237,7 +240,7 @@ class AgentToolsFactory:
         # Web tools: if google search or places is needed, also load web browsing
         if needs_category(['read_webpage_content', 'browse_website_with_ai','google_search','google_places_text_search','google_places_nearby_search','google_places_find_place','google_places_get_details']):
             try:
-                tools.extend(create_web_tools(request_id, user_id, metadata))
+                tools.extend(create_web_tools(request_id, user_id, metadata, tool_registry))
                 logger.info("Web tools created successfully.")
             except Exception as e:
                 logger.error(f"Error creating web tools: {e}", exc_info=True)
@@ -431,11 +434,11 @@ class AgentToolsFactory:
 
             if praxos_api_key:
                 praxos_client = PraxosClient(f"env_for_{user_email}", api_key=praxos_api_key)
-                tools.extend(create_praxos_memory_tool(praxos_client, user_id, str(metadata.get('conversation_id'))))
+                tools.extend(create_praxos_memory_tool(praxos_client, user_id, str(metadata.get('conversation_id')), tool_registry))
                 logger.info("Praxos memory tools loaded")
 
                 # Add file retrieval tools (uses Praxos search for file discovery)
-                tools.extend(create_file_retrieval_tools(praxos_client, user_id, str(metadata.get('conversation_id'))))
+                tools.extend(create_file_retrieval_tools(praxos_client, user_id, str(metadata.get('conversation_id')), tool_registry))
                 logger.info("File retrieval tools loaded")
             else:
                 logger.warning("Praxos API key not found, memory tools will be unavailable.")

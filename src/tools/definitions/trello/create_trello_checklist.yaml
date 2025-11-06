@@ -2,7 +2,6 @@ tool_id: create_trello_checklist
 category: trello
 display_name: create_trello_checklist
 short_description: Creates a checklist on a Trello card with optional initial items
-supports_multi_account: true
 arguments:
   - name: card_id
     type: str

@@ -4,7 +4,6 @@ display_name: format_doc_text
 
 short_description: Applies formatting to text ranges in a Google Doc
 
-supports_multi_account: true
 
 arguments:
   - name: document_id

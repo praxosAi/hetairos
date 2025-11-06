@@ -2,7 +2,6 @@ tool_id: query_notion_database
 category: notion
 display_name: query_notion_database
 short_description: Queries a specific Notion database to find pages matching certain criteria
-supports_multi_account: true
 arguments:
   - name: database_id
     type: str

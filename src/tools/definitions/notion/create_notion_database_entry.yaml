@@ -2,7 +2,6 @@ tool_id: create_notion_database_entry
 category: notion
 display_name: create_notion_database_entry
 short_description: Creates a new entry in a Notion database
-supports_multi_account: true
 arguments:
   - name: database_id
     type: str

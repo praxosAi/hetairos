@@ -2,7 +2,6 @@ tool_id: create_trello_card
 category: trello
 display_name: create_trello_card
 short_description: Creates a new card in a Trello list
-supports_multi_account: true
 arguments:
   - name: list_id
     type: str

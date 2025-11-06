@@ -5,7 +5,7 @@ from src.tools.tool_types import ToolExecutionResponse
 from src.tools.error_helpers import ErrorResponseBuilder
 
 
-def create_basic_tools(user_time_zone) -> list:
+def create_basic_tools(user_time_zone, tool_registry) -> list:
     """Create basic information tools"""
 
     @tool
@@ -47,4 +47,6 @@ def create_basic_tools(user_time_zone) -> list:
     #     )
 
     # return [get_current_time, get_current_task_plan_and_step, ask_user_for_missing_params]
-    return [get_current_time, get_current_task_plan_and_step]
+    all_tools = [get_current_time, get_current_task_plan_and_step]
+    tool_registry.apply_descriptions_to_tools(all_tools)
+    return all_tools

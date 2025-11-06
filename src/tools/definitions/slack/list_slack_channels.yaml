@@ -2,7 +2,6 @@ tool_id: list_slack_channels
 category: slack
 display_name: list_slack_channels
 short_description: List all channels in the Slack workspace
-supports_multi_account: true
 arguments:
   - name: types
     type: str

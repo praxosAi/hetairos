@@ -6,6 +6,8 @@ from src.workers.execution_worker import execution_task
 
 from src.workers.conversation_consolidator import ConversationConsolidator
 from src.utils.database import conversation_db
+from src.services.ai_service.prompts.cache_manager import check_and_regenerate_cache_if_needed
+  
 
 async def run_consolidator():
     """Periodically runs the conversation consolidator."""
@@ -21,7 +23,7 @@ async def main():
     This should be run in a separate process from the web server.
     """
     logger.info("Starting all background workers...")
-    
+    await check_and_regenerate_cache_if_needed()
     await asyncio.gather(
         execution_task(),
         run_consolidator()

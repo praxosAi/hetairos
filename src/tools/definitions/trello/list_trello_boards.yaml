@@ -2,7 +2,6 @@ tool_id: list_trello_boards
 category: trello
 display_name: list_trello_boards
 short_description: Lists all Trello boards accessible to the user
-supports_multi_account: true
 arguments:
   - name: organization_id
     type: str

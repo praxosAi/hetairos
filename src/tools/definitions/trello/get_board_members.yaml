@@ -2,7 +2,6 @@ tool_id: get_board_members
 category: trello
 display_name: get_board_members
 short_description: Gets all members of a Trello board
-supports_multi_account: true
 arguments:
   - name: board_id
     type: str

@@ -2,7 +2,6 @@ tool_id: create_calendar_event
 category: google_calendar
 display_name: create_calendar_event
 short_description: Creates a new event on the user's Google Calendar
-supports_multi_account: true
 arguments:
   - name: title
     type: str

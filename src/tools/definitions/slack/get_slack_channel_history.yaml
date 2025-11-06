@@ -2,7 +2,6 @@ tool_id: get_slack_channel_history
 category: slack
 display_name: get_slack_channel_history
 short_description: Get message history from a Slack channel
-supports_multi_account: true
 arguments:
   - name: channel
     type: str

@@ -2,7 +2,6 @@ tool_id: list_discord_channels
 category: discord
 display_name: list_discord_channels
 short_description: List all channels in the Discord server
-supports_multi_account: true
 arguments:
   - name: types
     type: str

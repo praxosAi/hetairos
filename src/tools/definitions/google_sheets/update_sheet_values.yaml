@@ -2,7 +2,6 @@ tool_id: update_sheet_values
 category: google_sheets
 display_name: update_sheet_values
 short_description: Updates cell values in a Google Sheet
-supports_multi_account: true
 arguments:
   - name: spreadsheet_id
     type: str

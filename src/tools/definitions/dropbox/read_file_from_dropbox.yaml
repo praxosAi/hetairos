@@ -2,7 +2,6 @@ tool_id: read_file_from_dropbox
 category: dropbox
 display_name: read_file_from_dropbox
 short_description: Reads the content of a file from Dropbox
-supports_multi_account: true
 arguments:
   - name: file_path
     type: str

@@ -2,7 +2,6 @@ tool_id: move_trello_card
 category: trello
 display_name: move_trello_card
 short_description: Moves a Trello card to a different list
-supports_multi_account: true
 arguments:
   - name: card_id
     type: str

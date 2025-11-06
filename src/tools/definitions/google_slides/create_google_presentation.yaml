@@ -2,7 +2,6 @@ tool_id: create_google_presentation
 category: google_slides
 display_name: create_google_presentation
 short_description: Creates a new Google Slides presentation
-supports_multi_account: true
 arguments:
   - name: title
     type: str

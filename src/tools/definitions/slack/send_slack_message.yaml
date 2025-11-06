@@ -2,7 +2,6 @@ tool_id: send_slack_message
 category: slack
 display_name: send_slack_message
 short_description: Send a message to a Slack channel
-supports_multi_account: true
 arguments:
   - name: channel
     type: str

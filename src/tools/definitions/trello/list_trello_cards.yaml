@@ -2,7 +2,6 @@ tool_id: list_trello_cards
 category: trello
 display_name: list_trello_cards
 short_description: Lists all cards on a Trello board or in a specific list
-supports_multi_account: true
 arguments:
   - name: board_id
     type: str

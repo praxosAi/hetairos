@@ -2,7 +2,6 @@ tool_id: find_outlook_contact_email
 category: microsoft_graph
 display_name: find_outlook_contact_email
 short_description: Searches Outlook contacts for a person's email address by their name
-supports_multi_account: true
 arguments:
   - name: name
     type: str

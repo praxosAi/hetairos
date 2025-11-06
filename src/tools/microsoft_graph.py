@@ -68,10 +68,6 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration, tool_registr
             )
 
     # Tool registry is passed in and already loaded
-    accounts = outlook_client.get_connected_accounts()
-    if not accounts:
-        return []
-
     all_tools = [
         send_outlook_email,
         fetch_outlook_calendar_events,
@@ -79,7 +75,7 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration, tool_registr
         find_outlook_contact_email
     ]
 
-    # Apply descriptions from YAML database
-    tool_registry.apply_descriptions_to_tools(all_tools, accounts=accounts)
+    # Apply descriptions from YAML database (single account integration)
+    tool_registry.apply_descriptions_to_tools(all_tools)
 
     return all_tools

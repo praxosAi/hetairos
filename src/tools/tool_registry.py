@@ -47,8 +47,6 @@ class ToolDefinition:
     is_long_running: bool = False
     requires_intermediate_message: bool = False
     estimated_duration_seconds: Optional[int] = None
-    supports_multi_account: bool = False
-    description_template: Optional[str] = None
 
     def __post_init__(self):
         """Initialize default values for list fields."""
@@ -164,9 +162,7 @@ class ToolRegistry:
             requires_auth=tool_dict.get('requires_auth', False),
             is_long_running=tool_dict.get('is_long_running', False),
             requires_intermediate_message=tool_dict.get('requires_intermediate_message', False),
-            estimated_duration_seconds=tool_dict.get('estimated_duration_seconds'),
-            supports_multi_account=tool_dict.get('supports_multi_account', False),
-            description_template=tool_dict.get('description_template')
+            estimated_duration_seconds=tool_dict.get('estimated_duration_seconds')
         )
 
     def get(self, tool_id: str) -> Optional[ToolDefinition]:
@@ -196,11 +192,11 @@ class ToolRegistry:
     def apply_descriptions_to_tools(self, tools: List, accounts: List[str] = None, account_param_name: str = 'account'):
         """
         Apply descriptions from YAML to tool objects at runtime.
-        Handles multi-account scenarios using description templates.
+        Appends account info if accounts are provided.
 
         Args:
             tools: List of tool objects to update
-            accounts: List of account identifiers (emails, IDs, etc.) if multi-account
+            accounts: List of account identifiers (emails, IDs, etc.) if multi-account tool
             account_param_name: Name of the account parameter (default: 'account', but can be 'from_account' for some tools)
 
         Returns:
@@ -217,27 +213,21 @@ class ToolRegistry:
                 logger.info(f'no description found for tool: {tool.name}')
                 continue
 
-            # Handle multi-account tools
-            if tool_def.supports_multi_account and accounts:
-                if tool_def.description_template:
-                    # Generate account info string
-                    if len(accounts) == 1:
-                        account_info = f"Connected account: {accounts[0]}"
-                    else:
-                        account_list = ", ".join(f"'{acc}'" for acc in accounts)
-                        account_info = (
-                            f"Multiple accounts available: {account_list}. "
-                            f"You MUST use the '{account_param_name}' parameter to specify which one."
-                        )
+            # Start with short description from YAML
+            description = tool_def.short_description
 
-                    # Apply template
-                    tool.description = tool_def.description_template.format(account_info=account_info)
+            # If accounts provided, append account info
+            if accounts:
+                if len(accounts) == 1:
+                    description += f". Connected account: {accounts[0]}"
                 else:
-                    # No template, just use short description
-                    tool.description = tool_def.short_description
-            else:
-                # Single account or no multi-account support
-                tool.description = tool_def.short_description
+                    accounts_str = ", ".join(f"'{acc}'" for acc in accounts)
+                    description += (
+                        f". Multiple accounts available: {accounts_str}. "
+                        f"You MUST use the '{account_param_name}' parameter to specify which one."
+                    )
+
+            tool.description = description
 
         return tools
 

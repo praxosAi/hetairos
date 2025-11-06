@@ -9,8 +9,6 @@ detailed_description: |
   Automatically adds Praxos signature.
 
 # Multi-account support
-supports_multi_account: true
-description_template: "Sends email via user's Gmail account. {account_info}"
 
 arguments:
   - name: recipient

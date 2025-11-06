@@ -2,7 +2,6 @@ tool_id: save_file_to_dropbox
 category: dropbox
 display_name: save_file_to_dropbox
 short_description: Saves text content to a file in Dropbox
-supports_multi_account: true
 arguments:
   - name: file_path
     type: str

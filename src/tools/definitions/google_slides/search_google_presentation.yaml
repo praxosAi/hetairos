@@ -2,7 +2,6 @@ tool_id: search_google_presentation
 category: google_slides
 display_name: search_google_presentation
 short_description: Searches for text within a Google Slides presentation and returns all matching slides
-supports_multi_account: true
 arguments:
   - name: presentation_id
     type: str

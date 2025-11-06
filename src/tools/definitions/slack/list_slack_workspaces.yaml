@@ -2,7 +2,6 @@ tool_id: list_slack_workspaces
 category: slack
 display_name: list_slack_workspaces
 short_description: Lists all connected Slack workspaces for the user
-supports_multi_account: true
 arguments: []
 returns: JSON object containing list of workspaces with workspace_id, team_name, and team_id for each workspace
 use_cases:

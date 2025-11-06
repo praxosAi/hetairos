@@ -7,7 +7,7 @@ from src.utils.database import conversation_db
 from src.services.integration_service import integration_service
 from enum import Enum
 from src.utils.logging import setup_logger
-def create_database_access_tools(user_id: str) -> list:
+def create_database_access_tools(user_id: str, tool_registry) -> list:
     """Create database access tools bound to a specific user_id."""
     logger = setup_logger('database_tools')
     @tool
@@ -42,4 +42,6 @@ def create_database_access_tools(user_id: str) -> list:
                 integration="database"
             )
     ### TODO: media tool, and praxos call for media tool with source id
-    return [fetch_latest_messages, get_user_integration_records]
+    all_tools = [fetch_latest_messages, get_user_integration_records]
+    tool_registry.apply_descriptions_to_tools(all_tools)
+    return all_tools

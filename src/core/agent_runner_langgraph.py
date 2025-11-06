@@ -122,22 +122,22 @@ class LangGraphAgentRunner:
             timezone_name = user_preferences.get('timezone', 'America/New_York') if user_preferences else 'America/New_York'
             user_tz = pytz.timezone(timezone_name)
             current_time_user = datetime.now(user_tz).isoformat()
-        
+
+            from_message_prefix = "from " + source if source not in ["scheduled", "recurring", "triggered"] else ""
+            message_prefix = f'message sent on date {current_time_user} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")} {from_message_prefix}: '
             # Process input based on type
             if isinstance(input, list):
                 # Grouped messages - use the parallel method
-                base_message_prefix = f'message sent on date {current_time_user} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
                 history, has_media = await generate_user_messages_parallel(
                     conversation_manager=self.conversation_manager, 
                     input_messages=input,
                     messages=history, 
                     conversation_id=conversation_id,
-                    base_message_prefix=base_message_prefix,
+                    base_message_prefix=message_prefix,
                     user_context=user_context
                 )
             elif isinstance(input, dict):
                 # Single message - existing logic
-                message_prefix = f'message sent on date {current_time_user} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")}: '
                 if input_text and source != 'browser_tool':
                     ### filter out flags, empty text, etc.
                     input_text = input_text.replace('/START_NEW','').replace('/start_new','').strip()

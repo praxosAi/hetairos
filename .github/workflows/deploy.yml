@@ -42,6 +42,10 @@ jobs:
         resource-group: ${{ env.AKS_RESOURCE_GROUP }}
         cluster-name: ${{ env.AKS_CLUSTER_NAME }}
 
-    - name: Restart Kubernetes Deployment
+    - name: Restart hetairoi-worker-deployment
       run: |
-        kubectl rollout restart -n hetairoi deployment
+        kubectl rollout restart -n hetairoi deployment/hetairoi-worker-deployment
+
+    - name: Restart hetairoi-web-deployment
+      run: |
+        kubectl rollout restart -n hetairoi deployment/hetairoi-web-deployment

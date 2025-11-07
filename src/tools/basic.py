@@ -5,7 +5,7 @@ from src.tools.tool_types import ToolExecutionResponse
 from src.tools.error_helpers import ErrorResponseBuilder
 
 
-def create_basic_tools(user_time_zone) -> list:
+def create_basic_tools(user_time_zone, tool_registry) -> list:
     """Create basic information tools"""
 
     @tool
@@ -37,13 +37,16 @@ def create_basic_tools(user_time_zone) -> list:
             result=plan
         )
 
-    @tool
-    def ask_user_for_missing_params(params: str, question: str) -> ToolExecutionResponse:
-        """Ask the user for missing parameters. this is a record keeping tool. you should call it if this is the case, as it will allow you to continue and ask the user. otherwise, you will get stuck. after this, you should simply reply to the user appropriately."""
+    # @tool
+    # def ask_user_for_missing_params(params: str, question: str) -> ToolExecutionResponse:
+    #     """Ask the user for missing parameters. this is a record keeping tool. you should call it if this is the case, as it will allow you to continue and ask the user. otherwise, you will get stuck. after this, you should simply reply to the user appropriately."""
 
-        return ToolExecutionResponse(
-            status="need_user_input",
-            result=f"To proceed, please provide the following missing parameters: {params}. Here is a question to ask the user to help you gather this information: {question} reply to the user accordingly."
-        )
+    #     return ToolExecutionResponse(
+    #         status="need_user_input",
+    #         result=f"To proceed, please provide the following missing parameters: {params}. Here is a question to ask the user to help you gather this information: {question} reply to the user accordingly."
+    #     )
 
-    return [get_current_time, get_current_task_plan_and_step, ask_user_for_missing_params]
+    # return [get_current_time, get_current_task_plan_and_step, ask_user_for_missing_params]
+    all_tools = [get_current_time, get_current_task_plan_and_step]
+    tool_registry.apply_descriptions_to_tools(all_tools)
+    return all_tools

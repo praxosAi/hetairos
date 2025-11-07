@@ -1,0 +1,24 @@
+tool_id: send_discord_dm
+category: discord
+display_name: send_discord_dm
+short_description: Send a direct message to a Discord user
+arguments:
+  - name: user_id
+    type: str
+    description: Discord user ID (e.g., "U1234567890")
+    required: true
+  - name: text
+    type: str
+    description: Message text to send
+    required: true
+  - name: account
+    type: str
+    description: Discord server identifier. If not specified and user has only one server, that server will be used.
+    required: false
+returns: JSON object with success message and message_ts
+use_cases:
+  - Send private messages to Discord users
+  - Send direct notifications to specific team members
+  - Have private conversations with Discord users
+requires_integration: discord
+requires_auth: true

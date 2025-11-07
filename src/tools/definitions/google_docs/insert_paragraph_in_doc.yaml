@@ -1,0 +1,40 @@
+tool_id: insert_paragraph_in_doc
+category: google_docs
+display_name: insert_paragraph_in_doc
+
+short_description: Inserts a paragraph into a Google Doc, optionally as a heading
+
+
+arguments:
+  - name: document_id
+    type: str
+    description: ID of the document
+    required: true
+  - name: text
+    type: str
+    description: Paragraph text
+    required: true
+  - name: index
+    type: int
+    description: Character index where to insert
+    required: false
+    default: 1
+  - name: heading_level
+    type: int
+    description: Heading level (1-6, where 1 is largest)
+    required: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Confirmation of paragraph insertion
+
+use_cases:
+  - User wants to add paragraphs or headings to a doc
+
+notes:
+  - Heading levels - 1 is largest, 6 is smallest
+
+requires_integration: google_drive
+requires_auth: true

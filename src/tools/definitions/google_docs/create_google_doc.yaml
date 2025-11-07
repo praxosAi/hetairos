@@ -1,0 +1,27 @@
+tool_id: create_google_doc
+category: google_docs
+display_name: create_google_doc
+
+short_description: Creates a new empty Google Doc
+
+
+arguments:
+  - name: title
+    type: str
+    description: Title of the document
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Document ID and URL
+
+use_cases:
+  - User wants to create a new Google Doc document
+
+notes:
+  - Creates an actual Google Doc (not plain text), allowing rich formatting
+
+requires_integration: google_drive
+requires_auth: true

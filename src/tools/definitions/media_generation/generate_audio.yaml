@@ -1,0 +1,43 @@
+tool_id: generate_audio
+category: media_generation
+display_name: generate_audio
+short_description: Generate audio/speech from text using AI text-to-speech
+
+detailed_description: |
+  This tool uses Gemini 2.5 Flash TTS to convert text to natural-sounding speech.
+  The audio format is automatically adapted for the platform (CAF for iMessage, OGG for others).
+  Multiple voice options are available to match different personas and preferences.
+
+arguments:
+  - name: text
+    type: str
+    description: The text to convert to speech. Can be long-form content.
+    required: true
+
+  - name: voice
+    type: str
+    description: Optional voice name. Try to fit it to the user's preferences for the assistant, as well as the name and persona. Defaults to 'Kore'.
+    required: false
+    default: Kore
+    enum_values: [Zephyr, Puck, Charon, Kore, Fenrir, Leda, Orus, Aoede, Callirrhoe, Autonoe, Enceladus, Iapetus, Umbriel, Algieba, Despina, Erinome, Algenib, Rasalgethi, Laomedeia, Achernar, Alnilam, Schedar, Gacrux, Pulcherrima, Achird, Zubenelgenubi, Vindemiatrix, Sadachbia, Sadaltager, Sulafat]
+
+returns: ToolExecutionResponse with result containing url, file_name, file_type, media_id
+
+examples:
+  - 'generate_audio("Welcome to Praxos! Let me help you get started with your tasks.")'
+  - 'generate_audio("Here is your daily briefing.", voice="Charon")'
+
+use_cases:
+  - When user requests voice/audio output
+  - When audio would be more appropriate than text (accessibility, long content)
+  - You CAN generate audio - do not tell users otherwise
+
+notes:
+  - Audio format is automatically adapted for the target platform
+  - iMessage: CAF format (automatically handled)
+  - Other platforms: OGG format
+  - Voice options include Female voices (Zephyr, Kore, Leda, etc.) and Male voices (Puck, Charon, Fenrir, etc.)
+
+requires_integration: media_generation
+requires_auth: false
+is_long_running: false

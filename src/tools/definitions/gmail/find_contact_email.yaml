@@ -1,0 +1,26 @@
+tool_id: find_contact_email
+category: gmail
+display_name: find_contact_email
+
+short_description: Searches Google Contacts for a person's email by name
+
+arguments:
+  - name: name
+    type: str
+    description: Name of the contact to search for
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Email address of the contact
+
+examples:
+  - 'Send email to Sarah - use this to find Sarah email first'
+
+use_cases:
+  - User mentions a contact by name but you need their email
+
+requires_integration: gmail
+requires_auth: true

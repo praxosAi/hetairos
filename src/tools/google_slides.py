@@ -7,7 +7,7 @@ from src.utils.logging import setup_logger
 
 logger = setup_logger(__name__)
 
-def create_slides_tools(slides_integration: GoogleSlidesIntegration) -> List:
+def create_slides_tools(slides_integration: GoogleSlidesIntegration, tool_registry) -> List:
     """Creates all Google Slides related tools, dynamically configured for the user's accounts."""
 
     @tool
@@ -349,7 +349,43 @@ def create_slides_tools(slides_integration: GoogleSlidesIntegration) -> List:
                 context={"presentation_id": presentation_id, "object_id": object_id}
             )
 
-    # Dynamic account description logic
+    @tool
+    async def search_google_presentation(
+        presentation_id: str,
+        search_text: str,
+        match_case: bool = False,
+        account: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """
+        Searches for text within a Google Slides presentation and returns all matching slides.
+
+        Args:
+            presentation_id: ID of the presentation
+            search_text: Text to search for
+            match_case: Whether to match case (default False for case-insensitive)
+            account: The specific account to use if the user has multiple
+
+        Returns:
+            Dict with number of slides containing matches and detailed match information
+        """
+        try:
+            result = await slides_integration.search_in_presentation(
+                presentation_id, search_text,
+                match_case=match_case,
+                account=account
+            )
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            logger.error(f"Error searching Google Slides presentation: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="search_google_presentation",
+                exception=e,
+                integration="Google Slides",
+                context={"presentation_id": presentation_id, "search_text": search_text}
+            )
+
+    # Tool registry is passed in and already loaded
+
     accounts = slides_integration.get_connected_accounts()
     if not accounts:
         return []
@@ -363,19 +399,11 @@ def create_slides_tools(slides_integration: GoogleSlidesIntegration) -> List:
         insert_image_in_slide,
         format_slide_text,
         create_table_in_slide,
-        delete_slide_object
+        delete_slide_object,
+        search_google_presentation
     ]
 
-    if len(accounts) == 1:
-        user_email = accounts[0]
-        for t in all_tools:
-            t.description += f" The user's connected Google account with Slides access is {user_email}."
-    else:
-        account_list_str = ", ".join(f"'{acc}'" for acc in accounts)
-        for t in all_tools:
-            t.description += (
-                f" The user has multiple accounts with Slides access. You MUST use the 'account' parameter to specify which one to use. "
-                f"Available accounts are: [{account_list_str}]."
-            )
+    # Apply descriptions from YAML database
+    tool_registry.apply_descriptions_to_tools(all_tools, accounts=accounts)
 
     return all_tools

@@ -1,0 +1,28 @@
+tool_id: create_notion_page
+category: notion
+display_name: create_notion_page
+short_description: Creates a new page in Notion
+arguments:
+  - name: title
+    type: str
+    description: Page title
+    required: true
+  - name: content
+    type: list
+    description: List of Notion blocks (content) for the page body
+    required: true
+  - name: parent_page_id
+    type: str
+    description: Optional parent page ID to create a sub-page. If not provided, page created at workspace root
+    required: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: JSON object with page_link URL to the newly created page
+use_cases:
+  - Create a new page at workspace root
+  - Create a sub-page under an existing parent page
+  - Add new content to Notion workspace
+requires_integration: notion
+requires_auth: true

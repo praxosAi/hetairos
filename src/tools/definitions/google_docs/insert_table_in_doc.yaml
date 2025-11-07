@@ -1,0 +1,40 @@
+tool_id: insert_table_in_doc
+category: google_docs
+display_name: insert_table_in_doc
+
+short_description: Inserts a table into a Google Doc
+
+
+arguments:
+  - name: document_id
+    type: str
+    description: ID of the document
+    required: true
+  - name: rows
+    type: int
+    description: Number of rows
+    required: true
+  - name: columns
+    type: int
+    description: Number of columns
+    required: true
+  - name: index
+    type: int
+    description: Character index where to insert
+    required: false
+    default: 1
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Confirmation of table insertion
+
+use_cases:
+  - User wants to add tables to a doc
+
+notes:
+  - Creates an empty table that can be populated later
+
+requires_integration: google_drive
+requires_auth: true

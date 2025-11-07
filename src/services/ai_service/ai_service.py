@@ -10,7 +10,7 @@ from src.utils.logging import setup_logger
 from src.utils.file_msg_utils import build_payload_entry_from_inserted_id
 from langchain.chat_models import init_chat_model
 from src.services.ai_service.ai_service_models import *
-from src.services.ai_service.prompts.caches import update_cache_ttl, PLANNING_CACHE_NAME
+from src.services.ai_service.prompts.caches import update_cache_ttl, get_planning_cache_name
 from typing import Tuple
 import asyncio
 logger = setup_logger(__name__)
@@ -53,7 +53,9 @@ class AIService:
 
 
     async def granular_planning(self, context: list[BaseMessage], user_integration_names: set[str]) -> Tuple[GranularPlanningResponse, Optional[list[str]], Optional[str]]:
-        planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0, cached_content=PLANNING_CACHE_NAME)
+        # Get cache name from Redis
+        cache_name = await get_planning_cache_name()
+        planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0, cached_content=cache_name)
 
         """
         Enhanced planning call that returns specific tool function IDs needed for the task.
@@ -95,7 +97,7 @@ class AIService:
             messages.append(retry_hint)
 
             # Retry the planning call, with a stronger llm.
-            planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, cached_content=PLANNING_CACHE_NAME)
+            planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, cached_content=cache_name)
             planning_llm = planning_llm.with_structured_output(GranularPlanningResponse)
             response_raw = await planning_llm.ainvoke(messages)
             for tool in response_raw.tool_calls:

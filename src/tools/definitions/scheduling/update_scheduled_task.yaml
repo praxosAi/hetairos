@@ -1,0 +1,28 @@
+tool_id: update_scheduled_task
+category: scheduling
+display_name: update_scheduled_task
+
+short_description: Updates time or command of a scheduled task
+
+arguments:
+  - name: task_id
+    type: str
+    description: ID of the task to update
+    required: true
+  - name: new_time
+    type: datetime
+    description: New time for the task
+    required: false
+  - name: new_command
+    type: str
+    description: New command for the task
+    required: false
+
+returns: Confirmation of task updated
+
+use_cases:
+  - Modifying existing scheduled tasks
+  - Changing reminder time
+  - Updating task description
+
+requires_auth: true

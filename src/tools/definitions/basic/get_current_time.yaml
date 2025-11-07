@@ -1,0 +1,17 @@
+tool_id: get_current_time
+category: basic
+display_name: get_current_time
+
+short_description: Returns the current time in the user's timezone
+
+arguments: []
+
+returns: Current date and time in user's timezone
+
+use_cases:
+  - Need current time for calculations or context
+  - No arguments required
+
+notes:
+  - Always included automatically
+  - Returns time in user's configured timezone

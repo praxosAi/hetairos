@@ -1,0 +1,22 @@
+tool_id: fetch_latest_messages
+category: database
+display_name: fetch_latest_messages
+
+short_description: Fetches recent messages from the conversation database
+
+arguments:
+  - name: limit
+    type: int
+    description: Number of messages to fetch
+    required: false
+    default: 5
+
+returns: List of recent messages
+
+use_cases:
+  - Rarely needed - mostly for internal debugging
+  - Do not use for long-term memory
+  - Use if confused about most recent messages
+
+notes:
+  - For long-term memory use praxos_memory tools instead

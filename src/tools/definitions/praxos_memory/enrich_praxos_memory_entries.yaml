@@ -1,0 +1,20 @@
+tool_id: enrich_praxos_memory_entries
+category: praxos_memory
+display_name: Enrich Praxos Memory Entries
+short_description: Enriches Praxos memory entries with additional metadata and related entities within the knowledge graph
+arguments:
+  - name: node_ids
+    type: list
+    description: List of node IDs to enrich with additional context and related entities
+    required: true
+returns: Enriched memory entries with related entities and additional context
+use_cases:
+  - When you found a relevant node but need full context
+  - Obtaining more information about specific nodes or entities
+  - Exploring relationships and connections around a node
+  - Getting related entities within a given number of hops
+notes:
+  - Use after finding relevant nodes via search
+  - Returns related entities and connections for each node_id
+  - Useful for graph traversal and relationship exploration
+requires_auth: true

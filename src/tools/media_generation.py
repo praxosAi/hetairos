@@ -53,7 +53,8 @@ class GeminiVoice(str, Enum):
 def create_media_generation_tools(
     user_id: str,
     source: str,
-    conversation_id: str
+    conversation_id: str,
+    tool_registry = None
 ) -> list:
     """
     Factory function to create media generation tools with proper context.
@@ -530,4 +531,7 @@ def create_media_generation_tools(
             )
 
     logger.info(f"Created media generation tools for user={user_id}, source={source}")
-    return [generate_image, generate_audio, generate_video]
+    all_tools = [generate_image, generate_audio, generate_video]
+    if tool_registry:
+        tool_registry.apply_descriptions_to_tools(all_tools)
+    return all_tools

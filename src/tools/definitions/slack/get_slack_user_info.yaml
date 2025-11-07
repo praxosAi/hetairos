@@ -1,0 +1,21 @@
+tool_id: get_slack_user_info
+category: slack
+display_name: get_slack_user_info
+short_description: Get information about a Slack user
+arguments:
+  - name: user_id
+    type: str
+    description: Slack user ID (e.g., "U1234567890")
+    required: true
+  - name: account
+    type: str
+    description: Slack workspace identifier. If not specified and user has only one workspace, that workspace will be used
+    required: false
+returns: JSON object containing user profile information including name, email, status, and other details
+use_cases:
+  - Look up user profile information
+  - Get user contact details
+  - Check user status and availability
+  - Verify user identity
+requires_integration: slack
+requires_auth: true

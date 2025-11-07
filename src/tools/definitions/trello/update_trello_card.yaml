@@ -1,0 +1,41 @@
+tool_id: update_trello_card
+category: trello
+display_name: update_trello_card
+short_description: Updates an existing Trello card
+arguments:
+  - name: card_id
+    type: str
+    description: The ID of the card to update
+    required: true
+  - name: name
+    type: str
+    description: New name for the card
+    required: false
+  - name: description
+    type: str
+    description: New description for the card
+    required: false
+  - name: due
+    type: str
+    description: New due date in ISO 8601 format
+    required: false
+  - name: due_complete
+    type: bool
+    description: Whether the due date is complete
+    required: false
+  - name: list_id
+    type: str
+    description: Move the card to a different list by providing the new list ID
+    required: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected). If not specified and user has only one Trello account, that account will be used.
+    required: false
+returns: JSON object containing the updated card details
+use_cases:
+  - Update card name or description
+  - Change or mark due dates complete
+  - Move card to different list
+  - Modify multiple card properties at once
+requires_integration: trello
+requires_auth: true

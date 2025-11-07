@@ -1,0 +1,20 @@
+tool_id: find_outlook_contact_email
+category: microsoft_graph
+display_name: find_outlook_contact_email
+short_description: Searches Outlook contacts for a person's email address by their name
+arguments:
+  - name: name
+    type: str
+    description: Name of the contact to search for
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Email address(es) of matching contacts or message if no contacts found
+use_cases:
+  - Look up email addresses by contact name
+  - Find contact information for a person
+  - Search Outlook contacts directory
+requires_integration: microsoft
+requires_auth: true

@@ -1,0 +1,24 @@
+tool_id: save_file_to_dropbox
+category: dropbox
+display_name: save_file_to_dropbox
+short_description: Saves text content to a file in Dropbox
+arguments:
+  - name: file_path
+    type: str
+    description: Path where to save the file in Dropbox (e.g., "/Documents/notes.txt")
+    required: true
+  - name: content
+    type: str
+    description: Text content to save
+    required: true
+  - name: account
+    type: str
+    description: Optional Dropbox account email/identifier. If not specified and user has only one Dropbox account, that account will be used.
+    required: false
+returns: Success message confirming file was saved to Dropbox
+use_cases:
+  - Save notes or documents to Dropbox
+  - Create new files in Dropbox storage
+  - Upload text content to specific Dropbox paths
+requires_integration: dropbox
+requires_auth: true

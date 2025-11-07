@@ -1,0 +1,32 @@
+tool_id: create_notion_database_entry
+category: notion
+display_name: create_notion_database_entry
+short_description: Creates a new entry in a Notion database
+arguments:
+  - name: database_id
+    type: str
+    description: Database ID to specify the target database
+    required: true
+  - name: title
+    type: str
+    description: Entry title
+    required: true
+  - name: content
+    type: list
+    description: List of Notion blocks for the entry body
+    required: true
+  - name: properties
+    type: dict
+    description: Database properties to populate the entry's fields
+    required: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: JSON object with page_link URL to the newly created database entry
+use_cases:
+  - Add new entry to an existing database
+  - Populate database fields with specific property values
+  - Create structured data in Notion databases
+requires_integration: notion
+requires_auth: true

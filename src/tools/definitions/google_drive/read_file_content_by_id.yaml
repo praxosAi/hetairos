@@ -1,0 +1,28 @@
+tool_id: read_file_content_by_id
+category: google_drive
+display_name: read_file_content_by_id
+
+short_description: Reads text content from a Drive file
+
+
+arguments:
+  - name: file_id
+    type: str
+    description: ID of the file to read
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Text content of the file
+
+use_cases:
+  - Need to read contents of a Google Doc, text file, etc
+  - Read file by ID after searching
+
+notes:
+  - Supports Google Docs, text files, some other formats
+
+requires_integration: google_drive
+requires_auth: true

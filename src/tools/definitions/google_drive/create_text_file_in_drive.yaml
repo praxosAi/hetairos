@@ -1,0 +1,32 @@
+tool_id: create_text_file_in_drive
+category: google_drive
+display_name: create_text_file_in_drive
+
+short_description: Creates a new text file in Google Drive
+
+
+arguments:
+  - name: filename
+    type: str
+    description: Name for the new file
+    required: true
+  - name: content
+    type: str
+    description: Text content to write to the file
+    required: true
+  - name: drive_folder_id
+    type: str
+    description: ID of the folder to create in (optional)
+    required: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Confirmation with file link
+
+use_cases:
+  - User wants to create/save notes or text documents
+
+requires_integration: google_drive
+requires_auth: true

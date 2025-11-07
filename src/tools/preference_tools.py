@@ -54,7 +54,7 @@ def _validate_language(lang_code: str) -> str:
         raise ValueError(f"Unsupported language code: {code}. Allowed: {sorted(SUPPORTED_LANGS)}")
     return code
 
-def create_preference_tools(user_id: str) -> list:
+def create_preference_tools(user_id: str, tool_registry = None) -> list:
     """Create basic user preference tools bound to a specific user_id."""
     logger = setup_logger(f"preference_tools")
     @tool
@@ -357,7 +357,7 @@ def create_preference_tools(user_id: str) -> list:
                 context={"limit": limit}
             )
 
-    return [
+    all_tools = [
         add_user_preference_annotation,
         set_assistant_name,
         set_timezone,
@@ -366,3 +366,6 @@ def create_preference_tools(user_id: str) -> list:
         get_user_location,
         get_user_location_history,
     ]
+    if tool_registry:
+        tool_registry.apply_descriptions_to_tools(all_tools)
+    return all_tools

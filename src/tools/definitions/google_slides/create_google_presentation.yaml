@@ -1,0 +1,20 @@
+tool_id: create_google_presentation
+category: google_slides
+display_name: create_google_presentation
+short_description: Creates a new Google Slides presentation
+arguments:
+  - name: title
+    type: str
+    description: Title of the presentation
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Presentation ID and URL of the created presentation
+use_cases:
+  - When you need to create a new presentation from scratch
+  - When starting a new slide deck for a project or meeting
+  - When generating presentations programmatically
+requires_integration: google_drive
+requires_auth: true

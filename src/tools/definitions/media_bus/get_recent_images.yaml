@@ -1,0 +1,29 @@
+tool_id: get_recent_images
+category: media_bus
+display_name: get_recent_images
+short_description: Get recently generated or uploaded images
+
+detailed_description: |
+  Get recently generated or uploaded images.
+    Quick access to recent images without needing to filter the full list.
+    Useful for referencing previous images or creating variations.
+
+arguments:
+  - name: limit
+    type: int
+    description: Maximum number of images to return (default 5, max 20)
+    required: false
+    default: 5
+
+returns: ToolExecutionResponse with formatted string of image IDs, descriptions, and URLs
+
+examples:
+  - 'get_recent_images(limit=3)'
+
+use_cases:
+  - See what images exist
+  - Use descriptions in new prompts
+  - Create variations of recent images
+
+requires_integration: media_bus
+requires_auth: false

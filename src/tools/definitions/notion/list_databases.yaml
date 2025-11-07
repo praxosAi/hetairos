@@ -1,0 +1,16 @@
+tool_id: list_databases
+category: notion
+display_name: list_databases
+short_description: Lists all accessible databases and top-level pages in Notion workspace
+arguments:
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: JSON object containing all databases in the workspace
+use_cases:
+  - First tool to understand the structure of user's Notion workspace
+  - Get high-level overview of available databases
+  - Discover database IDs for further operations
+requires_integration: notion
+requires_auth: true

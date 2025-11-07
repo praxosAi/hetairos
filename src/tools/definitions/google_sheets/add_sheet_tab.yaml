@@ -1,0 +1,34 @@
+tool_id: add_sheet_tab
+category: google_sheets
+display_name: add_sheet_tab
+short_description: Adds a new sheet tab to an existing Google Spreadsheet
+arguments:
+  - name: spreadsheet_id
+    type: str
+    description: ID of the spreadsheet
+    required: true
+  - name: sheet_title
+    type: str
+    description: Title for the new sheet
+    required: true
+  - name: rows
+    type: int
+    description: Number of rows (default 1000)
+    required: false
+    default: 1000
+  - name: columns
+    type: int
+    description: Number of columns (default 26)
+    required: false
+    default: 26
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Confirmation of sheet addition
+use_cases:
+  - When organizing data across multiple tabs
+  - When adding a new section to an existing workbook
+  - When separating different data categories
+requires_integration: google_drive
+requires_auth: true

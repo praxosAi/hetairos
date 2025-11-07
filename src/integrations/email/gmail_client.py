@@ -229,7 +229,7 @@ class GmailIntegration(BaseIntegration):
                 logger.info(f"No primary contacts found for '{name}'. Searching other contacts for account {resolved_account}.")
                 results = people_service.otherContacts().search(
                     query=f"{name}*",
-                    readMask="names,emailAddresses,nicknames"
+                    readMask="names,emailAddresses"
                 ).execute()
                 contacts = results.get('results', [])
 

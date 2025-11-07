@@ -1,0 +1,35 @@
+tool_id: report_bug_to_developers
+category: communication
+display_name: report_bug_to_developers
+short_description: Reports a bug to the Praxos development team via email
+
+detailed_description: |
+  Reports a bug to the Praxos development team via email.
+  Use this when you encounter errors, unexpected behavior, or issues that need developer attention.
+  The bug report will be sent to the development team email addresses.
+
+arguments:
+  - name: bug_description
+    type: str
+    description: Detailed description of the bug, including what happened and what was expected
+    required: true
+
+  - name: additional_context
+    type: str
+    description: Optional additional context like error messages, stack traces, or reproduction steps
+    required: false
+
+returns: Success confirmation with list of developer emails notified
+
+examples:
+  - 'report_bug_to_developers("Email sending failed with timeout error", "User tried to send email to john@example.com. Error: Connection timeout after 30s")'
+
+use_cases:
+  - When encountering errors that need developer attention
+  - When experiencing unexpected behavior
+  - When tools fail in unexpected ways
+  - When you need to escalate an issue to developers
+
+requires_integration: email_service
+requires_auth: false
+is_long_running: false

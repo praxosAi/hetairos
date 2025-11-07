@@ -1,0 +1,53 @@
+tool_id: create_table_in_slide
+category: google_slides
+display_name: create_table_in_slide
+short_description: Creates a table in a slide
+arguments:
+  - name: presentation_id
+    type: str
+    description: ID of the presentation
+    required: true
+  - name: slide_id
+    type: str
+    description: ID of the slide
+    required: true
+  - name: rows
+    type: int
+    description: Number of rows
+    required: true
+  - name: columns
+    type: int
+    description: Number of columns
+    required: true
+  - name: x
+    type: float
+    description: X position in points
+    required: false
+    default: 100
+  - name: y
+    type: float
+    description: Y position in points
+    required: false
+    default: 100
+  - name: width
+    type: float
+    description: Width in points
+    required: false
+    default: 400
+  - name: height
+    type: float
+    description: Height in points
+    required: false
+    default: 200
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Confirmation of table creation
+use_cases:
+  - When adding tabular data to slides
+  - When creating structured data displays
+  - When organizing information in rows and columns
+  - When presenting comparative data or lists
+requires_integration: google_drive
+requires_auth: true

@@ -1,0 +1,24 @@
+tool_id: append_to_notion_page
+category: notion
+display_name: append_to_notion_page
+short_description: Appends content (blocks) to an existing Notion page
+arguments:
+  - name: page_id
+    type: str
+    description: Page ID of the target page
+    required: true
+  - name: content
+    type: list
+    description: List of Notion blocks to append to the page
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Success message confirming content was appended to the page
+use_cases:
+  - Add new content to existing page
+  - Update page with additional blocks
+  - Extend page content without replacing existing content
+requires_integration: notion
+requires_auth: true

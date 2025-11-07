@@ -1,0 +1,51 @@
+tool_id: google_places_nearby_search
+category: google_places
+display_name: google_places_nearby_search
+
+short_description: Search for places near a location by type or keyword
+
+detailed_description: |
+  Search for places near a specific location by type or keyword.
+  Best for "find X near me" queries - most precise for nearby searches.
+  Requires coordinates!
+
+arguments:
+  - name: latitude
+    type: float
+    description: Latitude of center point
+    required: true
+  - name: longitude
+    type: float
+    description: Longitude of center point
+    required: true
+  - name: place_type
+    type: str
+    description: Type of place (e.g., restaurant, cafe, bar, gym, hospital, pharmacy, bank, atm, gas_station, parking, hotel)
+    required: false
+  - name: keyword
+    type: str
+    description: Keyword to match (e.g., "pizza", "vegetarian", "24 hour")
+    required: false
+  - name: radius
+    type: int
+    description: Search radius in meters (max 50000)
+    required: false
+    default: 5000
+
+returns: List of nearby places with details, opening hours, ratings
+
+examples:
+  - 'google_places_nearby_search(40.7128, -74.0060, place_type="restaurant", radius=1000)'
+  - 'google_places_nearby_search(42.3601, -71.0589, keyword="pizza")'
+
+use_cases:
+  - '"Find X near me" queries'
+  - Most precise for nearby searches
+  - When you have user's exact coordinates
+
+notes:
+  - Common types - restaurant, cafe, bar, gym, hospital, pharmacy, bank, atm, gas_station, parking, grocery_or_supermarket, shopping_mall, hotel, airport
+  - Returns top 10 results with opening hours
+
+requires_integration: google_places_api
+requires_auth: true

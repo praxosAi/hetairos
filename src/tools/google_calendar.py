@@ -8,7 +8,7 @@ from src.utils.logging import setup_logger
 from src.utils.timezone_utils import to_utc,to_rfc3339
 logger = setup_logger(__name__)
 
-def create_calendar_tools(gcal_integration: GoogleCalendarIntegration,user_time_zone:str) -> List:
+def create_calendar_tools(gcal_integration: GoogleCalendarIntegration, user_time_zone: str, tool_registry) -> List:
     """Creates calendar-related tools that are dynamically configured for single or multiple user accounts."""
 
     @tool
@@ -134,26 +134,15 @@ def create_calendar_tools(gcal_integration: GoogleCalendarIntegration,user_time_
                 context={"title": title, "calendar_id": calendar_id, "account": account}
             )
     
-    # --- Dynamically configure tool descriptions ---
-    
+    # Tool registry is passed in and already loaded
+
     accounts = gcal_integration.get_connected_accounts()
     if not accounts:
-        return [] # Return no tools if no accounts are authenticated
+        return []
 
     all_tools = [get_calendar_events, create_calendar_event]
 
-    if len(accounts) == 1:
-        # If there's only one account, mention it in the description for context.
-        user_email = accounts[0]
-        for t in all_tools:
-            t.description += f" The user's connected calendar account is {user_email}."
-    else:
-        # If there are multiple, instruct the AI that it MUST specify which account to use.
-        account_list_str = ", ".join(f"'{acc}'" for acc in accounts)
-        for t in all_tools:
-            t.description += (
-                f" The user has multiple calendar accounts. You MUST use the 'account' parameter to specify which one to use. "
-                f"Available accounts are: [{account_list_str}]."
-            )
-            
+    # Apply descriptions from YAML database
+    tool_registry.apply_descriptions_to_tools(all_tools, accounts=accounts)
+
     return all_tools

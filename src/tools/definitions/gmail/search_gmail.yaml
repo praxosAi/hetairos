@@ -1,0 +1,28 @@
+tool_id: search_gmail
+category: gmail
+display_name: search_gmail
+
+short_description: Searches Gmail with advanced query syntax
+
+arguments:
+  - name: query
+    type: str
+    description: Gmail search query (supports operators like from:, to:, subject:, is:unread)
+    required: true
+  - name: max_results
+    type: int
+    description: Maximum number of results to return
+    required: false
+    default: 10
+
+returns: List of matching emails
+
+examples:
+  - '"from:boss@company.com subject:meeting"'
+  - '"dinner plans"'
+
+use_cases:
+  - Complex email searches needed
+
+requires_integration: gmail
+requires_auth: true

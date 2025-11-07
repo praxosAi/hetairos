@@ -1,0 +1,30 @@
+tool_id: update_entity_properties_in_knowledge_graph
+category: praxos_memory
+display_name: Update Entity Properties in Knowledge Graph
+short_description: Update an entity's properties in the knowledge graph by adding or modifying properties
+arguments:
+  - name: node_id
+    type: str
+    description: The node ID of the entity to update (obtained from search results)
+    required: true
+  - name: properties_json
+    type: str
+    description: JSON string of properties to add/update, format - [{"key":"...","value":"...","type":"..."}]
+    required: true
+  - name: replace_all
+    type: bool
+    description: If True, replace ALL properties; if False, merge with existing
+    required: false
+    default: false
+returns: Success message with number of nodes and relationships modified
+use_cases:
+  - Adding new information to existing entities
+  - Updating specific properties without affecting others
+  - Adding LinkedIn profile, new address, or other properties
+  - Modifying entity attributes (e.g., car color change)
+notes:
+  - Requires workflow - 1) Search for entity to get node_id, 2) Call this tool to update
+  - Default behavior (replace_all=false) merges with existing properties
+  - Use replace_all=true to completely replace all properties
+  - properties_json must be valid JSON array
+requires_auth: true

@@ -1,0 +1,49 @@
+tool_id: create_recurring_future_task
+category: scheduling
+display_name: create_recurring_future_task
+
+short_description: Schedules recurring tasks with cron expressions
+
+arguments:
+  - name: cron_expression
+    type: str
+    description: Cron expression for recurrence pattern
+    required: true
+  - name: cron_description
+    type: str
+    description: Natural language description (e.g., "every day at 9am", "every Monday at 10am")
+    required: true
+  - name: command_to_perform
+    type: str
+    description: The command/task to perform (detailed description with parameters)
+    required: true
+  - name: start_time
+    type: datetime
+    description: When to start the recurring task
+    required: true
+  - name: delivery_platform
+    type: str
+    description: Platform for output delivery
+    required: true
+    enum_values: [whatsapp, telegram, email, imessage]
+  - name: end_time
+    type: datetime
+    description: When to stop the recurring task (optional, runs indefinitely if not provided)
+    required: false
+
+returns: Confirmation of recurring task scheduled
+
+examples:
+  - 'create_recurring_future_task("0 9 * * *", "every day at 9am", "Check daily tasks", start_time="2024-01-01T09:00:00-05:00", delivery_platform="whatsapp")'
+
+use_cases:
+  - "Every Monday at 9am"
+  - "Daily at 6pm"
+  - Daily reminders, weekly summaries, periodic checks
+
+notes:
+  - Always assume time in EST timezone
+  - Add -05:00 to datetime strings
+  - If user asks to be reminded to do something themselves, prefix command with "Remind user to "
+
+requires_auth: true

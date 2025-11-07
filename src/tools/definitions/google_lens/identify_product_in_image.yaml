@@ -1,0 +1,38 @@
+tool_id: identify_product_in_image
+category: google_lens
+display_name: identify_product_in_image
+
+short_description: Identifies products, brands, objects in images using Google Lens
+
+detailed_description: |
+  Identify products, brands, and objects in an image using Google Lens via SerpAPI.
+  Perfect for identifying shoe brands, clothing items, products, logos, landmarks, etc.
+  Use this when the image content and message context indicates the user wants to identify a product, brand, logo, landmark, or similar.
+
+arguments:
+  - name: image_url
+    type: str
+    description: Public URL to the image (e.g., Azure Blob SAS URL from conversation context)
+    required: true
+
+returns: Product identification results with brand names, similar products, and shopping links
+
+examples:
+  - 'identify_product_in_image("https://blob.../shoe.jpg")'
+  - 'identify_product_in_image("https://blob.../clothing.jpg")'
+
+use_cases:
+  - User sends image and asks "What brand is this?"
+  - Identify this product
+  - Perfect for shoes, clothing, logos, landmarks, products
+
+notes:
+  - Takes 30+ seconds - use send_intermediate_message first
+  - Requires image URL from conversation context
+  - If the item seems to be not a product but a picture where Google Lens is not needed, do not use this tool
+
+requires_integration: google_lens_api
+requires_auth: true
+is_long_running: true
+estimated_duration_seconds: 30
+requires_intermediate_message: true

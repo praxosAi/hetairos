@@ -1,0 +1,30 @@
+tool_id: search_google_presentation
+category: google_slides
+display_name: search_google_presentation
+short_description: Searches for text within a Google Slides presentation and returns all matching slides
+arguments:
+  - name: presentation_id
+    type: str
+    description: ID of the presentation
+    required: true
+  - name: search_text
+    type: str
+    description: Text to search for
+    required: true
+  - name: match_case
+    type: bool
+    description: Whether to match case (default False for case-insensitive)
+    required: false
+    default: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Dict with number of slides containing matches and detailed match information
+use_cases:
+  - When finding specific text or keywords in a presentation
+  - When locating slides containing certain content
+  - When auditing presentations for specific terms
+  - When searching across multiple slides efficiently
+requires_integration: google_drive
+requires_auth: true

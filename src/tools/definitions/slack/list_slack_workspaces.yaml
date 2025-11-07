@@ -1,0 +1,12 @@
+tool_id: list_slack_workspaces
+category: slack
+display_name: list_slack_workspaces
+short_description: Lists all connected Slack workspaces for the user
+arguments: []
+returns: JSON object containing list of workspaces with workspace_id, team_name, and team_id for each workspace
+use_cases:
+  - Use this first to see which Slack workspaces are available
+  - Check connected workspace IDs before using other Slack tools
+  - Verify which workspaces the user has authenticated with
+requires_integration: slack
+requires_auth: true

@@ -1,0 +1,31 @@
+tool_id: delete_from_knowledge_graph
+category: praxos_memory
+display_name: Delete from Knowledge Graph
+short_description: Delete a node from the knowledge graph with optional cascade deletion of connected properties
+arguments:
+  - name: node_id
+    type: str
+    description: The node ID to delete (obtained from search results)
+    required: true
+  - name: cascade
+    type: bool
+    description: If True, also delete connected properties
+    required: false
+    default: true
+  - name: force
+    type: bool
+    description: If True, force delete even highly connected entities
+    required: false
+    default: false
+returns: Success message with number of nodes deleted and cascade deletes
+use_cases:
+  - User wants to remove stored information
+  - Deleting old phone numbers or emails
+  - Removing contacts from memory
+  - Cleaning up obsolete entities
+notes:
+  - Requires workflow - 1) Search for node to get node_id, 2) Call this tool to delete
+  - cascade=true will delete connected properties (recommended default)
+  - force=false prevents accidental deletion of highly connected entities
+  - Use with caution as deletion cannot be undone
+requires_auth: true

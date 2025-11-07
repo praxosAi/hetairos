@@ -1,0 +1,28 @@
+tool_id: send_outlook_email
+category: microsoft_graph
+display_name: send_outlook_email
+short_description: Sends an email using Outlook
+arguments:
+  - name: recipient
+    type: str
+    description: Email address of the recipient
+    required: true
+  - name: subject
+    type: str
+    description: Subject line of the email
+    required: true
+  - name: body
+    type: str
+    description: Body content of the email
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Success confirmation message when email is sent
+use_cases:
+  - Send emails to contacts via Outlook
+  - Compose and send email messages programmatically
+  - Send notifications or updates to recipients
+requires_integration: microsoft
+requires_auth: true

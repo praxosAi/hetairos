@@ -1,0 +1,29 @@
+tool_id: append_text_to_doc
+category: google_docs
+display_name: append_text_to_doc
+
+short_description: Appends text to the end of a Google Doc
+
+
+arguments:
+  - name: document_id
+    type: str
+    description: ID of the document
+    required: true
+  - name: text
+    type: str
+    description: Text to append
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Confirmation of append
+
+use_cases:
+  - User wants to add text at the end of a doc
+  - Simpler than insert_text_in_doc for appending
+
+requires_integration: google_drive
+requires_auth: true

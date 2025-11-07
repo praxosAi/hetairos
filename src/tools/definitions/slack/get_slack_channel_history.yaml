@@ -1,0 +1,26 @@
+tool_id: get_slack_channel_history
+category: slack
+display_name: get_slack_channel_history
+short_description: Get message history from a Slack channel
+arguments:
+  - name: channel
+    type: str
+    description: Channel ID (e.g., "C1234567890")
+    required: true
+  - name: limit
+    type: int
+    description: Maximum number of messages to fetch (max 1000)
+    required: false
+    default: 50
+  - name: account
+    type: str
+    description: Slack workspace identifier. If not specified and user has only one workspace, that workspace will be used
+    required: false
+returns: JSON object containing list of messages and total count
+use_cases:
+  - Read recent messages from a channel
+  - Review conversation history
+  - Search for information in channel messages
+  - Analyze channel activity
+requires_integration: slack
+requires_auth: true

@@ -28,7 +28,7 @@ INTEGRATION_NAME_TO_PROVIDER_MAP = {
 
 
 
-def create_integration_tools(user_id: str) -> list:
+def create_integration_tools(user_id: str, tool_registry) -> list:
     @tool
     async def get_oauth_initiation_url(integration_name: str) -> ToolExecutionResponse:
         """
@@ -80,4 +80,6 @@ def create_integration_tools(user_id: str) -> list:
                 context={"integration_name": integration_name}
             )
 
-    return [get_oauth_initiation_url]
+    all_tools = [get_oauth_initiation_url]
+    tool_registry.apply_descriptions_to_tools(all_tools)
+    return all_tools

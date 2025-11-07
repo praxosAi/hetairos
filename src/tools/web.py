@@ -282,7 +282,7 @@ def google_search(query: str) -> ToolExecutionResponse:
             context={"query": query}
         )
 
-def create_web_tools(request_id: str, user_id: str, metadata: dict) -> list:
+def create_web_tools(request_id: str, user_id: str, metadata: dict, tool_registry) -> list:
     """
     Create web tools including google_search and AI browser tool.
 
@@ -290,6 +290,7 @@ def create_web_tools(request_id: str, user_id: str, metadata: dict) -> list:
         request_id: Request ID for tracing
         user_id: User ID
         metadata: Request metadata including conversation_id, source, etc.
+        tool_registry: Tool registry for applying YAML descriptions
     """
     tools = [google_search, read_webpage_content]
 
@@ -297,4 +298,5 @@ def create_web_tools(request_id: str, user_id: str, metadata: dict) -> list:
         # Add AI browser tool that publishes to queue
         tools.append(create_browser_tool(request_id, user_id, metadata))
 
+    tool_registry.apply_descriptions_to_tools(tools)
     return tools

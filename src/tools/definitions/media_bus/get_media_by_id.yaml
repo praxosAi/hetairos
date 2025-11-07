@@ -1,0 +1,28 @@
+tool_id: get_media_by_id
+category: media_bus
+display_name: get_media_by_id
+short_description: Retrieve a specific media item by its ID and load it into conversation context
+
+detailed_description: |
+  Retrieve a specific media item by its ID and load it into conversation context.
+    This tool retrieves media from the media bus and adds it to the current conversation context,
+    allowing you to see and reason about it. After calling this tool, the media will be visible to you.
+
+arguments:
+  - name: media_id
+    type: str
+    description: The unique ID of the media item (from list_available_media)
+    required: true
+
+returns: Dictionary with 'url', 'file_name', 'file_type', 'description', and 'source'
+
+examples:
+  - 'get_media_by_id("550e8400-e29b-41d4-a716-446655440000")'
+
+use_cases:
+  - Reference and analyze previously generated media
+  - Create variations based on existing media
+  - Send previously generated media to user
+
+requires_integration: media_bus
+requires_auth: false

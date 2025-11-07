@@ -1,0 +1,23 @@
+tool_id: move_email_to_spam
+category: gmail
+display_name: move_email_to_spam
+
+short_description: Moves an email to spam
+
+arguments:
+  - name: message_id
+    type: str
+    description: ID of the email to mark as spam
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Confirmation of spam move
+
+use_cases:
+  - User wants to mark email as spam
+
+requires_integration: gmail
+requires_auth: true

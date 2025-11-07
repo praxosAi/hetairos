@@ -7,7 +7,7 @@ from src.utils.logging import setup_logger
 
 logger = setup_logger(__name__)
 
-def create_outlook_tools(outlook_client: MicrosoftGraphIntegration) -> List:
+def create_outlook_tools(outlook_client: MicrosoftGraphIntegration, tool_registry) -> List:
     """Create Outlook-related tools"""
 
     @tool
@@ -67,4 +67,15 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration) -> List:
                 context={"contact_name": name}
             )
 
-    return [send_outlook_email, fetch_outlook_calendar_events, get_outlook_emails_from_sender, find_outlook_contact_email]
+    # Tool registry is passed in and already loaded
+    all_tools = [
+        send_outlook_email,
+        fetch_outlook_calendar_events,
+        get_outlook_emails_from_sender,
+        find_outlook_contact_email
+    ]
+
+    # Apply descriptions from YAML database (single account integration)
+    tool_registry.apply_descriptions_to_tools(all_tools)
+
+    return all_tools

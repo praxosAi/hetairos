@@ -1,0 +1,28 @@
+tool_id: create_notion_database
+category: notion
+display_name: create_notion_database
+short_description: Creates a new database in Notion
+arguments:
+  - name: parent_page_id
+    type: str
+    description: Parent page ID to specify where the database should be created
+    required: true
+  - name: title
+    type: str
+    description: Database title
+    required: true
+  - name: properties
+    type: dict
+    description: Database schema defining the structure and property types
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: JSON object with database_link URL to the newly created database
+use_cases:
+  - Create new database with custom schema
+  - Define database structure and property types
+  - Organize data in structured format
+requires_integration: notion
+requires_auth: true

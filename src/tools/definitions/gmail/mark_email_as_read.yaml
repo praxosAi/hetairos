@@ -1,0 +1,23 @@
+tool_id: mark_email_as_read
+category: gmail
+display_name: mark_email_as_read
+
+short_description: Marks an email as read
+
+arguments:
+  - name: message_id
+    type: str
+    description: ID of the email to mark as read
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Confirmation of status update
+
+use_cases:
+  - User wants to mark an email as read without opening it
+
+requires_integration: gmail
+requires_auth: true

@@ -9,7 +9,7 @@ from typing import Optional
 logger = setup_logger(__name__)
 
 
-def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
+def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry) -> List:
     """
     Creates a comprehensive set of Gmail and Google Contacts tools.
     The tools are dynamically configured based on the user's connected accounts.
@@ -371,6 +371,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
             )
 
 
+    # Tool registry is passed in and already loaded
     accounts = gmail_integration.get_connected_accounts()
     if not accounts:
         return []
@@ -383,20 +384,10 @@ def create_gmail_tools(gmail_integration: GmailIntegration) -> List:
         add_label_to_email, remove_label_from_email
     ]
 
-    if len(accounts) == 1:
-        
-        user_email = accounts[0]
-        for t in all_tools:
-            t.description += f" The user's connected account is {user_email}."
-    else:
-        # If multiple accounts, instruct the AI that it MUST specify which one to use.
-        account_list_str = ", ".join(f"'{acc}'" for acc in accounts)
-        for t in all_tools:
-            # Use 'from_account' for sending tools, 'account' for others.
-            param = "'from_account'" if t.name in ["send_email", "reply_to_email"] else "'account'"
-            t.description += (
-                f" The user has multiple accounts. You MUST use the {param} parameter to specify which one to use. "
-                f"Available accounts are: [{account_list_str}]."
-            )
-            
+    # Apply descriptions from YAML database
+    # Note: send_email and reply_to_email use 'from_account', others use 'account'
+    for t in all_tools:
+        param_name = 'from_account' if t.name in ["send_email", "reply_to_email"] else 'account'
+        tool_registry.apply_descriptions_to_tools([t], accounts=accounts, account_param_name=param_name)
+
     return all_tools

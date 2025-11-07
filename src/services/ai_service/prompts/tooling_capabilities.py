@@ -31,6 +31,27 @@ The system has access to the following tools and integrations (user-dependent):
   - Upload/download files
   - Share files
 
+- **Google Docs**:
+  - Create, read, edit Google Docs
+  - Insert/append/delete text, paragraphs, tables
+  - Format text (bold, italic, underline)
+  - Search for text within documents
+  - Find and replace text
+
+- **Google Sheets**:
+  - Create, read, edit Google Spreadsheets
+  - Update cells, append rows, manage sheets
+  - Get/set cell values and ranges
+  - Search for text within spreadsheets
+  - Perform spreadsheet operations
+
+- **Google Slides**:
+  - Create, read, edit Google Presentations
+  - Add/delete slides, insert text and images
+  - Create tables in slides
+  - Search for text within presentations
+  - Format slide content
+
 - **Notion**:
   - Search pages and databases
   - Create/update pages
@@ -125,6 +146,10 @@ For these, the agent should use `send_intermediate_message` first to notify the 
 - "Browse this website and find pricing" → Web browsing tool
 - "Create a Trello board for this project" → Trello tool
 - "Remind me in 2 hours" → Scheduling tool
+- "Create a new doc with my meeting notes" → Google Docs tools
+- "Find where I mentioned 'budget' in my report" → Search in Google Docs
+- "Update my expense spreadsheet" → Google Sheets tools
+- "Which slides mention Q4 goals?" → Search in Google Slides
 
 **Does NOT require tools:**
 - "How are you?"

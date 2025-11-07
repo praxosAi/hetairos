@@ -1,0 +1,44 @@
+tool_id: browse_website_with_ai
+category: web
+display_name: browse_website_with_ai
+
+short_description: AI-powered browser for interactive/JavaScript-heavy websites
+
+detailed_description: |
+  Uses an AI-powered browser to interact with dynamic websites (JavaScript, forms, navigation).
+  This tool can handle complex web interactions that simple HTML parsing cannot.
+
+arguments:
+  - name: task
+    type: str
+    description: Natural language description of what to do (e.g., "Find pricing information")
+    required: true
+  - name: tool_call_id
+    type: str
+    description: Injected tool call ID for tracking
+    required: true
+    injected: true
+  - name: max_steps
+    type: int
+    description: Maximum number of browser actions to take
+    required: false
+    default: 30
+
+returns: Results from the browser task execution
+
+examples:
+  - '"Navigate to the pricing page and extract all plan details"'
+  - '"Search for laptop and extract the top 5 results"'
+
+use_cases:
+  - Need to interact with dynamic websites, fill forms, click buttons
+  - Search for extensive information
+
+notes:
+  - This task will be processed asynchronously
+  - Notify user that task has been started and they will receive results shortly
+  - DO NOT use send_intermediate_message for this
+
+is_long_running: true
+estimated_duration_seconds: 45
+requires_intermediate_message: false

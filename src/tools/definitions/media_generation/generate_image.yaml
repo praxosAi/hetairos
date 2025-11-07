@@ -1,0 +1,42 @@
+tool_id: generate_image
+category: media_generation
+display_name: generate_image
+short_description: Generate an image using AI based on a text description
+
+detailed_description: |
+  This tool uses Gemini 2.5 Flash to generate images from text descriptions.
+  The generated image is automatically uploaded to storage and ready to send.
+  You can optionally provide reference images from the media bus for style/content inspiration.
+
+arguments:
+  - name: prompt
+    type: str
+    description: Detailed description of the image to generate. Be specific about style, content, colors, composition, mood, etc. Better prompts produce better images.
+    required: true
+
+  - name: media_ids
+    type: list
+    description: Optional list of media IDs from media bus to use as visual references. Media ids are indexes (starting from 0) representing the order in which media were added to the media bus. Use get_recent_images() or list_available_media() to find media IDs.
+    required: false
+
+returns: ToolExecutionResponse with result containing url, file_name, file_type, media_id
+
+examples:
+  - 'generate_image("A serene mountain landscape at sunset with orange and pink sky, photorealistic")'
+  - 'generate_image("Like this image but set in China with Chinese cultural elements", media_ids=["0"])'
+
+use_cases:
+  - When user requests image generation
+  - When visual content would enhance your response
+  - For creating variations of existing images
+
+notes:
+  - Be specific about style (photorealistic, cartoon, watercolor, etc.)
+  - Include details about lighting, colors, mood
+  - Describe composition and perspective
+  - You CAN generate images - do not tell users otherwise
+  - After generating, use reply_to_user_on_{platform} to send it
+
+requires_integration: media_generation
+requires_auth: false
+is_long_running: false

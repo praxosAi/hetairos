@@ -1,0 +1,41 @@
+tool_id: google_places_find_place
+category: google_places
+display_name: google_places_find_place
+
+short_description: Find a specific place by name, phone, or address
+
+detailed_description: |
+  Find a specific place by name, phone number, or address. Returns the best match.
+  Use when looking for a specific known place.
+
+arguments:
+  - name: input_text
+    type: str
+    description: The text to search (name, phone, or address)
+    required: true
+  - name: input_type
+    type: str
+    description: Type of input
+    required: false
+    default: textquery
+    enum_values: [textquery, phonenumber]
+
+returns: The best matching place with full details
+
+examples:
+  - 'google_places_find_place("Eiffel Tower")'
+  - 'google_places_find_place("Museum of Modern Art New York")'
+  - 'google_places_find_place("+1-212-708-9400", input_type="phonenumber")'
+
+use_cases:
+  - Looking for a specific known place
+  - Finding place by phone number
+  - Getting place ID for a landmark
+
+notes:
+  - Use input_type="textquery" for names/addresses
+  - Use input_type="phonenumber" for phone numbers
+  - Returns only the best match
+
+requires_integration: google_places_api
+requires_auth: true

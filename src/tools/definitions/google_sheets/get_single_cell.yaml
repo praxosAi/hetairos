@@ -1,0 +1,32 @@
+tool_id: get_single_cell
+category: google_sheets
+display_name: get_single_cell
+short_description: Gets the value of a single cell in a Google Sheet
+arguments:
+  - name: spreadsheet_id
+    type: str
+    description: ID of the spreadsheet
+    required: true
+  - name: sheet_name
+    type: str
+    description: Name of the sheet (e.g., 'Sheet1')
+    required: true
+  - name: row
+    type: int
+    description: Row number (1-based, e.g., 1 for first row)
+    required: true
+  - name: column
+    type: str
+    description: Column letter (e.g., 'A', 'B', 'AA')
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Value of the cell
+use_cases:
+  - When you need to read a specific single cell value
+  - When checking a particular data point
+  - When validating or verifying a cell's content
+requires_integration: google_drive
+requires_auth: true

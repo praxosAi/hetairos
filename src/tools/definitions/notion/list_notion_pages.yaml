@@ -1,0 +1,16 @@
+tool_id: list_notion_pages
+category: notion
+display_name: list_notion_pages
+short_description: Lists all top-level pages in the Notion workspace
+arguments:
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: JSON array of top-level pages
+use_cases:
+  - View all top-level pages in workspace
+  - Find page IDs for parent pages
+  - Get overview of workspace structure
+requires_integration: notion
+requires_auth: true

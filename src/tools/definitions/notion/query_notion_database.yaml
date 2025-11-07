@@ -1,0 +1,28 @@
+tool_id: query_notion_database
+category: notion
+display_name: query_notion_database
+short_description: Queries a specific Notion database to find pages matching certain criteria
+arguments:
+  - name: database_id
+    type: str
+    description: The ID of the database to query
+    required: true
+  - name: filter
+    type: dict
+    description: Optional filter criteria to match specific pages
+    required: false
+  - name: sorts
+    type: list
+    description: Optional sort order for results
+    required: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: JSON object containing pages that match the query criteria
+use_cases:
+  - Most reliable way to find pages when you know which database they are in
+  - Filter database entries by properties
+  - Sort database results
+requires_integration: notion
+requires_auth: true

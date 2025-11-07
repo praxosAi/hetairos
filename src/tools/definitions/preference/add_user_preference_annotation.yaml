@@ -1,0 +1,27 @@
+tool_id: add_user_preference_annotation
+category: preference
+display_name: add_user_preference_annotation
+
+short_description: Adds user preferences, facts, or context to remember
+
+arguments:
+  - name: new_preference_text
+    type: list
+    description: List of annotation strings to add
+    required: true
+
+returns: Updated preferences with confirmation
+
+use_cases:
+  - User shares information to remember (preferences, habits, facts)
+
+examples:
+  - 'add_user_preference_annotation(["I am vegetarian", "I work 9-5 EST"])'
+  - 'add_user_preference_annotation(["My manager is Sarah"])'
+
+notes:
+  - For when user mentions a new preference in conversation
+  - De-duplicates annotations automatically
+  - Preserves existing annotations
+
+requires_auth: true

@@ -18,7 +18,7 @@ class FutureTaskType(str, Enum):
     TRIGGER = 'trigger'
 
 logger = setup_logger(__name__)
-def create_scheduling_tools(user_id: str,source:str,conversation_id:str) -> List:
+def create_scheduling_tools(user_id: str,source:str,conversation_id:str, tool_registry) -> List:
     """Creates all scheduling-related tools for a given user."""
 
     @tool
@@ -200,4 +200,6 @@ def create_scheduling_tools(user_id: str,source:str,conversation_id:str) -> List
                 integration="scheduling_service"
             )
 
-    return [schedule_task, create_recurring_future_task, get_scheduled_tasks, cancel_scheduled_task, update_scheduled_task, cancel_trigger]
+    all_tools = [schedule_task, create_recurring_future_task, get_scheduled_tasks, cancel_scheduled_task, update_scheduled_task, cancel_trigger]
+    tool_registry.apply_descriptions_to_tools(all_tools)
+    return all_tools

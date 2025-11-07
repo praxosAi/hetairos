@@ -8,7 +8,7 @@ from src.utils.database import db_manager
 from typing import List
 logger = setup_logger(__name__)
 
-def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, conversation_id: str) -> list:
+def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, conversation_id: str, tool_registry = None) -> list:
     """Create Praxos memory tool"""
     
     @tool
@@ -558,7 +558,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
                 integration="Praxos"
             )
 
-    return [
+    all_tools = [
         query_praxos_memory,
         enrich_praxos_memory_entries,
         query_praxos_memory_intelligent_search,
@@ -572,5 +572,8 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
         delete_from_knowledge_graph,
         check_connected_integrations
     ]
+    if tool_registry:
+        tool_registry.apply_descriptions_to_tools(all_tools)
+    return all_tools
 
 

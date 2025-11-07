@@ -1,0 +1,29 @@
+tool_id: get_google_doc_content
+category: google_docs
+display_name: get_google_doc_content
+
+short_description: Retrieves content from a Google Doc
+
+
+arguments:
+  - name: document_id
+    type: str
+    description: ID of the document
+    required: true
+  - name: plain_text_only
+    type: bool
+    description: If True, returns only plain text; if False, returns full document structure
+    required: false
+    default: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+
+returns: Plain text or full document structure
+
+use_cases:
+  - User wants to read or analyze a Google Doc
+
+requires_integration: google_drive
+requires_auth: true

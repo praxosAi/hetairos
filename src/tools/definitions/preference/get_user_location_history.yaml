@@ -1,0 +1,29 @@
+tool_id: get_user_location_history
+category: preference
+display_name: get_user_location_history
+
+short_description: Gets user's location history (most recent first)
+
+arguments:
+  - name: limit
+    type: int
+    description: Number of locations to return (max 100)
+    required: false
+    default: 10
+
+returns: Array of locations with coordinates, names, platforms, timestamps
+
+use_cases:
+  - User asks about location history
+  - Tracking movement
+  - '"where have I been?"'
+
+examples:
+  - '"Show me my location history"'
+  - '"Where have I been today?"'
+  - '"Track my locations"'
+
+notes:
+  - If no history - Tool suggests requesting location via request_location parameter
+
+requires_auth: true

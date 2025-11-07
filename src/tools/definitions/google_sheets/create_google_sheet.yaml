@@ -1,0 +1,24 @@
+tool_id: create_google_sheet
+category: google_sheets
+display_name: create_google_sheet
+short_description: Creates a new Google Spreadsheet
+arguments:
+  - name: title
+    type: str
+    description: Title of the spreadsheet
+    required: true
+  - name: sheet_names
+    type: list
+    description: Optional list of sheet names (default is one sheet named 'Sheet1')
+    required: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Spreadsheet ID and URL of the created spreadsheet
+use_cases:
+  - When you need to create a new spreadsheet from scratch
+  - When organizing data in a new workbook
+  - When starting a new project that requires structured data storage
+requires_integration: google_drive
+requires_auth: true

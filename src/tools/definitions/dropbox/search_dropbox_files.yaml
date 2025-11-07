@@ -1,0 +1,26 @@
+tool_id: search_dropbox_files
+category: dropbox
+display_name: search_dropbox_files
+short_description: Searches for files in Dropbox by filename or content
+arguments:
+  - name: query
+    type: str
+    description: Search query (searches in filenames and file content)
+    required: true
+  - name: max_results
+    type: int
+    description: Maximum number of results to return (max 1000)
+    required: false
+    default: 100
+  - name: account
+    type: str
+    description: Optional Dropbox account email/identifier. If not specified and user has only one Dropbox account, that account will be used.
+    required: false
+returns: JSON object with search results, count, and query
+use_cases:
+  - Find files by name across entire Dropbox account
+  - Search file content for specific keywords
+  - Locate documents without knowing exact path
+  - Discover files matching search criteria
+requires_integration: dropbox
+requires_auth: true

@@ -578,3 +578,94 @@ class GoogleSheetsIntegration(BaseIntegration):
         """
         range_name = f"{sheet_name}!{col}{row}"
         return await self.update_values(spreadsheet_id, range_name, [[value]], account=account)
+
+    async def search_in_spreadsheet(self, spreadsheet_id: str, search_text: str,
+                                   match_case: bool = False, sheet_name: Optional[str] = None,
+                                   *, account: Optional[str] = None) -> Dict:
+        """Searches for text within a Google Spreadsheet and returns all matching cells.
+
+        Args:
+            spreadsheet_id: ID of the spreadsheet
+            search_text: Text to search for
+            match_case: Whether to match case (default False)
+            sheet_name: Optional specific sheet to search in (default: all sheets)
+            account: Google account to use
+
+        Returns:
+            Dict with occurrences count and list of matching cells with positions
+        """
+        spreadsheet = await self.get_spreadsheet(spreadsheet_id, account=account)
+
+        # Determine which sheets to search
+        sheets_to_search = []
+        if sheet_name:
+            # Search only specified sheet
+            for sheet in spreadsheet.get('sheets', []):
+                if sheet['properties']['title'] == sheet_name:
+                    sheets_to_search.append(sheet)
+                    break
+        else:
+            # Search all sheets
+            sheets_to_search = spreadsheet.get('sheets', [])
+
+        matches = []
+        search_lower = search_text if match_case else search_text.lower()
+
+        # Search through each sheet
+        for sheet in sheets_to_search:
+            sheet_title = sheet['properties']['title']
+
+            # Get all values from the sheet
+            try:
+                values = await self.get_values(spreadsheet_id, f"{sheet_title}!A:ZZ", account=account)
+
+                # Search through all cells
+                for row_idx, row in enumerate(values):
+                    for col_idx, cell_value in enumerate(row):
+                        if not cell_value:
+                            continue
+
+                        cell_str = str(cell_value)
+                        cell_to_search = cell_str if match_case else cell_str.lower()
+
+                        if search_lower in cell_to_search:
+                            # Convert column index to letter
+                            col_letter = self._column_index_to_letter(col_idx)
+                            cell_address = f"{sheet_title}!{col_letter}{row_idx + 1}"
+
+                            matches.append({
+                                'sheet': sheet_title,
+                                'cell': f"{col_letter}{row_idx + 1}",
+                                'address': cell_address,
+                                'value': cell_value,
+                                'row': row_idx + 1,
+                                'column': col_letter
+                            })
+
+            except Exception as e:
+                logger.warning(f"Error searching sheet {sheet_title}: {e}")
+                continue
+
+        logger.info(f"Found {len(matches)} cells containing '{search_text}' in spreadsheet {spreadsheet_id}")
+
+        return {
+            'spreadsheet_id': spreadsheet_id,
+            'search_text': search_text,
+            'occurrences_found': len(matches),
+            'matches': matches
+        }
+
+    def _column_index_to_letter(self, col_idx: int) -> str:
+        """Converts a 0-based column index to column letter (A, B, ..., Z, AA, AB, ...)."""
+        result = ""
+        col_idx += 1  # Convert to 1-based
+        while col_idx > 0:
+            col_idx -= 1
+            result = chr(65 + (col_idx % 26)) + result
+            col_idx //= 26
+        return result
+
+    async def fetch_recent_data(self) -> None:
+        """Fetches recent data for all connected accounts to refresh tokens if needed."""
+        logger.info(f"Fetching recent data for Google Sheets accounts of user {self.user_id}")
+        pass

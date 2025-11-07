@@ -297,7 +297,7 @@ class GmailIntegration(BaseIntegration):
             ### if no contacts found, we should search for other contacts.
             results = self.people_service.otherContacts().search(
             query=f"{name}*",
-            readMask="names,emailAddresses,nicknames"
+            readMask="names,emailAddresses"
             ).execute()
             logger.info(f"search results for other contacts for user {self.user_id}: {results}")
             contacts = results.get('results', [])

@@ -8,7 +8,7 @@ from src.utils.logging import setup_logger
 
 logger = setup_logger(__name__)
 
-def create_trello_tools(trello_client: TrelloIntegration) -> List:
+def create_trello_tools(trello_client: TrelloIntegration, tool_registry) -> List:
     """Create a comprehensive suite of Trello-related tools for the LangGraph agent with multi-account support."""
 
     @tool
@@ -691,7 +691,12 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
                 integration="Trello"
             )
 
-    return [
+    # Tool registry is passed in and already loaded
+    accounts = trello_client.get_connected_accounts()
+    if not accounts:
+        return []
+
+    all_tools = [
         list_trello_accounts,
         list_trello_organizations,
         list_trello_boards,
@@ -712,3 +717,8 @@ def create_trello_tools(trello_client: TrelloIntegration) -> List:
         get_card_members,
         share_trello_board
     ]
+
+    # Apply descriptions from YAML database
+    tool_registry.apply_descriptions_to_tools(all_tools, accounts=accounts)
+
+    return all_tools

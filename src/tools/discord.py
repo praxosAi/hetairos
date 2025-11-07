@@ -8,7 +8,7 @@ import json
 
 logger = setup_logger(__name__)
 
-def create_discord_tools(discord_integration: DiscordIntegration) -> list:
+def create_discord_tools(discord_integration: DiscordIntegration, tool_registry) -> list:
     """Creates Discord related tools with multi-server support."""
 
     @tool
@@ -209,7 +209,12 @@ def create_discord_tools(discord_integration: DiscordIntegration) -> list:
                 context={"user_id": user_id}
             )
 
-    return [
+    # Tool registry is passed in and already loaded
+    accounts = discord_integration.get_connected_accounts()
+    if not accounts:
+        return []
+
+    all_tools = [
         list_discord_servers,
         send_discord_message,
         send_discord_dm,
@@ -217,3 +222,8 @@ def create_discord_tools(discord_integration: DiscordIntegration) -> list:
         get_discord_channel_history,
         get_discord_user_info
     ]
+
+    # Apply descriptions from YAML database
+    tool_registry.apply_descriptions_to_tools(all_tools, accounts=accounts)
+
+    return all_tools

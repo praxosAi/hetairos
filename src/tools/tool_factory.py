@@ -10,6 +10,9 @@ from src.integrations.microsoft.graph_client import MicrosoftGraphIntegration
 from src.integrations.calendar.google_calendar import GoogleCalendarIntegration
 from src.integrations.email.gmail_client import GmailIntegration
 from src.integrations.gdrive.gdrive_client import GoogleDriveIntegration
+from src.integrations.gdrive.google_docs_client import GoogleDocsIntegration
+from src.integrations.gdrive.google_sheets_client import GoogleSheetsIntegration
+from src.integrations.gdrive.google_slides_client import GoogleSlidesIntegration
 from src.integrations.dropbox.dropbox_client import DropboxIntegration
 from src.integrations.trello.trello_client import TrelloIntegration
 from src.core.praxos_client import PraxosClient
@@ -18,6 +21,9 @@ from src.core.praxos_client import PraxosClient
 from src.tools.google_calendar import create_calendar_tools
 from src.tools.google_mail import create_gmail_tools
 from src.tools.google_drive import create_drive_tools
+from src.tools.google_docs import create_docs_tools
+from src.tools.google_sheets import create_sheets_tools
+from src.tools.google_slides import create_slides_tools
 from src.tools.microsoft_graph import create_outlook_tools
 from src.tools.notion import create_notion_tools
 from src.tools.trello import create_trello_tools
@@ -66,8 +72,12 @@ class AgentToolsFactory:
             minimal_tools: Legacy parameter - load only core tools (deprecated, use required_tool_ids instead)
             required_tool_ids: List of specific tool function IDs to load. If None, loads all tools.
         """
-        tools = []
+        # Load tool registry ONCE for all tools
+        from src.tools.tool_registry import tool_registry
+        tool_registry.load()
 
+        tools = []
+        logger.info(f"minimal_tools={minimal_tools}, required_tool_ids={required_tool_ids}")
         user_id = user_context.user_id
         user_email = user_context.user_record.get('email')
         have_email_tool = False
@@ -122,7 +132,8 @@ class AgentToolsFactory:
                         user_id=user_id,
                         metadata=metadata,
                         available_platforms=None,
-                        conversation_manager=conversation_manager
+                        conversation_manager=conversation_manager,
+                        tool_registry=tool_registry
                     )
                     tools.extend(platform_tool)
                 except Exception as e:
@@ -136,7 +147,7 @@ class AgentToolsFactory:
         # Legacy Communication tools (intermediate messages, email, etc.)
         if needs_category(['send_intermediate_message', 'reply_to_user_via_email', 'send_new_email_as_praxos_bot', 'report_bug_to_developers']):
             try:
-                tools.extend(create_bot_communication_tools(metadata, user_id))
+                tools.extend(create_bot_communication_tools(metadata, user_id, tool_registry))
             except Exception as e:
                 logger.error(f"Error creating bot communication tools: {e}", exc_info=True)
 
@@ -148,7 +159,8 @@ class AgentToolsFactory:
                     media_tools = create_media_generation_tools(
                         user_id=user_id,
                         source=source,
-                        conversation_id=conversation_id
+                        conversation_id=conversation_id,
+                        tool_registry=tool_registry
                     )
                     tools.extend(media_tools)
                     logger.info(f"Added media generation tools for user={user_id}")
@@ -163,7 +175,8 @@ class AgentToolsFactory:
             try:
                 media_bus_tools = create_media_bus_tools(
                     conversation_id=conversation_id,
-                    user_id=user_id
+                    user_id=user_id,
+                    tool_registry=tool_registry
                 )
                 tools.extend(media_bus_tools)
                 logger.info(f"Added media bus tools for conversation={conversation_id}")
@@ -175,28 +188,28 @@ class AgentToolsFactory:
         # Scheduling tools
         if needs_category(['schedule_task', 'create_recurring_future_task', 'get_scheduled_tasks', 'cancel_scheduled_task', 'update_scheduled_task']):
             try:
-                tools.extend(create_scheduling_tools(user_id, metadata.get('source'), str(metadata.get('conversation_id'))))
+                tools.extend(create_scheduling_tools(user_id, metadata.get('source'), str(metadata.get('conversation_id')), tool_registry))
             except Exception as e:
                 logger.error(f"Error creating scheduling tools: {e}", exc_info=True)
 
         # Basic tools, always include
         if True:
             try:
-                tools.extend(create_basic_tools(user_time_zone))
+                tools.extend(create_basic_tools(user_time_zone, tool_registry))
             except Exception as e:
                 logger.error(f"Error creating basic tools: {e}", exc_info=True)
 
         # Preference tools: this should always be included, as these are essential for user customization
         if True or needs_category(['add_user_preference_annotation', 'set_assistant_name', 'set_timezone', 'set_language_response', 'delete_user_preference_annotations']):
             try:
-                tools.extend(create_preference_tools(user_id))
+                tools.extend(create_preference_tools(user_id, tool_registry))
             except Exception as e:
                 logger.error(f"Error creating preference tools: {e}", exc_info=True)
 
         # Integration tools
         if True:
             try:
-                tools.extend(create_integration_tools(user_id))
+                tools.extend(create_integration_tools(user_id, tool_registry))
                 logger.info("Integration tools created successfully.")
             except Exception as e:
                 logger.error(f"Error creating integration tools: {e}", exc_info=True)
@@ -204,14 +217,14 @@ class AgentToolsFactory:
         # Database tools
         if needs_category(['fetch_latest_messages', 'get_user_integration_records']):
             try:
-                tools.extend(create_database_access_tools(user_id))
+                tools.extend(create_database_access_tools(user_id, tool_registry))
             except Exception as e:
                 logger.error(f"Error creating database access tools: {e}", exc_info=True)
 
         # Google Places
         if needs_category(['google_places_text_search', 'google_places_nearby_search', 'google_places_find_place', 'google_places_get_details']):
             try:
-                tools.extend(create_google_places_tools())
+                tools.extend(create_google_places_tools(tool_registry))
                 logger.info("Google Places tools created successfully.")
             except Exception as e:
                 logger.error(f"Error creating Google places tools: {e}", exc_info=True)
@@ -219,7 +232,7 @@ class AgentToolsFactory:
         # Google Lens
         if is_tool_required('identify_product_in_image'):
             try:
-                tools.extend(create_google_lens_tools())
+                tools.extend(create_google_lens_tools(tool_registry))
                 logger.info("Google Lens product recognition tools created successfully.")
             except Exception as e:
                 logger.error(f"Error creating Google Lens tools: {e}", exc_info=True)
@@ -227,7 +240,7 @@ class AgentToolsFactory:
         # Web tools: if google search or places is needed, also load web browsing
         if needs_category(['read_webpage_content', 'browse_website_with_ai','google_search','google_places_text_search','google_places_nearby_search','google_places_find_place','google_places_get_details']):
             try:
-                tools.extend(create_web_tools(request_id, user_id, metadata))
+                tools.extend(create_web_tools(request_id, user_id, metadata, tool_registry))
                 logger.info("Web tools created successfully.")
             except Exception as e:
                 logger.error(f"Error creating web tools: {e}", exc_info=True)
@@ -239,16 +252,20 @@ class AgentToolsFactory:
             return tools
 
         # Determine which integrations need authentication based on required tools
-        needs_gmail = needs_category(['send_email', 'get_emails_from_sender', 'find_contact_email', 'search_gmail'])
+        needs_gmail = needs_category(['send_email', 'reply_to_email', 'search_gmail', 'get_email_content','get_emails_from_sender', 'find_contact_email', 'archive_email', 'mark_email_as_read','mark_email_as_unread', 'star_email', 'unstar_email', 'move_email_to_spam','move_email_to_trash', 'create_email_draft', 'list_gmail_labels','add_label_to_email', 'remove_label_from_email'])
         needs_gcal = needs_category(['get_calendar_events', 'create_calendar_event'])
         needs_gdrive = needs_category(['search_google_drive_files', 'save_file_to_drive', 'create_text_file_in_drive', 'read_file_content_by_id', 'list_drive_files'])
+        needs_gdocs = needs_category(['create_google_doc', 'get_google_doc_content', 'insert_text_in_doc', 'append_text_to_doc', 'format_doc_text', 'insert_paragraph_in_doc', 'insert_table_in_doc', 'delete_doc_content', 'replace_text_in_doc', 'search_google_doc'])
+        needs_gsheets = needs_category(['create_google_sheet', 'get_sheet_values', 'update_sheet_values', 'append_sheet_rows', 'clear_sheet_range', 'get_single_cell', 'set_single_cell', 'add_sheet_tab', 'delete_sheet_tab', 'insert_sheet_rows', 'insert_sheet_columns', 'delete_sheet_rows', 'get_spreadsheet_info', 'search_google_sheet'])
+        needs_gslides = needs_category(['create_google_presentation', 'get_presentation_info', 'add_slide', 'delete_slide', 'insert_text_in_slide', 'insert_image_in_slide', 'format_slide_text', 'create_table_in_slide', 'delete_slide_object', 'search_google_presentation'])
         needs_outlook = needs_category(['send_outlook_email', 'fetch_outlook_calendar_events', 'get_outlook_emails_from_sender', 'find_outlook_contact_email'])
         needs_notion = needs_category(['list_databases', 'list_notion_pages', 'query_notion_database', 'get_all_workspace_entries', 'search_notion_pages_by_keyword', 'create_notion_page', 'create_notion_database_entry', 'create_notion_database', 'append_to_notion_page', 'update_notion_page_properties', 'get_notion_page_content'])
         needs_dropbox = needs_category(['save_file_to_dropbox', 'read_file_from_dropbox','list_dropbox_files','search_dropbox_files'])
         needs_trello = needs_category(['list_trello_accounts','list_trello_organizations','list_trello_boards','get_trello_board_details','create_trello_board','share_trello_board','create_trello_list','list_trello_cards','get_trello_card','create_trello_card','update_trello_card','move_trello_card','add_trello_comment','create_trello_checklist','get_board_members','get_card_members','assign_member_to_card','unassign_member_from_card','search_trello']) 
+        logger.info(f'needs_gmail: {needs_gmail}')
          # If no specific tools requested, authenticate all (backward compatibility)
         if required_tool_ids is None:
-            needs_gmail = needs_gcal = needs_gdrive = needs_outlook = needs_notion = needs_dropbox = needs_trello = True
+            needs_gmail = needs_gcal = needs_gdrive = needs_gdocs = needs_gsheets = needs_gslides = needs_outlook = needs_notion = needs_dropbox = needs_trello = True
 
         # Only authenticate integrations that are actually needed
         auth_tasks = []
@@ -268,6 +285,21 @@ class AgentToolsFactory:
             gdrive_integration = GoogleDriveIntegration(user_id)
             auth_tasks.append(gdrive_integration.authenticate())
             integration_map['gdrive'] = (len(auth_tasks) - 1, gdrive_integration)
+
+        if needs_gdocs:
+            gdocs_integration = GoogleDocsIntegration(user_id)
+            auth_tasks.append(gdocs_integration.authenticate())
+            integration_map['gdocs'] = (len(auth_tasks) - 1, gdocs_integration)
+
+        if needs_gsheets:
+            gsheets_integration = GoogleSheetsIntegration(user_id)
+            auth_tasks.append(gsheets_integration.authenticate())
+            integration_map['gsheets'] = (len(auth_tasks) - 1, gsheets_integration)
+
+        if needs_gslides:
+            gslides_integration = GoogleSlidesIntegration(user_id)
+            auth_tasks.append(gslides_integration.authenticate())
+            integration_map['gslides'] = (len(auth_tasks) - 1, gslides_integration)
 
         if needs_outlook:
             outlook_integration = MicrosoftGraphIntegration(user_id)
@@ -302,7 +334,7 @@ class AgentToolsFactory:
             idx, gcal_integration = integration_map['gcal']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_calendar_tools(gcal_integration,user_time_zone))
+                    tools.extend(create_calendar_tools(gcal_integration, user_time_zone, tool_registry))
                     have_calendar_tool = True
                     logger.info("Google Calendar tools loaded")
                 except Exception as e:
@@ -312,7 +344,7 @@ class AgentToolsFactory:
             idx, gmail_integration = integration_map['gmail']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_gmail_tools(gmail_integration))
+                    tools.extend(create_gmail_tools(gmail_integration, tool_registry))
                     have_email_tool = True
                     logger.info("Gmail tools loaded")
                 except Exception as e:
@@ -322,16 +354,43 @@ class AgentToolsFactory:
             idx, gdrive_integration = integration_map['gdrive']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_drive_tools(gdrive_integration))
+                    tools.extend(create_drive_tools(gdrive_integration, tool_registry))
                     logger.info("Google Drive tools loaded")
                 except Exception as e:
                     logger.error(f"Error creating drive tools: {e}", exc_info=True)
+
+        if 'gdocs' in integration_map:
+            idx, gdocs_integration = integration_map['gdocs']
+            if authenticated_integrations[idx] is True:
+                try:
+                    tools.extend(create_docs_tools(gdocs_integration, tool_registry))
+                    logger.info("Google Docs tools loaded")
+                except Exception as e:
+                    logger.error(f"Error creating docs tools: {e}", exc_info=True)
+
+        if 'gsheets' in integration_map:
+            idx, gsheets_integration = integration_map['gsheets']
+            if authenticated_integrations[idx] is True:
+                try:
+                    tools.extend(create_sheets_tools(gsheets_integration, tool_registry))
+                    logger.info("Google Sheets tools loaded")
+                except Exception as e:
+                    logger.error(f"Error creating sheets tools: {e}", exc_info=True)
+
+        if 'gslides' in integration_map:
+            idx, gslides_integration = integration_map['gslides']
+            if authenticated_integrations[idx] is True:
+                try:
+                    tools.extend(create_slides_tools(gslides_integration, tool_registry))
+                    logger.info("Google Slides tools loaded")
+                except Exception as e:
+                    logger.error(f"Error creating slides tools: {e}", exc_info=True)
 
         if 'outlook' in integration_map:
             idx, outlook_integration = integration_map['outlook']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_outlook_tools(outlook_integration))
+                    tools.extend(create_outlook_tools(outlook_integration, tool_registry))
                     have_email_tool = True
                     have_calendar_tool = True
                     logger.info("Outlook tools loaded")
@@ -342,7 +401,7 @@ class AgentToolsFactory:
             idx, notion_integration = integration_map['notion']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_notion_tools(notion_integration))
+                    tools.extend(create_notion_tools(notion_integration, tool_registry))
                     logger.info("Notion tools loaded")
                 except Exception as e:
                     logger.error(f"Error creating Notion tools: {e}", exc_info=True)
@@ -351,7 +410,7 @@ class AgentToolsFactory:
             idx, dropbox_integration = integration_map['dropbox']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_dropbox_tools(dropbox_integration))
+                    tools.extend(create_dropbox_tools(dropbox_integration, tool_registry))
                     logger.info("Dropbox tools loaded")
                 except Exception as e:
                     logger.error(f"Error creating Dropbox tools: {e}", exc_info=True)
@@ -360,7 +419,7 @@ class AgentToolsFactory:
             idx, trello_integration = integration_map['trello']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_trello_tools(trello_integration))
+                    tools.extend(create_trello_tools(trello_integration, tool_registry))
                     logger.info("Trello tools loaded")
                 except Exception as e:
                     logger.error(f"Error creating Trello tools: {e}", exc_info=True)
@@ -375,11 +434,11 @@ class AgentToolsFactory:
 
             if praxos_api_key:
                 praxos_client = PraxosClient(f"env_for_{user_email}", api_key=praxos_api_key)
-                tools.extend(create_praxos_memory_tool(praxos_client, user_id, str(metadata.get('conversation_id'))))
+                tools.extend(create_praxos_memory_tool(praxos_client, user_id, str(metadata.get('conversation_id')), tool_registry))
                 logger.info("Praxos memory tools loaded")
 
                 # Add file retrieval tools (uses Praxos search for file discovery)
-                tools.extend(create_file_retrieval_tools(praxos_client, user_id, str(metadata.get('conversation_id'))))
+                tools.extend(create_file_retrieval_tools(praxos_client, user_id, str(metadata.get('conversation_id')), tool_registry))
                 logger.info("File retrieval tools loaded")
             else:
                 logger.warning("Praxos API key not found, memory tools will be unavailable.")

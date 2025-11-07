@@ -1,0 +1,23 @@
+tool_id: get_user_location
+category: preference
+display_name: get_user_location
+
+short_description: Gets the user's last shared location
+
+arguments: []
+
+returns: Latitude, longitude, name (optional), platform, timestamp
+
+use_cases:
+  - User asks "Where am I?"
+  - Need location for context (weather, nearby places, etc)
+
+examples:
+  - 'User asks: What is the weather here?'
+  - 'User asks: Find restaurants near me'
+  - 'User asks: Where was I last?'
+
+notes:
+  - If no location - Tool suggests requesting it via request_location parameter in reply tool
+
+requires_auth: true

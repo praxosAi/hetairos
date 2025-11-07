@@ -1,0 +1,39 @@
+tool_id: create_ios_reminder
+category: communication
+display_name: create_ios_reminder
+short_description: Create a reminder on the user's iOS device
+
+detailed_description: |
+  Create a reminder on the user's iOS device.
+  This sends a command to create a reminder in the iOS Reminders app.
+
+arguments:
+  - name: title
+    type: str
+    description: The reminder title/text
+    required: true
+
+  - name: due_date
+    type: str
+    description: 'Optional due date in ISO format (e.g., "2025-11-05T14:00:00")'
+    required: false
+
+  - name: notes
+    type: str
+    description: Optional additional notes for the reminder
+    required: false
+
+returns: Success confirmation or error message
+
+examples:
+  - 'create_ios_reminder("Call dentist", "2025-11-05T14:00:00", "Schedule cleaning appointment")'
+  - 'create_ios_reminder("Buy groceries")'
+
+use_cases:
+  - When user wants to create a reminder on their iOS device
+  - When setting up tasks with due dates
+  - When adding quick reminders through voice or text
+
+requires_integration: ios
+requires_auth: true
+is_long_running: false

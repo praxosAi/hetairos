@@ -31,7 +31,12 @@ async def get_planning_cache_name() -> str:
 
 
 async def update_cache_ttl():
-    """Updates the cache TTL in a fire-and-forget manner."""
+    """
+    Updates the cache TTL in a fire-and-forget manner.
+    Also updates Redis key TTL to match.
+    """
+    EXTENDED_TTL = 86400  # 24 hours
+
     try:
         cache_name = await get_planning_cache_name()
         if not cache_name:
@@ -43,9 +48,17 @@ async def update_cache_ttl():
         await client_gemini.aio.caches.update(
             name=cache_name,
             config=types.UpdateCachedContentConfig(
-                ttl='86400s'
+                ttl=f'{EXTENDED_TTL}s'
             )
         )
-        logger.info(f"Successfully updated cache TTL for {cache_name} to 86400 seconds (24 hours)")
+        logger.info(f"Successfully updated Gemini cache TTL for {cache_name} to {EXTENDED_TTL} seconds (24 hours)")
+
+        # Also update Redis key TTL to match
+        from src.utils.redis_client import redis_client
+        from src.services.ai_service.prompts.cache_manager import GEMINI_CACHE_NAME_KEY
+
+        await redis_client.expire(GEMINI_CACHE_NAME_KEY, EXTENDED_TTL)
+        logger.info(f"Updated Redis cache_name TTL to {EXTENDED_TTL} seconds (24 hours)")
+
     except Exception as e:
         logger.error(f"Failed to update cache TTL: {e}", exc_info=True)

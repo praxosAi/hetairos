@@ -17,6 +17,7 @@ TOOL_DOCS_HASH_KEY = "praxos:tool_docs_hash"
 GEMINI_CACHE_NAME_KEY = "praxos:gemini_planning_cache_name"
 CACHE_REGENERATION_LOCK_KEY = "praxos:cache_regeneration_lock"
 LOCK_TIMEOUT = 120  # 2 minutes
+GEMINI_CACHE_TTL = 1200  # 20 minutes (must match Gemini cache TTL)
 
 
 async def _regenerate_gemini_planning_cache() -> str:
@@ -75,7 +76,7 @@ async def _regenerate_gemini_planning_cache() -> str:
                     function_calling_config=types.FunctionCallingConfig(mode='ANY')
                 ),
                 contents=[GRANULAR_TOOLING_CAPABILITIES],
-                ttl="1200s",  # 20 minutes (adjust as needed)
+                ttl=f"{GEMINI_CACHE_TTL}s",  # TTL in seconds
             )
         )
 
@@ -145,11 +146,12 @@ async def check_and_regenerate_cache_if_needed():
             new_cache_name = await _regenerate_gemini_planning_cache()
 
             if new_cache_name:
-                # Store cache name in Redis
-                await redis_client.set(GEMINI_CACHE_NAME_KEY, new_cache_name)
-                logger.info(f"New Gemini cache created: {new_cache_name}")
+                # Store cache name in Redis with TTL matching Gemini cache
+                # When Gemini cache expires, Redis key auto-expires too
+                await redis_client.set(GEMINI_CACHE_NAME_KEY, new_cache_name, ex=GEMINI_CACHE_TTL)
+                logger.info(f"New Gemini cache created: {new_cache_name} (TTL: {GEMINI_CACHE_TTL}s)")
 
-                # Update stored hash in Redis
+                # Update stored hash in Redis (no TTL - stays until next change)
                 await redis_client.set(TOOL_DOCS_HASH_KEY, current_hash)
                 logger.info(f"Updated tool docs hash in Redis: {current_hash}")
 

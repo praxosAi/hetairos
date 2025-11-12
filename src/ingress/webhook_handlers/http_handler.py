@@ -12,6 +12,7 @@ logger = setup_logger(__name__)
 from src.utils.blob_utils import upload_bytes_to_blob_storage, upload_to_blob_storage
 from fastapi import UploadFile,Request, Form, File
 from src.utils.database import db_manager
+from src.config.settings import settings
 from typing import List, Optional
 import json
 from src.utils.file_manager import file_manager
@@ -101,29 +102,102 @@ async def handle_chat_request(
         )
     user_id_var.set(str(user_id))
     modality_var.set("websocket")
-    # Process uploaded files
+
+    # Check number of files
+    if len(files) > settings.MAX_FILES_PER_REQUEST:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Too many files. Maximum {settings.MAX_FILES_PER_REQUEST} allowed."
+        )
+
+    # Process uploaded files with size limits
     file_data = []
+    total_size = 0
+
     for file in files:
-        # logger.info(f"Received file: {file.filename} of type {file.content_type} and size {file.spool_max_size}")  
-        if file.filename:  
+        if not file.filename:
+            continue
+
+        try:
+            # Read file content with size validation
             content = await file.read()
+
+            # Check individual file size
+            if len(content) > settings.MAX_FILE_SIZE_HTTP:
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        f"File '{file.filename}' exceeds maximum size of "
+                        f"{settings.MAX_FILE_SIZE_HTTP // (1024*1024)}MB"
+                    )
+                )
+
+            # Check total upload size
+            total_size += len(content)
+            if total_size > settings.MAX_TOTAL_UPLOAD_SIZE:
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        f"Total upload size exceeds limit of "
+                        f"{settings.MAX_TOTAL_UPLOAD_SIZE // (1024*1024)}MB"
+                    )
+                )
+
             file_data.append(FileInfo(
                 filename=file.filename,
                 content_type=file.content_type or "application/octet-stream",
                 size=len(content),
                 content=content
             ))
+
+            logger.info(
+                f"Accepted file: {file.filename} "
+                f"({len(content) // 1024}KB, total: {total_size // 1024}KB)"
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error processing file {file.filename}: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to process file: {str(e)}"
+            )
     
-    # Process audio
+    # Process audio with size limits
     audio_data = None
     if audio and audio.filename:
-        audio_content = await audio.read()
-        audio_data = FileInfo(
-            filename=audio.filename or "recording.wav",
-            content_type=audio.content_type or "audio/wav",
-            size=len(audio_content),
-            content=audio_content
-        )
+        try:
+            # Read audio content
+            audio_content = await audio.read()
+
+            # Enforce audio file size limit
+            if len(audio_content) > settings.MAX_FILE_SIZE_HTTP:
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        f"Audio file exceeds maximum size of "
+                        f"{settings.MAX_FILE_SIZE_HTTP // (1024*1024)}MB"
+                    )
+                )
+
+            audio_data = FileInfo(
+                filename=audio.filename or "recording.wav",
+                content_type=audio.content_type or "audio/wav",
+                size=len(audio_content),
+                content=audio_content
+            )
+
+            logger.info(f"Accepted audio: {audio.filename} ({len(audio_content) // 1024}KB)")
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error processing audio: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to process audio: {str(e)}"
+            )
     
     # Create request object
     request_obj = HttpIngressRequest(

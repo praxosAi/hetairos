@@ -1,5 +1,7 @@
 import time
 import unicodedata
+import socket
+from ipaddress import ip_address, ip_network
 from urllib.parse import urlparse, urlunparse
 import requests
 from requests.utils import requote_uri
@@ -12,6 +14,93 @@ from typing import Annotated, Optional
 from src.config.settings import settings
 
 logger = setup_logger(__name__)
+
+# Blocked IP ranges for SSRF protection
+BLOCKED_IP_RANGES = [
+    ip_network('10.0.0.0/8'),       # Private Class A
+    ip_network('172.16.0.0/12'),    # Private Class B
+    ip_network('192.168.0.0/16'),   # Private Class C
+    ip_network('127.0.0.0/8'),      # Loopback
+    ip_network('169.254.0.0/16'),   # Link-local (AWS/Azure metadata)
+    ip_network('::1/128'),          # IPv6 loopback
+    ip_network('fe80::/10'),        # IPv6 link-local
+    ip_network('fc00::/7'),         # IPv6 unique local
+]
+
+def validate_url_for_ssrf(url: str) -> None:
+    """
+    Validates URL to prevent SSRF attacks.
+
+    Blocks:
+    - Non-HTTP(S) protocols (file://, ftp://, gopher://, etc.)
+    - Private/internal IP addresses (RFC 1918)
+    - Localhost and loopback addresses
+    - Cloud metadata endpoints (169.254.169.254)
+    - Link-local addresses
+
+    Args:
+        url: URL to validate
+
+    Raises:
+        ValueError: If URL is blocked for security reasons
+    """
+    try:
+        parsed = urlparse(url)
+
+        # Step 1: Only allow HTTP/HTTPS
+        if parsed.scheme not in ['http', 'https']:
+            raise ValueError(
+                f"Protocol not allowed: {parsed.scheme}. "
+                f"Only http:// and https:// URLs are permitted."
+            )
+
+        # Step 2: Extract hostname
+        hostname = parsed.hostname
+        if not hostname:
+            raise ValueError("URL must contain a valid hostname")
+
+        # Step 3: Block localhost variations
+        localhost_names = [
+            'localhost', 'localhost.localdomain',
+            '0.0.0.0', '0000', '0x0', '0177.0.0.1',
+            'localhost6', 'ip6-localhost', 'ip6-loopback'
+        ]
+        if hostname.lower() in localhost_names:
+            raise ValueError(
+                f"Access to localhost is blocked for security reasons"
+            )
+
+        # Step 4: Resolve hostname to IP address
+        try:
+            ip_str = socket.gethostbyname(hostname)
+            ip = ip_address(ip_str)
+        except socket.gaierror:
+            raise ValueError(f"Cannot resolve hostname: {hostname}")
+        except ValueError as e:
+            raise ValueError(f"Invalid IP address format: {e}")
+
+        # Step 5: Check against blocked IP ranges
+        for blocked_range in BLOCKED_IP_RANGES:
+            if ip in blocked_range:
+                raise ValueError(
+                    f"Access denied: {hostname} ({ip}) is in a blocked network range. "
+                    f"Access to internal/private networks is not permitted for security reasons."
+                )
+
+        # Step 6: Additional check for cloud metadata endpoint
+        if str(ip) == '169.254.169.254':
+            raise ValueError(
+                "Access to cloud metadata endpoint (169.254.169.254) is blocked"
+            )
+
+        logger.info(f"URL validated for SSRF protection: {url} -> {hostname} ({ip})")
+
+    except ValueError:
+        # Re-raise validation errors
+        raise
+    except Exception as e:
+        logger.error(f"Error validating URL {url}: {e}")
+        raise ValueError(f"URL validation failed: {e}")
 
 
 @tool
@@ -96,7 +185,18 @@ def _normalize_and_encode_url(url: str) -> str:
 def read_webpage_content(url: str) -> ToolExecutionResponse:
     """
     Reads textual content from a webpage, robust to Unicode (Greek/Cyrillic) URLs.
+    Only allows access to public internet URLs (blocks internal networks for security).
     """
+    # SSRF Protection: Validate URL before any requests
+    try:
+        validate_url_for_ssrf(url)
+    except ValueError as e:
+        logger.warning(f"SSRF protection blocked URL: {url} - {e}")
+        return ToolExecutionResponse(
+            status="error",
+            result=f"Cannot access this URL for security reasons: {str(e)}"
+        )
+
     urls_to_try = [
         url,                      # as-is (requests can handle Unicode)
         _normalize_and_encode_url(url),  # normalized + safely quoted
@@ -122,7 +222,22 @@ def read_webpage_content(url: str) -> ToolExecutionResponse:
                 }
 
                 logger.info(f"Fetching: {attempt_url}")
-                resp = requests.get(attempt_url, headers=headers, timeout=timeout, allow_redirects=True)
+                # Disable redirects to validate redirect targets
+                resp = requests.get(attempt_url, headers=headers, timeout=timeout, allow_redirects=False)
+
+                # Handle redirects manually with validation
+                if resp.status_code in [301, 302, 303, 307, 308]:
+                    redirect_url = resp.headers.get('Location')
+                    if redirect_url:
+                        # Validate redirect target
+                        try:
+                            validate_url_for_ssrf(redirect_url)
+                            # Follow redirect
+                            resp = requests.get(redirect_url, headers=headers, timeout=timeout, allow_redirects=False)
+                        except ValueError as e:
+                            logger.warning(f"Blocked redirect to: {redirect_url} - {e}")
+                            raise ValueError(f"Redirect blocked: {e}")
+
                 resp.raise_for_status()
 
                 # Help BS4 with correct decoding

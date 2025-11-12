@@ -7,6 +7,10 @@ __pycache__/
 .venv/
 venv/
 
+# Encryption salt (security - unique per installation)
+.encryption_salt
+**/.encryption_salt
+
 /tests/
 
 # Test files and debug scripts

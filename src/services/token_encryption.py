@@ -1,6 +1,8 @@
 import os
 import base64
 import logging
+import secrets
+from pathlib import Path
 from typing import Optional, Tuple
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -13,12 +15,18 @@ logger = setup_logger(__name__)
 class TokenEncryption:
     """
     Handles encryption and decryption of OAuth tokens using Fernet
-    symmetric encryption, with the key sourced from an environment variable.
+    symmetric encryption, with unique salt per installation.
+
+    SECURITY: Salt is unique per installation to prevent rainbow table attacks.
     """
+
+    # Salt storage location (excluded from version control via .gitignore)
+    SALT_FILE_PATH = Path(__file__).parent.parent / '.encryption_salt'
 
     def __init__(self):
         self._fernet: Optional[Fernet] = None
         self._encryption_key: Optional[bytes] = None
+        self._salt: Optional[bytes] = None
 
     def _get_encryption_key(self) -> bytes:
         """Get or create encryption key from environment variable"""
@@ -49,11 +57,87 @@ class TokenEncryption:
         logger.debug(f"Final encryption key length: {len(self._encryption_key)} bytes")
         return self._encryption_key
 
-    def _derive_key_from_password(self, password: bytes, salt: Optional[bytes] = None) -> bytes:
-        """Derive encryption key from password using PBKDF2"""
-        if salt is None:
-            salt = b'mypraxos-salt'
-            
+    def _get_or_create_salt(self) -> bytes:
+        """
+        Get existing salt or create a new one.
+        Salt is stored in a file outside of version control.
+
+        Returns:
+            32-byte salt
+        """
+        if self._salt:
+            return self._salt
+
+        # Try to read existing salt from environment variable first
+        env_salt = os.getenv('ENCRYPTION_SALT')
+        if env_salt:
+            try:
+                self._salt = base64.b64decode(env_salt)
+                if len(self._salt) >= 16:
+                    logger.info("Loaded encryption salt from environment variable")
+                    return self._salt
+            except Exception as e:
+                logger.warning(f"Failed to load salt from environment: {e}")
+
+        # Try to read existing salt from file
+        if self.SALT_FILE_PATH.exists():
+            try:
+                with open(self.SALT_FILE_PATH, 'rb') as f:
+                    self._salt = f.read()
+
+                # Validate salt length
+                if len(self._salt) < 16:
+                    raise ValueError("Salt too short")
+
+                logger.info(f"Loaded encryption salt from {self.SALT_FILE_PATH}")
+                return self._salt
+
+            except Exception as e:
+                logger.error(f"Failed to load salt file: {e}")
+                # Fall through to generate new salt
+
+        # Generate new random salt
+        logger.warning(
+            "Generating NEW encryption salt. "
+            "Existing encrypted tokens will need re-encryption."
+        )
+        self._salt = secrets.token_bytes(32)  # 256 bits
+
+        # Save salt to file
+        try:
+            # Create directory if doesn't exist
+            self.SALT_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+            # Write salt with restrictive permissions
+            with open(self.SALT_FILE_PATH, 'wb') as f:
+                f.write(self._salt)
+
+            # Set file permissions (Unix only)
+            if os.name != 'nt':  # Not Windows
+                os.chmod(self.SALT_FILE_PATH, 0o600)  # Read/write owner only
+
+            logger.info(f"Saved new encryption salt to {self.SALT_FILE_PATH}")
+
+        except Exception as e:
+            logger.error(f"Failed to save salt file: {e}")
+            logger.warning(
+                "Using in-memory salt - will not persist across restarts! "
+                "Tokens encrypted in this session may not decrypt after restart."
+            )
+
+        return self._salt
+
+    def _derive_key_from_password(self, password: bytes) -> bytes:
+        """
+        Derive encryption key from password using PBKDF2 with unique salt.
+
+        SECURITY: Uses unique salt per installation to prevent rainbow table attacks.
+        """
+        # Get unique salt for this installation
+        salt = self._get_or_create_salt()
+
+        logger.debug(f"Deriving key with {len(salt)}-byte salt")
+
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,

@@ -64,7 +64,15 @@ class Settings:
     MAX_EMAILS = 100
     MAX_EMAIL_ATTACHMENTS = 20
     MAX_WHATSAPP_MESSAGES = 400
-    
+
+    # File upload limits (security)
+    MAX_FILE_SIZE_HTTP = 50 * 1024 * 1024       # 50MB for web uploads
+    MAX_FILE_SIZE_WHATSAPP = 100 * 1024 * 1024  # 100MB for WhatsApp (their max is 100MB)
+    MAX_FILE_SIZE_TELEGRAM = 100 * 1024 * 1024  # 100MB for Telegram
+    MAX_TOTAL_UPLOAD_SIZE = 200 * 1024 * 1024   # 200MB total per request
+    MAX_FILES_PER_REQUEST = 10                  # Maximum 10 files per request
+    UPLOAD_CHUNK_SIZE = 8192                    # 8KB chunks for streaming
+
     # Sync settings
     SYNC_THRESHOLD_MINUTES = 2
     

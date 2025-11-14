@@ -26,6 +26,7 @@ from src.utils.redis_client import subscribe_to_channel
 from src.utils.logging import setup_logger
 from src.ingress.webhook_handlers.telegram_handler import set_telegram_webhook, telegram_scheduler
 from apscheduler.triggers.cron import CronTrigger
+from src.services.jwt_validation import validate_jwt_with_backend, extract_user_id
 
 # Check an environment variable to decide on log format
 # In your deployment (e.g., Dockerfile or Kubernetes YAML), set JSON_LOGGING="true"
@@ -133,46 +134,61 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Cookie
 from typing import Optional
 
 
+async def extract_and_validate_jwt_from_ws(ws: WebSocket, cookie_name: str = "session_token") -> Optional[tuple[str, dict]]:
+    """
+    Extract JWT token from WebSocket connection
+    Tries multiple sources: subprotocol, cookie, Authorization header
 
-def is_valid_jwt(token: str) -> bool:
-    # TODO: verify signature, exp, aud, iss, etc.
-    return bool(token and len(token) > 10)
-
-def extract_jwt_from_ws(ws: WebSocket, cookie_name: str = "praxos_session") -> Optional[str]:
+    Returns the token string if found and valid, None otherwise
+    """
     # 1) Subprotocol (browser-friendly, no custom headers needed)
     proto = ws.headers.get("sec-websocket-protocol")
-    if proto and is_valid_jwt(proto):
-        return proto
+    if proto:
+        payload = await validate_jwt_with_backend(proto)
+        if payload:
+            return proto, payload
 
     # 2) Cookie (auto-sent by browser on same origin)
     cookie = ws.cookies.get(cookie_name)
-    if cookie and is_valid_jwt(cookie):
-        return cookie
+    if cookie:
+        payload = await validate_jwt_with_backend(cookie)
+        if payload:
+            return cookie, payload
 
     # 3) Authorization header (for non-browser clients like wscat/curl)
     auth = ws.headers.get("authorization")
     if auth and auth.lower().startswith("bearer "):
         token = auth.split(" ", 1)[1].strip()
-        if is_valid_jwt(token):
-            return token
+        payload = await validate_jwt_with_backend(token)
+        if payload:
+            return token, payload
 
     return None
 
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket, praxos_session: Optional[str] = Cookie(default=None)):
+async def websocket_endpoint(ws: WebSocket, session_token: Optional[str] = Cookie(default=None)):
     # Accept handshake first, and echo subprotocol if present (required by browsers)
     requested_proto = ws.headers.get("sec-websocket-protocol") or ""
     await ws.accept(subprotocol=requested_proto if requested_proto else None)
 
     # Extract JWT from subprotocol, cookie, or Authorization
-    token = extract_jwt_from_ws(ws)
-    if not token:
-        logger.info("No token found, closing websocket")
-        # optionally: await ws.send_text("unauthorized")
+    token, payload = await extract_and_validate_jwt_from_ws(ws, cookie_name="session_token")
+    if not payload:
+        logger.info("No valid token found, closing websocket")
         await ws.close(code=1008)
         return
+
+    # Extract user info from payload
+    user_id = extract_user_id(payload)
+    if not user_id:
+        logger.warning("No user_id in token payload")
+        await ws.close(code=1008)
+        return
+
+    logger.info(f"WebSocket authenticated for user: {user_id}")
+    user_id_var.set(user_id)
 
     # ---- your normal logic below ----
     pubsub = None

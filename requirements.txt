@@ -33,17 +33,11 @@ azure-core==1.36.0
     # via
     #   azure-cosmos
     #   azure-identity
-    #   azure-keyvault-secrets
-    #   azure-servicebus
     #   azure-storage-blob
     #   microsoft-kiota-authentication-azure
 azure-cosmos==4.14.0
     # via -r requirements.in
 azure-identity==1.25.1
-    # via -r requirements.in
-azure-keyvault-secrets==4.10.0
-    # via -r requirements.in
-azure-servicebus==7.14.2
     # via -r requirements.in
 azure-storage-blob==12.27.0
     # via -r requirements.in
@@ -223,10 +217,7 @@ idna==3.11
 importlib-metadata==8.7.0
     # via opentelemetry-api
 isodate==0.7.2
-    # via
-    #   azure-keyvault-secrets
-    #   azure-servicebus
-    #   azure-storage-blob
+    # via azure-storage-blob
 jiter==0.11.1
     # via
     #   openai
@@ -533,8 +524,6 @@ typing-extensions==4.15.0
     #   azure-core
     #   azure-cosmos
     #   azure-identity
-    #   azure-keyvault-secrets
-    #   azure-servicebus
     #   azure-storage-blob
     #   beautifulsoup4
     #   fastapi

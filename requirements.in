@@ -12,6 +12,8 @@ google-api-python-client
 google-cloud-pubsub
 msgraph-core
 azure-identity
+azure-servicebus
+azure-keyvault-secrets
 aiohttp
 notion-client
 Praxos-python

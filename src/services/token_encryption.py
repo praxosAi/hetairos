@@ -29,17 +29,40 @@ class TokenEncryption:
         self._salt: Optional[bytes] = None
 
     def _get_encryption_key(self) -> bytes:
-        """Get or create encryption key from environment variable"""
+        """Get encryption key from Azure Key Vault or environment variable"""
         if self._encryption_key:
             logger.debug("Using cached encryption key")
             return self._encryption_key
 
-        env_key = os.getenv('ENCRYPTION_KEY')
-        if not env_key:
-            raise ValueError("No encryption key available. Set ENCRYPTION_KEY environment variable.")
+        # Try Azure Key Vault first (production with RBAC)
+        vault_url = os.getenv('AZURE_KEY_VAULT_URL')
+        if vault_url:
+            try:
+                from azure.keyvault.secrets import SecretClient
+                from azure.identity import DefaultAzureCredential
 
-        logger.info("Using encryption key from environment variable")
-        logger.debug(f"Environment key length: {len(env_key)}")
+                logger.info("Attempting to retrieve encryption key from Azure Key Vault")
+                credential = DefaultAzureCredential()
+                client = SecretClient(vault_url=vault_url, credential=credential)
+                secret = client.get_secret("token-encryption-key")
+                env_key = secret.value
+                logger.info("Successfully retrieved encryption key from Key Vault")
+
+            except ImportError:
+                logger.warning("Azure libraries not installed, falling back to env var")
+                env_key = os.getenv('ENCRYPTION_KEY')
+            except Exception as e:
+                logger.warning(f"Key Vault retrieval failed: {e}, falling back to env var")
+                env_key = os.getenv('ENCRYPTION_KEY')
+        else:
+            # No vault configured, use environment variable
+            env_key = os.getenv('ENCRYPTION_KEY')
+            logger.info("Using encryption key from environment variable")
+
+        if not env_key:
+            raise ValueError("No encryption key available. Set ENCRYPTION_KEY or AZURE_KEY_VAULT_URL")
+
+        logger.debug(f"Encryption key length: {len(env_key)}")
 
         # Check if it's already a valid Fernet key or needs derivation
         try:

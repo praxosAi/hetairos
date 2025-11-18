@@ -97,11 +97,24 @@ async def handle_chat_request(
         # Handle FormData request
     if not all([user_id, token]):
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail="Missing required fields: user_id and token are required"
         )
     user_id_var.set(str(user_id))
     modality_var.set("websocket")
+
+    # Rate limiting for HTTP requests
+    from src.utils.rate_limiter import rate_limiter
+    is_allowed, remaining = rate_limiter.check_limit(user_id, "http_requests")
+    if not is_allowed:
+        logger.warning(f"Rate limit exceeded for user {user_id} on HTTP requests")
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Please try again later."
+        )
+
+    # Increment request count
+    rate_limiter.increment_usage(user_id, "http_requests", 1)
 
     # Check number of files
     if len(files) > settings.MAX_FILES_PER_REQUEST:

@@ -1,0 +1,30 @@
+# ingress-mypraxos.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hetairoi-ingress-mypraxos
+  annotations:
+    # --- Annotations for Azure Application Gateway Ingress Controller ---
+    # 1. Enable sticky sessions (Cookie-based Affinity)
+    appgw.ingress.kubernetes.io/cookie-based-affinity: "true"
+    appgw.ingress.kubernetes.io/affinity-cookie-name: "HETAIROI_STICKY_SESSION"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    # 2. Set a long timeout for persistent connections like WebSockets
+    appgw.ingress.kubernetes.io/request-timeout: "3600"
+spec:
+  ingressClassName: webapprouting.kubernetes.azure.com
+  rules:
+  - host: hooks.mypraxos.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: hetairoi-web-service
+            port:
+              number: 80
+  tls:
+  - hosts:
+    - hooks.mypraxos.com
+    secretName: hooks-mypraxos-tls

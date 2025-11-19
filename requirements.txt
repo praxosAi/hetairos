@@ -43,7 +43,7 @@ azure-identity==1.25.1
     # via -r requirements.in
 azure-keyvault-secrets==4.10.0
     # via -r requirements.in
-azure-servicebus==7.14.2
+azure-servicebus==7.14.3
     # via -r requirements.in
 azure-storage-blob==12.27.0
     # via -r requirements.in

@@ -12,6 +12,8 @@ google-api-python-client
 google-cloud-pubsub
 msgraph-core
 azure-identity
+azure-servicebus
+azure-keyvault-secrets
 aiohttp
 notion-client
 Praxos-python
@@ -24,7 +26,6 @@ motor
 ffmpeg-python
 aiofiles
 pymongo
-azure-keyvault-secrets
 langgraph
 langgraph-prebuilt
 langchain[openai]
@@ -40,16 +41,11 @@ apscheduler
 httpx
 azure-cosmos
 gunicorn
-azure-keyvault-secrets
-azure-identity
 redis
-azure-servicebus
 starlette
 anyio
 pydub
 azure-storage-blob
-azure-servicebus
-pytz
 googlemaps
 dropbox
 beautifulsoup4

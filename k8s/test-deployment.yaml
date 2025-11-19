@@ -20,7 +20,7 @@ spec:
         fsGroup: 1000
       containers:
       - name: hetairoi-web
-        image: praxosagentcontainers.azurecr.io/hetairoi-worker-test:latest
+        image: praxosagentcontainers.azurecr.io/hetairoi-worker-test@sha256:f3d3656ea45ee30bc5bac7f4063587fe63aa06f98a5966a1a444a746deb3da1a
         imagePullPolicy: Always
         securityContext:
           allowPrivilegeEscalation: false
@@ -57,7 +57,7 @@ spec:
         fsGroup: 1000
       containers:
       - name: hetairoi-worker
-        image: praxosagentcontainers.azurecr.io/hetairoi-worker-test:latest
+        image: praxosagentcontainers.azurecr.io/hetairoi-worker-test@sha256:f3d3656ea45ee30bc5bac7f4063587fe63aa06f98a5966a1a444a746deb3da1a
         imagePullPolicy: Always
         securityContext:
           allowPrivilegeEscalation: false

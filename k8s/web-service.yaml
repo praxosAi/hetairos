@@ -8,6 +8,6 @@ spec:
     app: hetairoi-web # This selector correctly matches your hetairoi-web-deployment
   ports:
     - protocol: TCP
-      port: 80 # The service exposes port 80
-      targetPort: 8000 # And forwards traffic to port 8000 on the pods
+      port: 443 # Service port (internal cluster traffic)
+      targetPort: 8000 # Pod port
   type: ClusterIP

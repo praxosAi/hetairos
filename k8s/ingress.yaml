@@ -23,7 +23,7 @@ spec:
           service:
             name: hetairoi-web-service
             port:
-              number: 80
+              number: 443
   tls:
   - hosts:
     - hooks.praxos.ai

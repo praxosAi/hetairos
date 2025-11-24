@@ -27,7 +27,7 @@ arguments:
     required: false
     default: 5000
 
-returns: List of places matching the query with addresses, ratings, and place IDs
+returns: List of places matching the query with name, address, coordinates (lat, lng), place IDs, and ratings
 
 examples:
   - 'google_places_text_search("pizza in Boston")'
@@ -38,10 +38,12 @@ use_cases:
   - General place searches
   - Finding specific businesses by name
   - '"pizza in Boston" type queries'
+  - Getting coordinates for weather forecasts, navigation, or distance calculations
 
 notes:
   - IMPORTANT - If you have user's location, ALWAYS pass latitude/longitude for accurate results
-  - Returns top 10 results
+  - Returns top 10 results with coordinates (lat, lng)
+  - Use returned coordinates for precise operations like weather forecasts
 
 requires_integration: google_places_api
 requires_auth: true

@@ -1,0 +1,74 @@
+tool_id: get_weather_forecast
+category: weather
+display_name: Get Weather Forecast
+
+short_description: Get weather forecast for precise coordinates
+
+detailed_description: |
+  Fetches weather forecast and current conditions from WeatherAPI.com using precise coordinates.
+  Returns full forecast data plus current weather in a single call.
+  REQUIRES coordinates from google_places_text_search.
+
+arguments:
+  - name: latitude
+    type: float
+    description: Latitude coordinate (e.g., 43.6394)
+    required: true
+  - name: longitude
+    type: float
+    description: Longitude coordinate (e.g., -79.4198)
+    required: true
+
+returns: |
+  Full weather data including:
+  - location: Location details (name, region, country, coordinates)
+  - current: Current weather conditions
+  - forecast: Multi-day forecast (API default maximum days)
+  - alerts: Weather alerts if any
+
+examples:
+  - 'get_weather_forecast(latitude=43.6394, longitude=-79.4198)'
+  - 'get_weather_forecast(latitude=40.7128, longitude=-74.0060)'
+  - 'get_weather_forecast(latitude=51.5074, longitude=-0.1278)'
+
+use_cases:
+  - Get weather forecast for any location
+  - Get current weather conditions
+  - Requires coordinates from google_places_text_search
+
+notes: |
+  MANDATORY WORKFLOW - ALWAYS follow this pattern:
+  1. Call google_places_text_search(location_name) to get coordinates
+  2. Extract latitude and longitude from "Coordinates: lat, lng" in the results
+  3. Call get_weather_forecast(latitude=lat, longitude=lng)
+
+  This tool ONLY accepts numeric latitude and longitude coordinates.
+  Do NOT pass location names - use google_places_text_search first.
+
+  Example workflow:
+  User: "Weather for Liberty Village, Toronto"
+
+  Step 1: google_places_text_search("Liberty Village Toronto")
+          Returns: "1. Liberty Village
+                    Address: Toronto, ON, Canada
+                    Coordinates: 43.6394, -79.4198
+                    Place ID: ChIJ..."
+
+  Step 2: Extract coordinates from result
+          latitude = 43.6394
+          longitude = -79.4198
+
+  Step 3: get_weather_forecast(latitude=43.6394, longitude=-79.4198)
+          Returns: Full weather data for Liberty Village, Toronto
+
+  If user provides coordinates directly (e.g., "weather at 43.64, -79.42"):
+  - Skip google_places_text_search
+  - Call get_weather_forecast directly with provided coordinates
+
+  Best Practice:
+  - Always use google_places_text_search for location names
+  - Extract exact coordinates from the search results
+  - Pass coordinates as separate latitude and longitude parameters
+
+is_long_running: false
+requires_intermediate_message: false

@@ -20,10 +20,17 @@ from typing import Optional
 logger = setup_logger(__name__)
 
 
-def create_google_places_tools(tool_registry):
+def create_google_places_tools(tool_registry, tool_names=None):
     """
     Creates Google Places tools wrapped in ToolExecutionResponse format.
     Requires GPLACES_API_KEY environment variable.
+
+    Args:
+        tool_registry: Tool registry for applying YAML descriptions
+        tool_names: Optional list of specific tool names to create.
+                   If None, creates all tools.
+                   Valid names: 'google_places_text_search', 'google_places_nearby_search',
+                               'google_places_find_place', 'google_places_get_details'
     """
 
     @tool
@@ -69,9 +76,11 @@ def create_google_places_tools(tool_registry):
 
             formatted = []
             for idx, place in enumerate(results[:10], 1):
+                location = place.get("geometry", {}).get("location", {})
                 formatted.append(
                     f"{idx}. {place.get('name', 'Unknown')}\n"
                     f"Address: {place.get('formatted_address', 'Unknown')}\n"
+                    f"Coordinates: {location.get('lat', 'N/A')}, {location.get('lng', 'N/A')}\n"
                     f"Place ID: {place.get('place_id', 'Unknown')}\n"
                     f"Rating: {place.get('rating', 'N/A')} ({place.get('user_ratings_total', 0)} reviews)"
                 )
@@ -312,11 +321,20 @@ def create_google_places_tools(tool_registry):
                 context={"place_id": place_id}
             )
 
-    all_tools = [
-        google_places_text_search,
-        google_places_nearby_search,
-        google_places_find_place,
-        google_places_get_details
-    ]
-    tool_registry.apply_descriptions_to_tools(all_tools)
-    return all_tools
+    all_tools = {
+        'google_places_text_search': google_places_text_search,
+        'google_places_nearby_search': google_places_nearby_search,
+        'google_places_find_place': google_places_find_place,
+        'google_places_get_details': google_places_get_details
+    }
+
+    # Filter tools based on tool_names parameter
+    if tool_names is None:
+        # Return all tools if no specific tools requested
+        selected_tools = list(all_tools.values())
+    else:
+        # Return only the requested tools
+        selected_tools = [all_tools[name] for name in tool_names if name in all_tools]
+
+    tool_registry.apply_descriptions_to_tools(selected_tools)
+    return selected_tools

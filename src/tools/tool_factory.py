@@ -35,6 +35,7 @@ from src.tools.media_bus_tools import create_media_bus_tools
 from src.tools.scheduling import create_scheduling_tools
 from src.tools.basic import create_basic_tools
 from src.tools.web import create_web_tools
+from src.tools.weather import create_weather_tools
 from src.tools.dropbox import create_dropbox_tools
 from src.tools.preference_tools import create_preference_tools
 from src.tools.integration_tools import create_integration_tools
@@ -222,7 +223,9 @@ class AgentToolsFactory:
                 logger.error(f"Error creating database access tools: {e}", exc_info=True)
 
         # Google Places
-        if needs_category(['google_places_text_search', 'google_places_nearby_search', 'google_places_find_place', 'google_places_get_details']):
+        places_tool_names = ['google_places_text_search', 'google_places_nearby_search',
+                            'google_places_find_place', 'google_places_get_details']
+        if needs_category(places_tool_names):
             try:
                 tools.extend(create_google_places_tools(tool_registry))
                 logger.info("Google Places tools created successfully.")
@@ -246,6 +249,21 @@ class AgentToolsFactory:
                 logger.error(f"Error creating web tools: {e}", exc_info=True)
 
 
+        # Weather tool - coupled with google_places_text_search
+        if needs_category(['get_weather_forecast']):
+            try:
+                # Weather depends on google_places_text_search for coordinates
+                # Check if Google Places tools were already loaded
+                if not needs_category(places_tool_names):
+                    # Load only google_places_text_search (minimal dependency for weather)
+                    tools.extend(create_google_places_tools(tool_registry, tool_names=['google_places_text_search']))
+                    logger.info("Loaded google_places_text_search as dependency for weather")
+
+                # Load weather tool
+                tools.extend(create_weather_tools(tool_registry))
+                logger.info("Weather tool created successfully.")
+            except Exception as e:
+                logger.error(f"Error creating weather tool: {e}", exc_info=True)
 
         # Legacy minimal_tools mode - return early if set
         if minimal_tools:

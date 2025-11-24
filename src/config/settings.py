@@ -43,7 +43,10 @@ class Settings:
 
     # SerpAPI (for Google Lens product recognition)
     SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
-    
+
+    # WeatherAPI.com
+    WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+
     # Microsoft OAuth
     MICROSOFT_CLIENT_ID = os.getenv("MICROSOFT_CLIENT_ID")
     MICROSOFT_CLIENT_SECRET = os.getenv("MICROSOFT_CLIENT_SECRET")
@@ -84,8 +87,7 @@ class Settings:
     GMAIL_TEST_USER = os.getenv("GMAIL_TEST_USER", "lurbisaia@gmail.com")
     GMAIL_WEBHOOK_TOKEN = os.getenv("GMAIL_WEBHOOK_TOKEN")
     BASE_URL = os.getenv("BASE_URL", "https://localhost:8000")
-    # REDIS_URL = os.getenv("REDIS_URL","praxosforms.redis.cache.windows.net")
-    REDIS_URL = "praxosforms.redis.cache.windows.net"
+    REDIS_URL = os.getenv("REDIS_URL")
     REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
     REDIS_QUEUE_NAME = "mypraxos"
     

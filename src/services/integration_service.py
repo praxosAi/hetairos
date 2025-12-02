@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Set
 from datetime import datetime, timezone
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -46,11 +46,16 @@ class IntegrationService:
 
 
     async def update_integration_token_and_refresh_token(self, user_id: str, integration_name: str, new_token: str, new_expiry: datetime, new_refresh_token: str, integration_id: str = None):
-        """Encrypts and updates a new access token in the database."""
+        """Encrypts and updates a new access token in the database, normalizing service name to provider name."""
+        from src.config.integration_mappings import normalize_to_provider
+
+        # Normalize service name to provider name
+        provider_name = normalize_to_provider(integration_name)
+
         try:
             encrypted_token = encrypt_token(new_token)
             encrypted_refresh_token = encrypt_token(new_refresh_token)
-            query = {"user_id": ObjectId(user_id), "integration_name": integration_name}
+            query = {"user_id": ObjectId(user_id), "integration_name": provider_name}
             if integration_id:
                 query["integration_id"] = ObjectId(integration_id)
             await self.db_manager.db["integration_tokens"].update_one(
@@ -62,9 +67,9 @@ class IntegrationService:
                     "updated_at": datetime.now(timezone.utc)
                 }}
             )
-            logger.info(f"Successfully updated and encrypted token for user {user_id}, provider {integration_name}.")
+            logger.info(f"Successfully updated and encrypted token for user {user_id}, provider {provider_name} (requested as: {integration_name}).")
         except Exception as e:
-            logger.error(f"Failed to update token for user {user_id}, provider {integration_name}: {e}")
+            logger.error(f"Failed to update token for user {user_id}, provider {provider_name}: {e}")
     async def get_user_integrations(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all of a user's configured integrations."""
         return await self.db_manager.db["integrations"].find({"user_id": ObjectId(user_id)}).to_list(length=100)
@@ -126,29 +131,14 @@ class IntegrationService:
         else:
             return None
     async def get_integration_token(self, user_id: str, name: str,integration_id:str = None) -> Optional[Dict[str, Any]]:
-        """Get the decrypted token for a specific user and provider."""
-        if settings.OPERATING_MODE == "local":
-            logger.info(f"Operating in local mode. Fetching token for {name} from settings.")
-            if name == "google_calendar" or name == "gmail":
-                return {
-                    "access_token": "local_google_access_token",  # This would be fetched or refreshed
-                    "refresh_token": settings.GOOGLE_REFRESH_TOKEN,
-                    "token_expiry": None,  # Local tokens might not have an expiry or are long-lived
-                    "scopes": ["https://www.googleapis.com/auth/calendar", "https://www.googleapis.com/auth/gmail.readonly"]
-                }
-            elif name == "microsoft":
-                 return {
-                    "access_token": "local_microsoft_access_token",
-                    "refresh_token": settings.MICROSOFT_REFRESH_TOKEN,
-                    "token_expiry": None,
-                    "scopes": ["user.read", "mail.read"]
-                }
-            # Add other integrations here as needed
-            logger.warning(f"No local token configuration for provider {name}")
-            return None
+        """Get the decrypted token for a specific user and provider, automatically converting service names to provider names."""
+        from src.config.integration_mappings import normalize_to_provider
+        # Normalize service name to provider name (gmail → google)
+        provider_name = normalize_to_provider(name)
+
         query = {
             "user_id": ObjectId(user_id),
-            "integration_name": name
+            "integration_name": provider_name
         }
         if integration_id:
             query["integration_id"] = ObjectId(integration_id)
@@ -156,7 +146,7 @@ class IntegrationService:
 
         # logger.info(f"token_doc: {json.dumps(token_doc,indent=4,default=str)}")
         if not token_doc:
-            logger.warning(f"No token found for user {user_id} and provider {name}")
+            logger.warning(f"No token found for user {user_id} and provider {provider_name} (requested as: {name})")
             return None
 
         try:
@@ -171,7 +161,7 @@ class IntegrationService:
                 "scopes": token_doc.get("scopes", [])
             }
         except Exception as e:
-            logger.error(f"Failed to decrypt token for user {user_id}, provider {name}: {e}")
+            logger.error(f"Failed to decrypt token for user {user_id}, provider {provider_name}: {e}")
             return None
     async def is_authorized_user(self, integration_name: str, connected_account: str) -> bool:
         """Check if a phone number belongs to an authorized user"""
@@ -516,15 +506,73 @@ class IntegrationService:
             projection={"user_id": 1}
         )
         return str(integ["user_id"]) if integ else None
+    
     async def get_all_integrations_for_user_by_name(self, user_id: str, name: str) -> List[Dict[str, Any]]:
-        """Get all integrations for a user by name."""
-        integrations = await self.db_manager.db["integrations"].find({"user_id": ObjectId(user_id), "name": name}).to_list(length=100)
+        """
+        Get all integrations for a user by name.
+        Automatically converts service names to provider names and validates scopes.
+        """
+        from src.config.integration_mappings import normalize_to_provider, check_service_scopes
+
+        # Normalize service name to provider name
+        provider_name = normalize_to_provider(name)
+
+        # Query using provider name
+        integrations = await self.db_manager.db["integrations"].find(
+            {"user_id": ObjectId(user_id), "name": provider_name}
+        ).to_list(length=100)
+
+        # If this is a workspace integration, validate scopes
+        if provider_name in ['google', 'microsoft']:
+            validated = []
+            for integration in integrations:
+                metadata = integration.get("metadata", {})
+                granted_scopes = metadata.get("scopes", [])
+
+                if check_service_scopes(name, granted_scopes):
+                    validated.append(integration)
+                else:
+                    logger.debug(f"Integration {integration.get('_id')} lacks required scopes for '{name}'")
+            return validated
+
         return integrations
 
-    async def get_user_integration_names(self, user_id: str) -> List[str]:
-        """Get all integration names for a user."""
-        integrations = await self.db_manager.db["integrations"].find({"user_id": ObjectId(user_id)}).to_list(length=100)
-        return set(integration.get("name") for integration in integrations)
+    async def get_user_integration_names(self, user_id: str) -> Set[str]:
+        """
+        Get all service names available to user, validating scopes for provider integrations.
+
+        This method handles:
+        - Provider-based integrations (google, microsoft with type='workspace')
+        - Other integrations (notion, dropbox, etc.)
+        """
+        from src.config.integration_mappings import get_available_services
+
+        available_services = set()
+        integrations = await self.db_manager.db["integrations"].find(
+            {"user_id": ObjectId(user_id)}
+        ).to_list(length=100)
+
+        for integration in integrations:
+            integration_name = integration.get("name")
+            integration_type = integration.get("type")
+
+            # Handle provider-based workspace integrations
+            if integration_type == "workspace" and integration_name in ['google', 'microsoft']:
+                # Get scopes from metadata
+                metadata = integration.get("metadata", {})
+                granted_scopes = metadata.get("scopes", [])
+
+                # Determine which services are available based on scopes
+                services = get_available_services(integration_name, granted_scopes)
+                available_services.update(services)
+                logger.info(f"Provider '{integration_name}' → services: {services}")
+
+            # Handle all other integrations
+            else:
+                available_services.add(integration_name)
+
+        logger.info(f"User {user_id} has services: {available_services}")
+        return available_services
 
     async def get_user_by_integration(self, type: str, connected_account:str) -> Optional[List[str]]:
         """Get the user id by the integration type and connected account."""

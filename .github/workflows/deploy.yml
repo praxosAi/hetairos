@@ -32,9 +32,15 @@ jobs:
 
     
     - name: Build and Push Docker Image
+      id: build
       run: |
         docker buildx create --use
         docker buildx build --platform linux/amd64 -t ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest --push .
+
+        # Get the image digest
+        IMAGE_DIGEST=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest --format '{{json .Manifest}}' | jq -r '.digest')
+        echo "digest=$IMAGE_DIGEST" >> $GITHUB_OUTPUT
+        echo "Pushed image with digest: $IMAGE_DIGEST"
 
     - name: Set AKS context
       uses: azure/aks-set-context@v3
@@ -42,10 +48,11 @@ jobs:
         resource-group: ${{ env.AKS_RESOURCE_GROUP }}
         cluster-name: ${{ env.AKS_CLUSTER_NAME }}
 
-    - name: Restart hetairoi-worker-deployment
+    - name: Update Kustomization with new image digest
       run: |
-        kubectl rollout restart -n hetairoi deployment/hetairoi-worker-deployment
+        cd k8s/overlays/production
+        kustomize edit set image ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}@${{ steps.build.outputs.digest }}
 
-    - name: Restart hetairoi-web-deployment
+    - name: Deploy via Kustomize
       run: |
-        kubectl rollout restart -n hetairoi deployment/hetairoi-web-deployment
+        kubectl apply -k k8s/overlays/production

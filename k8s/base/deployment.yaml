@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hetairoi-web-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hetairoi-web
+  template:
+    metadata:
+      labels:
+        app: hetairoi-web
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: hetairoi-web
+        image: praxosagentcontainers.azurecr.io/hetairoi-worker:latest
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - secretRef:
+            name: hetairoi-secrets
+        command: ["/app/entrypoint.sh", "web"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hetairoi-worker-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hetairoi-worker
+  template:
+    metadata:
+      labels:
+        app: hetairoi-worker
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: hetairoi-worker
+        image: praxosagentcontainers.azurecr.io/hetairoi-worker:latest
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+        envFrom:
+        - secretRef:
+            name: hetairoi-secrets
+        command: ["/app/entrypoint.sh", "worker"]

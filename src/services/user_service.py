@@ -8,6 +8,7 @@ from src.utils.logging.base_logger import setup_logger
 logger = setup_logger(__name__)
 from datetime import timezone, timedelta,datetime
 import pytz
+from src.config.tier_limits import TierLimits, SubscriptionTier
 class UserService:
     def __init__(self):
         self._client = None
@@ -121,7 +122,25 @@ class UserService:
         preference = preferences_collection.find_one({"user_id": ObjectId(user_id)})
         return preference
 
+    def get_user_tier(self, user: dict) -> str:
+        """Get user's current tier with automatic detection"""
+        # If tier is explicitly set, use it
+        if user.get('tier') and user.get('tier') != SubscriptionTier.FREE:
+            return user.get('tier')
+
+        # Auto-detect tier based on billing status
+        if user.get('billing_setup_completed') and user.get('payment_status') in ['active', 'trialing']:
+            return SubscriptionTier.PRO
+
+        # Default to free tier
+        return SubscriptionTier.FREE
+
     def can_have_access(self, user:dict=None, user_id=None):
+        """
+        Check if user can access the application.
+        Free tier users always have access.
+        Pro/Enterprise users need active trial OR subscription.
+        """
         if not user:
             if not user_id:
                 logger.error("Either user or user_id should be passed in")
@@ -131,14 +150,34 @@ class UserService:
                 logger.error(f"Can't find user from {user_id} id")
                 return True
 
-        if user.get('trial_end_date') and user.get('trial_end_date') > datetime.now():
+        # Get user's tier
+        tier = self.get_user_tier(user)
+
+        # Free tier users always have access
+        if tier == SubscriptionTier.FREE:
+            logger.info(f"User {str(user.get('_id'))} has free tier access")
             return True
-        
+
+        # Pro/Enterprise users: Check trial OR billing
+        if user.get('trial_end_date') and user.get('trial_end_date') > datetime.now():
+            logger.info(f"User {str(user.get('_id'))} has trial access")
+            return True
+
         if not user.get("billing_setup_completed") or (user.get('payment_status') in ['pending', 'incomplete', 'incomplete_expired']):
             logger.error(f"User {str(user.get('_id'))} doesn't have access, billing not setup or payment status is {user.get('payment_status')}")
             return False
 
         return True
+
+    def is_feature_enabled(self, user: dict, feature_name: str) -> bool:
+        """Check if a feature is enabled for user's tier"""
+        tier = self.get_user_tier(user)
+        return TierLimits.is_feature_enabled(tier, feature_name)
+
+    def get_tier_limits(self, user: dict) -> Dict:
+        """Get the limits for user's current tier"""
+        tier = self.get_user_tier(user)
+        return TierLimits.get_limits(tier)
 
     def add_new_preference_annotations(self, user_id: str | ObjectId, preferences: dict, append: bool = False):
         """

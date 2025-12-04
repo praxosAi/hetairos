@@ -1,14 +1,11 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: hetairoi
-
-bases:
+resources:
   - ../../base
 
-# Images will be updated with digest by CI/CD
+namespace: hetairoi
+
 images:
   - name: praxosagentcontainers.azurecr.io/hetairoi-worker
-    newName: praxosagentcontainers.azurecr.io/hetairoi-worker
-    # Digest added by: kustomize edit set image
-    # Example: digest: sha256:abc123...
+    digest: sha256:36e9aad8a62a24170a5f91d2434f7cb19df5d6e7d62665742debdeb77e9f37b4

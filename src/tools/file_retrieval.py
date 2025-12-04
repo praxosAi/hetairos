@@ -143,7 +143,7 @@ def create_file_retrieval_tools(
             file_info_list = []
             for source_id in source_ids:
                 # Query MongoDB for document with this source_id
-                file_doc = await db_manager.documents.find_one({"source_id": source_id})
+                file_doc = await db_manager.get_document_by_source_id(source_id)
 
                 if file_doc:
                     # Filter by file type if specified
@@ -249,7 +249,7 @@ def create_file_retrieval_tools(
 
             # Query MongoDB for document with this source_id
             from src.utils.database import db_manager
-            file_doc = await db_manager.documents.find_one({"source_id": source_id})
+            file_doc = await db_manager.get_document_by_source_id(source_id)
 
             if not file_doc:
                 return ErrorResponseBuilder.not_found(

@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: hetairoi-test
+
+# Patch the image to use the test image and specific digest
+images:
+  - name: praxosagentcontainers.azurecr.io/hetairoi-worker
+    newName: praxosagentcontainers.azurecr.io/hetairoi-worker-test
+    digest: sha256:f3d3656ea45ee30bc5bac7f4063587fe63aa06f98a5966a1a444a746deb3da1a
+
+# We can also patch the replica count for test
+patches:
+  - target:
+      kind: Deployment
+      name: hetairoi-worker-deployment
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1

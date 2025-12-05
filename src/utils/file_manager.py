@@ -224,6 +224,79 @@ class FileManager:
         # Default to generic 'file'
         return 'file'
 
+    def _sanitize_filename(self, filename: str) -> str:
+        """
+        Robustly sanitize filename to prevent path traversal and other attacks.
+
+        Protections:
+        - Removes path components (only keeps base filename)
+        - Removes null bytes
+        - Normalizes Unicode
+        - Blocks dangerous characters
+        - Prevents Windows reserved names
+        - Limits length
+
+        Args:
+            filename: Original filename
+
+        Returns:
+            Sanitized safe filename
+        """
+        if not filename:
+            return "unnamed_file"
+
+        import uuid
+        import unicodedata
+
+        # Step 1: Remove any path components (most important!)
+        # This extracts just the filename, removing directory paths
+        filename = os.path.basename(filename)
+
+        # Step 2: Remove null bytes (used for filter bypass)
+        filename = filename.replace('\x00', '')
+
+        # Step 3: Normalize Unicode (prevents homograph attacks)
+        try:
+            filename = unicodedata.normalize('NFKD', filename)
+        except Exception:
+            pass
+
+        # Step 4: Remove/replace dangerous characters
+        # Allowed: alphanumeric, dash, underscore, dot
+        # Replace everything else with underscore
+        filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
+
+        # Step 5: Remove leading/trailing dots and spaces
+        filename = filename.strip('. ')
+
+        # Step 6: Prevent multiple consecutive dots (could be traversal attempt)
+        filename = re.sub(r'\.{2,}', '.', filename)
+
+        # Step 7: Prevent Windows reserved names
+        reserved_names = [
+            'CON', 'PRN', 'AUX', 'NUL',
+            'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
+            'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'
+        ]
+
+        name_without_ext = os.path.splitext(filename)[0].upper()
+        if name_without_ext in reserved_names:
+            filename = f'file_{filename}'
+
+        # Step 8: Ensure filename is not empty after sanitization
+        if not filename or filename == '.' or filename == '_':
+            filename = f'unnamed_{uuid.uuid4().hex[:8]}'
+
+        # Step 9: Limit length (prevent long filename DOS)
+        max_length = 255
+        if len(filename) > max_length:
+            # Keep extension
+            name, ext = os.path.splitext(filename)
+            name = name[:max_length - len(ext) - 10]  # Leave room for unique ID
+            filename = f"{name}{ext}"
+
+        return filename
+
     def _generate_blob_path(
         self,
         user_id: str,
@@ -231,15 +304,14 @@ class FileManager:
         filename: str
     ) -> str:
         """
-        Generate standardized blob storage path.
+        Generate standardized blob storage path with uniqueness guarantee.
 
-        New pattern: {user_id}/files/{platform}/{filename}
+        New pattern: {user_id}/files/{platform}/{timestamp}_{uuid}_{filename}
 
-        This replaces the old inconsistent patterns:
-        - {user_id}/telegram/{filename}
-        - {user_id}/whatsapp/{media_id}.ext
-        - {user_id}/imported_files/{filename}
-        - etc.
+        This ensures:
+        - No file overwrites (timestamp + UUID)
+        - Path traversal protection (sanitized components)
+        - Consistent structure across platforms
 
         Args:
             user_id: User ID
@@ -249,11 +321,24 @@ class FileManager:
         Returns:
             Blob storage path
         """
-        # Sanitize filename (remove spaces, special chars that might cause issues)
-        safe_filename = filename.replace(' ', '_').replace('..', '_')
+        import uuid
 
-        # Standardized path pattern
-        blob_path = f"{user_id}/files/{platform}/{safe_filename}"
+        # Sanitize all path components
+        safe_filename = self._sanitize_filename(filename)
+        safe_user_id = re.sub(r'[^a-zA-Z0-9_-]', '_', str(user_id))
+        safe_platform = re.sub(r'[^a-zA-Z0-9_-]', '_', str(platform))
+
+        # Add timestamp and UUID for guaranteed uniqueness
+        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        unique_id = uuid.uuid4().hex[:8]
+
+        # Generate path: {user_id}/files/{platform}/{timestamp}_{uuid}_{filename}
+        blob_path = f"{safe_user_id}/files/{safe_platform}/{timestamp}_{unique_id}_{safe_filename}"
+
+        # Final validation: ensure no traversal patterns remain
+        if '..' in blob_path or blob_path.startswith('/'):
+            logger.error(f"Generated blob path contains invalid patterns: {blob_path}")
+            raise ValueError("Generated blob path failed security validation")
 
         return blob_path
 
@@ -434,6 +519,26 @@ class FileManager:
                 mime_type=mime_type
             )
             self.logger.info(f"Generated filename: {filename}")
+
+        # SECURITY: Validate file content before upload
+        from src.utils.file_validator import file_validator
+
+        is_valid, actual_mime, error_reason = file_validator.validate_file_content(
+            file_bytes=file_bytes,
+            claimed_mime=mime_type,
+            filename=filename
+        )
+
+        if not is_valid:
+            self.logger.warning(
+                f"File validation failed: {filename} - {error_reason}"
+            )
+            raise ValueError(f"File rejected: {error_reason}")
+
+        # Use actual detected MIME type if available (more trustworthy)
+        if actual_mime:
+            mime_type = actual_mime
+            self.logger.debug(f"Using validated MIME type: {mime_type}")
 
         # Detect unified file type
         file_type = self.detect_file_type(

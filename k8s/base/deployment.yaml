@@ -1,18 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: hetairoi-web-test
-  namespace: hetairoi-test
+  name: hetairoi-web-deployment
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: hetairoi-web-test
+      app: hetairoi-web
   template:
     metadata:
       labels:
-        app: hetairoi-web-test
-        environment: test
+        app: hetairoi-web
     spec:
       securityContext:
         runAsNonRoot: true
@@ -20,7 +18,7 @@ spec:
         fsGroup: 1000
       containers:
       - name: hetairoi-web
-        image: praxosagentcontainers.azurecr.io/hetairoi-worker-test@sha256:f3d3656ea45ee30bc5bac7f4063587fe63aa06f98a5966a1a444a746deb3da1a
+        image: praxosagentcontainers.azurecr.io/hetairoi-worker:latest
         imagePullPolicy: Always
         securityContext:
           allowPrivilegeEscalation: false
@@ -38,18 +36,16 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: hetairoi-worker-test
-  namespace: hetairoi-test
+  name: hetairoi-worker-deployment
 spec:
-  replicas: 1  # Just 1 worker for testing
+  replicas: 1
   selector:
     matchLabels:
-      app: hetairoi-worker-test
+      app: hetairoi-worker
   template:
     metadata:
       labels:
-        app: hetairoi-worker-test
-        environment: test
+        app: hetairoi-worker
     spec:
       securityContext:
         runAsNonRoot: true
@@ -57,7 +53,7 @@ spec:
         fsGroup: 1000
       containers:
       - name: hetairoi-worker
-        image: praxosagentcontainers.azurecr.io/hetairoi-worker-test@sha256:f3d3656ea45ee30bc5bac7f4063587fe63aa06f98a5966a1a444a746deb3da1a
+        image: praxosagentcontainers.azurecr.io/hetairoi-worker:latest
         imagePullPolicy: Always
         securityContext:
           allowPrivilegeEscalation: false
@@ -69,17 +65,3 @@ spec:
         - secretRef:
             name: hetairoi-secrets
         command: ["/app/entrypoint.sh", "worker"]
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: hetairoi-web-service-test
-  namespace: hetairoi-test
-spec:
-  selector:
-    app: hetairoi-web-test
-  ports:
-    - protocol: TCP
-      port: 443
-      targetPort: 8000
-  type: ClusterIP

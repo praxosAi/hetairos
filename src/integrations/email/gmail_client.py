@@ -31,6 +31,7 @@ class GmailIntegration(BaseIntegration):
         self.services: Dict[str, Any] = {}
         self.people_services: Dict[str, Any] = {}
         self.credentials: Dict[str, Any] = {}
+        self.scope_validators: Dict[str, Any] = {}  # Scope validators per account
         self.connected_accounts: List[str] = []
         self.gmail_user_id = 'me'
 
@@ -58,17 +59,24 @@ class GmailIntegration(BaseIntegration):
         return any(results)
 
     async def _authenticate_one_account(self, integration_record: str) -> bool:
+        """Internal method to authenticate a single account and store its services."""
         account_email = integration_record.get('connected_account')
         integration_id = integration_record.get('_id')
-        """Internal method to authenticate a single account and store its services."""
+
         creds = await integration_service.create_google_credentials(self.user_id, 'gmail', integration_id)
         if not creds:
             logger.error(f"Failed to create credentials for {account_email} for user {self.user_id}")
             return False
 
         try:
+            from src.integrations.scope_validator import ScopeValidator
+
             gmail_service = build('gmail', 'v1', credentials=creds)
             people_service = build('people', 'v1', credentials=creds)
+
+            # Create scope validator for this account
+            token_scopes = creds.scopes or []
+            self.scope_validators[account_email] = ScopeValidator(token_scopes, 'Gmail')
 
             # Store the authenticated services and details in our dictionaries
             self.services[account_email] = gmail_service
@@ -76,8 +84,11 @@ class GmailIntegration(BaseIntegration):
             self.credentials[account_email] = creds
             if account_email not in self.connected_accounts:
                 self.connected_accounts.append(account_email)
-            
-            logger.info(f"Successfully authenticated and built services for {account_email}")
+
+            logger.info(
+                f"Successfully authenticated {account_email} with "
+                f"{len(token_scopes)} scopes"
+            )
             return True
         except Exception as e:
             logger.error(f"Error building services for {account_email}: {e}")
@@ -86,6 +97,46 @@ class GmailIntegration(BaseIntegration):
     def get_connected_accounts(self) -> List[str]:
         """Returns a list of successfully authenticated email accounts."""
         return self.connected_accounts
+
+    def _require_scopes(self, account: str, operation: str) -> None:
+        """
+        Validate account has required scopes for operation.
+
+        Args:
+            account: Email account to check
+            operation: Operation name (e.g., 'send_email', 'modify_message_labels')
+
+        Raises:
+            InsufficientScopeError: If required scopes are missing
+            ValueError: If account not authenticated
+        """
+        from src.integrations.scope_validator import InsufficientScopeError
+        from src.integrations.scope_requirements import GMAIL_SCOPE_REQUIREMENTS
+
+        if account not in self.scope_validators:
+            raise ValueError(f"Account {account} not authenticated or missing scope validator")
+
+        required_scopes = GMAIL_SCOPE_REQUIREMENTS.get(operation, [])
+        if not required_scopes:
+            logger.debug(f"No scope requirements defined for {operation}")
+            return
+
+        # For send operations, accept either gmail.send OR gmail.modify
+        if operation in ['send_email', 'reply_to_message']:
+            # Check if has gmail.send OR gmail.modify (either works)
+            send_scope = 'https://www.googleapis.com/auth/gmail.send'
+            modify_scope = 'https://www.googleapis.com/auth/gmail.modify'
+
+            if not self.scope_validators[account].has_any_scope([send_scope, modify_scope]):
+                raise InsufficientScopeError(
+                    [send_scope],  # Suggest the minimal scope
+                    operation,
+                    'Gmail'
+                )
+        else:
+            # All other operations require exact scopes
+            self.scope_validators[account].require_scopes(required_scopes, operation)
+
     def _get_services_for_account(self, account: Optional[str] = None) -> Tuple[Any, Any, str]:
         """
         Retrieves the Gmail service, People service, and resolved account email.
@@ -114,6 +165,9 @@ class GmailIntegration(BaseIntegration):
     async def send_email(self, recipient: str, subject: str, body: str, *, from_account: Optional[str] = None) -> Dict:
         """Sends an email, defaulting to the single account if available."""
         gmail_service, people_service, resolved_account = self._get_services_for_account(from_account)
+
+        # Validate scopes before sending
+        self._require_scopes(resolved_account, 'send_email')
 
         message = EmailMessage()
         if '<' in body and '>' in body:
@@ -668,7 +722,10 @@ class GmailIntegration(BaseIntegration):
         Adds or removes labels from a message. Used for archiving, marking as read/unread, etc.
         """
         service, _, resolved_account = self._get_services_for_account(account)
-        
+
+        # Validate scopes before modifying
+        self._require_scopes(resolved_account, 'modify_message_labels')
+
         body = {}
         if labels_to_add:
             body['addLabelIds'] = labels_to_add

@@ -12,10 +12,20 @@ spec:
       labels:
         app: hetairoi-web
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
       - name: hetairoi-web
-        image: praxosagentcontainers.azurecr.io/hetairoi-worker:latest
+        image: praxosagentcontainers.azurecr.io/hetairoi-worker@sha256:36e9aad8a62a24170a5f91d2434f7cb19df5d6e7d62665742debdeb77e9f37b4
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
         ports:
         - containerPort: 8000
         envFrom:
@@ -37,10 +47,20 @@ spec:
       labels:
         app: hetairoi-worker
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
       - name: hetairoi-worker
-        image: praxosagentcontainers.azurecr.io/hetairoi-worker:latest
+        image: praxosagentcontainers.azurecr.io/hetairoi-worker@sha256:36e9aad8a62a24170a5f91d2434f7cb19df5d6e7d62665742debdeb77e9f37b4
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
         envFrom:
         - secretRef:
             name: hetairoi-secrets

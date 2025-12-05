@@ -1,8 +1,8 @@
-# ingress-hooks.yaml
+# ingress-mypraxos.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: hetairoi-ingress
+  name: hetairoi-ingress-mypraxos
   annotations:
     # --- Annotations for Azure Application Gateway Ingress Controller ---
     # 1. Enable sticky sessions (Cookie-based Affinity)
@@ -14,7 +14,7 @@ metadata:
 spec:
   ingressClassName: webapprouting.kubernetes.azure.com
   rules:
-  - host: hooks.praxos.ai
+  - host: hooks.mypraxos.com
     http:
       paths:
       - path: /
@@ -23,8 +23,8 @@ spec:
           service:
             name: hetairoi-web-service
             port:
-              number: 443
+              number: 80
   tls:
   - hosts:
-    - hooks.praxos.ai
-    secretName: hooks-tls
+    - hooks.mypraxos.com
+    secretName: hooks-mypraxos-tls

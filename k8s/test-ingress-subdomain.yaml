@@ -32,7 +32,7 @@ spec:
           service:
             name: hetairoi-web-service-test
             port:
-              number: 80
+              number: 443
   # TLS configuration - requires certificate for test-hooks.praxos.ai
   # Option 1: Use wildcard cert (*.praxos.ai) if you have one
   # Option 2: Create new cert for test-hooks.praxos.ai

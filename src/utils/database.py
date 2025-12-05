@@ -11,6 +11,8 @@ from pymongo import InsertOne, UpdateOne
 from src.config.settings import settings
 from src.utils.logging.base_logger import setup_logger
 from src.services.ai_service.ai_service import ai_service
+from src.services.message_encryption import message_encryption
+
 class ConversationDatabase:
     def __init__(self, connection_string: str = settings.MONGO_CONNECTION_STRING, db_name: str = settings.MONGO_DB_NAME):
         self.client = motor.motor_asyncio.AsyncIOMotorClient(connection_string)
@@ -526,6 +528,12 @@ class DatabaseManager:
         """Get a document by its ID."""
         document = await self.documents.find_one({"_id": ObjectId(document_id)})
         if document:
+            if document.get("payload", {}).get("is_encrypted"):
+                try:
+                    document["payload"] = message_encryption.decrypt_payload(document["payload"])
+                except Exception as e:
+                    self.logger.error(f"Error decrypting document {document_id}: {e}")
+                    # Optionally raise or return None, but returning encrypted might be safer than crashing
             return document
         return None
 
@@ -533,6 +541,11 @@ class DatabaseManager:
         """Get a document by its Praxos source_id."""
         document = await self.documents.find_one({"source_id": source_id})
         if document:
+            if document.get("payload", {}).get("is_encrypted"):
+                try:
+                    document["payload"] = message_encryption.decrypt_payload(document["payload"])
+                except Exception as e:
+                    self.logger.error(f"Error decrypting document {source_id}: {e}")
             return document
         return None
 
@@ -548,7 +561,8 @@ class DatabaseManager:
         user_id: str,
         platform: str,
         id_field: str = "id",
-        platform_id_field: str = "platform_item_id"
+        platform_id_field: str = "platform_item_id",
+        encrypt: bool = False
     ) -> List[Optional[str]]:
         """
         Generic method to insert items (emails, events, files, cards, pages) with deduplication.
@@ -559,6 +573,7 @@ class DatabaseManager:
             platform: Platform name (gmail, google_calendar, google_drive, dropbox, notion, trello, etc.)
             id_field: Field name in the item dict that contains the unique ID (default: "id")
             platform_id_field: Field name to store the platform ID in MongoDB (default: "platform_item_id")
+            encrypt: Whether to encrypt the payload using envelope encryption (default: False)
 
         Returns:
             List[Optional[str]]: aligned to `items`
@@ -608,6 +623,18 @@ class DatabaseManager:
 
             seen_in_batch.add(pid)
 
+            # Handle encryption
+            payload_to_store = item
+            if encrypt:
+                try:
+                    payload_to_store = message_encryption.encrypt_payload(item)
+                except Exception as e:
+                    self.logger.error(f"Failed to encrypt item {pid} for {platform}: {e}")
+                    # Skip this item if encryption fails? Or fail hard?
+                    # Skipping is safer for stability, but logging is critical.
+                    staged_docs.append(None)
+                    continue
+
             doc_id = ObjectId()
             doc = {
                 "_id": doc_id,
@@ -615,7 +642,7 @@ class DatabaseManager:
                 "platform": platform,
                 platform_id_field: pid,
                 "received_at": now,
-                "payload": item,
+                "payload": payload_to_store,
             }
             ops.append(InsertOne(doc))
             attempt_pids.append(pid)
@@ -629,9 +656,9 @@ class DatabaseManager:
         try:
             await self.documents.bulk_write(ops, ordered=False)
         except BulkWriteError as bwe:
-            logger.warning(f"bulk_write had duplicate(s) or partial insert: {bwe.details}")
+            self.logger.warning(f"bulk_write had duplicate(s) or partial insert: {bwe.details}")
         except Exception as e:
-            logger.error(f"bulk_write error: {e}", exc_info=True)
+            self.logger.error(f"bulk_write error: {e}", exc_info=True)
 
         # Post-insert: fetch _ids for all pids we attempted to insert
         pid_to_id: Dict[str, ObjectId] = {}
@@ -678,7 +705,8 @@ class DatabaseManager:
             user_id=user_id,
             platform="gmail",
             id_field="id",
-            platform_id_field="platform_message_id"
+            platform_id_field="platform_message_id",
+            encrypt=True  # Enable envelope encryption for emails
         )
     async def insert_new_outlook_email(self, email_record: Dict) -> str:
         """Insert a new Outlook email record."""

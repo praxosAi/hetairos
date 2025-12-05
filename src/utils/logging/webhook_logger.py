@@ -147,8 +147,8 @@ def log_media_processing_error(source: str, user_id: str, media_info: Dict, erro
     formatted_user = format_user_id(user_id)
     
     webhook_logger.error(f"❌ {source.title()} Media Processing Error")
-    webhook_logger.error(f"   User: {formatted_user}")
-    webhook_logger.error(f"   File: {filename} ({media_type})")
+    webhook_logger.error(f"User: {formatted_user}")
+    webhook_logger.error(f"File: {filename} ({media_type})")
     log_error(webhook_logger, error)
 
 # Gmail-specific webhook logging functions
@@ -156,19 +156,19 @@ def log_media_processing_error(source: str, user_id: str, media_info: Dict, erro
 def log_gmail_webhook_received(history_id: str, message_id: str = None, publish_time: str = None):
     """Log Gmail push notification received"""
     webhook_logger.info(f"📧 Gmail Push Notification Received")
-    webhook_logger.info(f"   History ID: {history_id}")
+    webhook_logger.info(f"History ID: {history_id}")
     if message_id:
-        webhook_logger.info(f"   Message ID: {message_id}")
+        webhook_logger.info(f"Message ID: {message_id}")
     if publish_time:
-        webhook_logger.info(f"   Publish Time: {publish_time}")
-    webhook_logger.info(f"   Timestamp: {datetime.utcnow().isoformat()}")
+        webhook_logger.info(f"Publish Time: {publish_time}")
+    webhook_logger.info(f"Timestamp: {datetime.utcnow().isoformat()}")
 
 def log_gmail_webhook_processed(history_id: str, emails_processed: int, processing_time: float):
     """Log successful Gmail webhook processing"""
     webhook_logger.info(f"✅ Gmail Webhook Processed Successfully")
-    webhook_logger.info(f"   History ID: {history_id}")
-    webhook_logger.info(f"   Emails Processed: {emails_processed}")
-    webhook_logger.info(f"   Processing Time: {processing_time:.3f}s")
+    webhook_logger.info(f"History ID: {history_id}")
+    webhook_logger.info(f"Emails Processed: {emails_processed}")
+    webhook_logger.info(f"Processing Time: {processing_time:.3f}s")
 
 def log_gmail_webhook_failed(history_id: str, error: str, processing_time: float = 0.0):
     """Log failed Gmail webhook processing"""

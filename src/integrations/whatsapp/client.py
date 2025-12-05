@@ -289,29 +289,60 @@ class WhatsAppClient:
             return None
     
     async def download_media_to_file(self, media_url: str, target_file_path: str) -> Tuple[bool, int]:
-        """Stream download media file from WhatsApp URL directly to disk"""
+        """Stream download media file from WhatsApp URL directly to disk with size limit"""
+        from src.config.settings import settings
+
         headers = {
             "Authorization": f"Bearer {self.access_token}",
             "User-Agent": "WhatsApp-Business-API-Client"
         }
-        
-        timeout = aiohttp.ClientTimeout(total=30)  # Longer timeout for file downloads
+
+        timeout = aiohttp.ClientTimeout(total=60)
         bytes_downloaded = 0
-        
+        max_size = settings.MAX_FILE_SIZE_WHATSAPP
+
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(media_url, headers=headers) as response:
                     response.raise_for_status()
-                    
-                    # Stream download in chunks
+
+                    # Check Content-Length header if available
+                    content_length = response.headers.get('Content-Length')
+                    if content_length:
+                        content_length = int(content_length)
+                        if content_length > max_size:
+                            raise ValueError(
+                                f"File size ({content_length // (1024*1024)}MB) exceeds "
+                                f"maximum allowed ({max_size // (1024*1024)}MB)"
+                            )
+
+                    # Stream download in chunks with size enforcement
                     with open(target_file_path, 'wb') as file:
-                        async for chunk in response.content.iter_chunked(8192):  # 8KB chunks
+                        async for chunk in response.content.iter_chunked(8192):
                             file.write(chunk)
                             bytes_downloaded += len(chunk)
-                    
-                    self.logger.info(f"Streamed {bytes_downloaded} bytes to {target_file_path}")
+
+                            # Enforce size limit during download
+                            if bytes_downloaded > max_size:
+                                # Clean up partial file immediately
+                                file.close()
+                                if os.path.exists(target_file_path):
+                                    os.unlink(target_file_path)
+
+                                raise ValueError(
+                                    f"File exceeds maximum size of {max_size // (1024*1024)}MB. "
+                                    f"Download aborted at {bytes_downloaded // (1024*1024)}MB."
+                                )
+
+                    self.logger.info(
+                        f"Downloaded {bytes_downloaded // 1024}KB to {target_file_path}"
+                    )
                     return True, bytes_downloaded
-                    
+
+        except ValueError as e:
+            # Size limit exceeded - already cleaned up
+            self.logger.error(f"File size limit exceeded: {e}")
+            raise
         except Exception as e:
             self.logger.error(f"Error streaming media from {media_url}: {e}")
             # Clean up partial file on error

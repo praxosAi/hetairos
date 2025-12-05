@@ -1,6 +1,7 @@
 from typing import List
 from langchain_core.tools import tool
 from src.integrations.email.gmail_client import GmailIntegration
+from src.integrations.scope_validator import InsufficientScopeError
 from src.tools.tool_types import ToolExecutionResponse
 from src.tools.error_helpers import ErrorResponseBuilder
 from src.utils.logging import setup_logger
@@ -227,6 +228,19 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry) -> Li
         try:
             result = await gmail_integration.add_star(message_id=message_id, account=account)
             return ToolExecutionResponse(status="success", result=result)
+        except InsufficientScopeError as e:
+            # User-friendly error message for missing OAuth permissions
+            logger.warning(f"Insufficient Gmail scopes for star_email: {e}")
+            return ToolExecutionResponse(
+                status="error",
+                result=(
+                    f"Unable to star email: Missing required Gmail permissions.\n\n"
+                    f"To fix this, please reconnect your Gmail account at "
+                    f"https://app.mypraxos.com/integrations and grant "
+                    f"'Modify emails' permission.\n\n"
+                    f"Technical details: {str(e)}"
+                )
+            )
         except Exception as e:
             return ErrorResponseBuilder.from_exception(
                 operation="star_email",

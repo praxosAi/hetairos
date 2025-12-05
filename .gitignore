@@ -1,11 +1,20 @@
 src/services/__pycache__/__init__.cpython-310.pyc
 *.pyc
-.DS_Store
 __pycache__/
 .env
 .env.example
 .venv/
 venv/
+
+# macOS metadata (CWE-377)
+.DS_Store
+**/.DS_Store
+__MACOSX/
+**/__MACOSX/
+
+# Encryption salt (security - unique per installation)
+.encryption_salt
+**/.encryption_salt
 
 /tests/
 

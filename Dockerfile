@@ -8,8 +8,8 @@ WORKDIR /app
 # Install git and ffmpeg
 RUN apt-get update && apt-get install -y git ffmpeg fonts-dejavu-core
 
-# Create non-root user for security (CWE-250)
-RUN groupadd -r appuser && useradd -r -g appuser -u 1000 appuser
+# Use existing user with UID 1000 from base image (pwuser)
+# The base Playwright image already has a user with UID 1000
 
 # Copy the requirements file first to leverage Docker cache
 COPY requirements.txt .
@@ -24,11 +24,11 @@ COPY run_workers.py entrypoint.sh /app/
 # Make the entrypoint script executable
 RUN chmod +x /app/entrypoint.sh
 
-# Change ownership of /app to non-root user
-RUN chown -R appuser:appuser /app
+# Change ownership of /app to user 1000 (pwuser from base image)
+RUN chown -R 1000:1000 /app
 
-# Switch to non-root user
-USER appuser
+# Switch to non-root user (UID 1000)
+USER 1000
 
 # Expose the port the app runs on
 EXPOSE 8000

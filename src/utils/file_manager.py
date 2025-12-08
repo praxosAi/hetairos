@@ -32,6 +32,7 @@ from src.utils.blob_utils import (
 from src.core.media_bus import media_bus
 from src.config.settings import settings
 from src.utils.logging.base_logger import setup_logger
+import re
 
 logger = setup_logger(__name__)
 

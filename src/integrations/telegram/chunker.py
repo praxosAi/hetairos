@@ -28,7 +28,7 @@ class TelegramHTMLChunker:
             raise ValueError("max_length must be a positive integer.")
         self.max_length = max_length
 
-    def chunk_with_formatting(self, html: str) -> Iterator[str]:
+    def chunk(self, html: str) -> Iterator[str]:
         """
         Split HTML text into chunks while preserving formatting.
 

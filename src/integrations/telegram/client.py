@@ -7,6 +7,7 @@ from src.config.settings import settings
 from src.utils.logging import setup_logger
 from src.integrations.telegram.formatter import TelegramHTMLFormatter
 from src.integrations.telegram.chunker import TelegramHTMLChunker
+from src.utils.text_chunker import TextChunker
 import requests
 import json
 class TelegramClient:
@@ -37,11 +38,14 @@ class TelegramClient:
             self.logger.warning(f"HTML formatting failed, using plain text: {e}", exc_info=True)
             html_text = text
             parse_mode = None
+        
+        if parse_mode is None:
+            chunker = TextChunker(max_length=4000)
+        else :
+            # Chunk with formatting awareness
+            chunker = TelegramHTMLChunker(max_length=4000)
 
-        # Chunk with formatting awareness
-        chunker = TelegramHTMLChunker(max_length=4000)
-
-        for chunk in chunker.chunk_with_formatting(html_text):
+        for chunk in chunker.chunk(html_text):
             payload = {
                 "chat_id": chat_id,
                 "text": chunk,
@@ -59,11 +63,12 @@ class TelegramClient:
                     f"retrying as plain text. Error: {response.get('description') if response else 'No response'}"
                 )
                 # Strip HTML tags and retry as plain text
-                plain_chunk = self._strip_html_tags(chunk)
+                if parse_mode:
+                    chunk = self._strip_html_tags(chunk)
+
                 plain_payload = {
                     "chat_id": chat_id,
-                    "text": plain_chunk,
-                    # No parse_mode - send as plain text
+                    "text": chunk,
                 }
                 response = await self._make_request("sendMessage", plain_payload)
 

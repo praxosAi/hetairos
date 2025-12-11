@@ -1,12 +1,12 @@
 import aiohttp
-import asyncio
 from typing import Optional
 import os
 import tempfile
+import re
 from src.config.settings import settings
 from src.utils.logging import setup_logger
-from src.utils.blob_utils import download_from_blob_storage
-from src.utils.text_chunker import TextChunker
+from src.integrations.telegram.formatter import TelegramHTMLFormatter
+from src.integrations.telegram.chunker import TelegramHTMLChunker
 import requests
 import json
 class TelegramClient:
@@ -24,19 +24,57 @@ class TelegramClient:
         return await self._make_request("sendChatAction", payload)
 
     async def send_message(self, chat_id: int, text: str):
-        """Send text message via Telegram Bot API, chunking smartly if it's too long."""
+        """Send text message via Telegram Bot API with HTML formatting support."""
         responses = []
-        # Using 4000 to be safe, as Telegram's official limit is 4096
-        chunker = TextChunker(max_length=4000)
-        
-        for chunk in chunker.chunk(text):
+
+        try:
+            # Convert markdown to HTML
+            formatter = TelegramHTMLFormatter()
+            html_text = formatter.convert_markdown_to_html(text)
+            parse_mode = "HTML"
+        except Exception as e:
+            # Level 1 fallback: If formatting fails, use plain text
+            self.logger.warning(f"HTML formatting failed, using plain text: {e}", exc_info=True)
+            html_text = text
+            parse_mode = None
+
+        # Chunk with formatting awareness
+        chunker = TelegramHTMLChunker(max_length=4000)
+
+        for chunk in chunker.chunk_with_formatting(html_text):
             payload = {
                 "chat_id": chat_id,
                 "text": chunk,
             }
-            responses.append(await self._make_request("sendMessage", payload))
-        
+            if parse_mode:
+                payload["parse_mode"] = parse_mode
+
+            response = await self._make_request("sendMessage", payload)
+
+            # Level 2 fallback: If API returns 400 error (bad formatting),
+            # retry the same chunk as plain text
+            if not response or not response.get("ok"):
+                self.logger.warning(
+                    f"Telegram API returned error for formatted chunk, "
+                    f"retrying as plain text. Error: {response.get('description') if response else 'No response'}"
+                )
+                # Strip HTML tags and retry as plain text
+                plain_chunk = self._strip_html_tags(chunk)
+                plain_payload = {
+                    "chat_id": chat_id,
+                    "text": plain_chunk,
+                    # No parse_mode - send as plain text
+                }
+                response = await self._make_request("sendMessage", plain_payload)
+
+            responses.append(response)
+
         return responses
+
+    def _strip_html_tags(self, html: str) -> str:
+        """Strip HTML tags from text for plain text fallback."""
+        # Remove HTML tags but keep content
+        return re.sub(r'<[^>]+>', '', html)
 
     async def send_media(self, chat_id: int, media_obj: dict):
         if not isinstance(media_obj, dict):

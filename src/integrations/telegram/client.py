@@ -179,6 +179,23 @@ class TelegramClient:
             text=welcome_text,
             inline_keyboard=inline_keyboard
         )
+    
+    async def send_account_connection_prompt(self, chat_id: int, account_id: str, first_name: str):
+        inline_keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "Connect my telegram account", "url": f"https://app.mypraxos.com/integrations?auto-connect=true&provider=telegram&username=@{account_id}"}
+                ]
+            ]
+        }
+
+        welcome_text = f"👋 Hello {first_name}!\n\nLet's connect your Telegram account to myPraxos. Click the button below to proceed."
+
+        return await self.send_message_with_inline_keyboard(
+            chat_id=chat_id,
+            text=welcome_text,
+            inline_keyboard=inline_keyboard
+        )
 
     async def send_language_selection(self, chat_id: int, first_name: str):
         """Send language selection prompt to new user."""

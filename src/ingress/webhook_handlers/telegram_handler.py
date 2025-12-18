@@ -56,16 +56,18 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
         chat_id = message["chat"]["id"]
         username = message["from"].get("username", "").lower()
         modality_var.set("telegram")
+
         if username:
             integration_record = await integration_service.is_authorized_user("telegram", username)
         else:
             username = 'NOT_SETUP'
             integration_record = await integration_service.is_authorized_user_telegram_chat_id(chat_id)
+
         if not integration_record:
             logger.info(f"User {username} not authorized, attempting to authorize.")
             try:
                 message_text = message.get("text","")
-                integration_record_new,user_record = await integration_service.is_authorizable_user('telegram',username, message_text, chat_id)
+                integration_record_new, user_record = await integration_service.is_authorizable_user('telegram',username, message_text, chat_id)
                 if integration_record_new and user_record:
                     user_id_var.set(str(user_record["_id"]))
                     try:
@@ -83,7 +85,7 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                 else:
                     logger.warning(f"User {message['from']['id']} is not authorized, showing account selection")
                     first_name = message["from"].get("first_name", "")
-                    await telegram_client.send_account_selection_prompt(chat_id, first_name)
+                    await telegram_client.send_account_connection_prompt(chat_id, username, first_name)
                     return {"status": "ok"}
             except Exception as e:
                 logger.error(f"Error during authorization attempt for {username}: {e}")

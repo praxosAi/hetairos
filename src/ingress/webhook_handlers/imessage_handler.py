@@ -94,7 +94,7 @@ async def handle_imessage_webhook(request: Request, background_tasks: Background
                 return {"status": "ok"}
             else:
                 logger.warning(f"Unauthorized user: {phone_number}")
-                await imessage_client.send_message(phone_number, "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com")
+                await imessage_client.send_message(phone_number, f"This number is not authorized to use this bot. Please register with myPraxos on https://app.mypraxos.com/integrations?auto-connect=true&provider=imessage&phone_number={phone_number.replace('+','%2B')}")
                 return {"status": "ok"}
         except Exception as e:
             logger.error(f"Error authorizing user {phone_number}: {e}")

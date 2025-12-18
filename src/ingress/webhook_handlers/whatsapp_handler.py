@@ -98,7 +98,7 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                     return
                                 else:
                                     webhook_logger.warning(f"Unauthorized user: {phone_number}")
-                                    await whatsapp_client.send_message(phone_number, f"This number is not authorized to use this bot. Please register with myPraxos on https://app.mypraxos.com/integrations?auto-connect=true&provider=imessage&phone_number={phone_number.replace('+','%2B')}")
+                                    await whatsapp_client.send_message(phone_number, f"This number is not authorized to use this bot. Please register with myPraxos on https://app.mypraxos.com/integrations?auto-connect=true&provider=whatsapp&phone_number=%2B{phone_number}")
                                     return
                             except Exception as e:
                                 webhook_logger.error(f"Error during authorization attempt for {phone_number}: {e}")

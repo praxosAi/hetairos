@@ -1,0 +1,36 @@
+tool_id: consult_documentation
+category: documentation
+display_name: Consult User Capability Documentation
+short_description: Searches the internal knowledge base to understand HOW to perform tasks for the user and what capabilities exist.
+
+detailed_description: |
+  Allows the agent to search its own user manual to understand its capabilities, 
+  supported workflows, and how to chain different tools together (e.g., triggers, automations).
+  
+  Use this when:
+  1. The user asks "What can you do?" or "Can you do X?"
+  2. You need to know which integrations are required for a specific task.
+  3. You are unsure how to construct a complex chain (e.g., "If email then Trello").
+  4. You need to explain a feature or workflow to the user.
+
+arguments:
+  - name: query
+    type: str
+    description: The search query (e.g., "how to set up email triggers", "scheduling meetings", "what integrations do I need for Trello").
+    required: true
+
+returns: A string containing relevant sections of the user documentation matching the query.
+
+examples:
+  - 'consult_documentation("how to create a trigger for emails")'
+  - 'consult_documentation("supported file formats for saving to drive")'
+  - 'consult_documentation("how to schedule a meeting")'
+
+use_cases:
+  - When the user asks general capability questions.
+  - When the agent needs to verify if a workflow is supported.
+  - To discover prerequisites (integrations) for a task.
+
+notes:
+  - The documentation covers user-facing capabilities, NOT code implementation.
+  - It explains "how to use" features, not "how they are built".

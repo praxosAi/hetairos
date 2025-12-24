@@ -716,5 +716,49 @@ class PraxosClient:
           if hasattr(e, 'status_code'):
               praxos_logger.error(f"   Status code: {e.status_code}")
           return {"error": str(e)}
+
+    async def add_knowledge_chunk(self, text: str, source: str, metadata: Dict[str, Any] = None):
+        """
+        Add a chunk of text directly to the vector store (Praxos Memory).
+        This treats Praxos as a simple vector database for knowledge retrieval.
+        """
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        start_time = time.time()
+        
+        # Prepare the data object
+        # We use a specific type 'KnowledgeChunk' to distinguish from other graph nodes
+        data = {
+            "type": "KnowledgeChunk",
+            "content": text,
+            "source": source,
+            "ingested_at": datetime.utcnow().isoformat()
+        }
+        
+        if metadata:
+            data.update(metadata)
+
+        try:
+            # We use add_data which creates a generic node
+            # The backend will embed the 'content' field (or the whole object representation)
+            # giving us vector search capabilities.
+            result = self.env.add_data(
+                data=data,
+                name=f"chunk_{source}_{hash(text)}", # deterministic name to avoid dupes if possible, or use uuid
+                description=f"Knowledge chunk from {source}"
+            )
+
+            duration = time.time() - start_time
+            praxos_logger.info(f"Ingested knowledge chunk from {source} in {duration:.2f}s")
+            
+            return {
+                "success": True,
+                "id": getattr(result, 'id', None) if result else None
+            }
+
+        except Exception as e:
+            praxos_logger.error(f"Failed to ingest knowledge chunk: {e}")
+            return {"error": str(e)}
       
           

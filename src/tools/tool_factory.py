@@ -41,6 +41,7 @@ from src.tools.integration_tools import create_integration_tools
 from src.tools.database_tools import create_database_access_tools
 from src.tools.google_lens import create_google_lens_tools
 from src.tools.google_places import create_google_places_tools
+from src.tools.documentation import create_documentation_tools
 import src.tools.mock_tools as mock_tools
 
 logger = setup_logger(__name__)
@@ -244,6 +245,14 @@ class AgentToolsFactory:
                 logger.info("Web tools created successfully.")
             except Exception as e:
                 logger.error(f"Error creating web tools: {e}", exc_info=True)
+
+        # Documentation tools
+        if needs_category(['consult_documentation']):
+            try:
+                tools.extend(create_documentation_tools(tool_registry))
+                logger.info("Documentation tools created successfully.")
+            except Exception as e:
+                logger.error(f"Error creating documentation tools: {e}", exc_info=True)
 
 
 

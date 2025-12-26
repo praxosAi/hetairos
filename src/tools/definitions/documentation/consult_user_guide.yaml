@@ -1,0 +1,29 @@
+tool_id: consult_user_guide
+category: documentation
+display_name: Consult User Guide
+short_description: Searches generated user manuals to understand capabilities and how to use them. Is useful for when the user asks how to do something.
+
+detailed_description: |
+  Allows the agent to search through the user-facing documentation of all available tools.
+  This documentation is auto-generated from the tool definitions and explains "What is it?", "When to use it?", and gives examples.
+  
+  Use this when:
+  1. You need to explain to the user how to perform a task, and the user is asking you how to do it. 
+  2. You are unsure which tool matches the user's intent.
+  3. The user asks "Can you do X?".
+
+arguments:
+  - name: query
+    type: str
+    description: The search topic (e.g., "triggers", "calendar", "sending emails").
+    required: true
+
+returns: A string containing relevant user guides.
+
+examples:
+  - 'consult_user_guide("how to use slack")'
+  - 'consult_user_guide("scheduling features")'
+
+use_cases:
+  - Helping users understand capabilities.
+  - Finding the right tool for a vague request.

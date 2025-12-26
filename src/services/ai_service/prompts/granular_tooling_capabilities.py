@@ -87,5 +87,7 @@ def get_tool_docs_hash() -> str:
 
     # Hash the complete prompt content
     complete_content = PREFIX + TOOL_DOCS + POSTFIX
+    if 'Searches generated user manuals' in complete_content:
+        print('FOUND CONSULT USER GUIDE IN TOOL DOCS')
     hash_obj = hashlib.sha256(complete_content.encode())
     return hash_obj.hexdigest()[:12]

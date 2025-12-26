@@ -716,5 +716,60 @@ class PraxosClient:
           if hasattr(e, 'status_code'):
               praxos_logger.error(f"   Status code: {e.status_code}")
           return {"error": str(e)}
+
+    async def add_knowledge_chunk(self, text: str, source: str, metadata: Dict[str, Any] = None):
+        """
+        Add a chunk of text to Praxos Memory by treating it as a small text file.
+        This adapts the file ingestion pipeline to serve as a vector store for text chunks.
+        """
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        start_time = time.time()
+        
+        # We wrap the chunk in a temporary file to use the existing 'add_file' modality
+        # which guarantees text embedding and vectorization.
+        import tempfile
+        import os
+        
+        # Create a descriptive filename for the chunk
+        chunk_id = hash(text)
+        safe_source = "".join([c for c in source if c.isalnum() or c in (' ', '_', '-')]).strip()
+        filename = f"chunk_{safe_source}_{chunk_id}.txt"
+        
+        # Add metadata as a header in the text file so it's part of the context
+        content_to_upload = text
+        if metadata:
+            meta_header = "Metadata:\n" + "\n".join([f"{k}: {v}" for k, v in metadata.items()]) + "\n\n"
+            content_to_upload = meta_header + text
+
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt") as temp_file:
+                temp_file.write(content_to_upload)
+                temp_path = temp_file.name
+
+            # Upload using the standard file ingestion
+            result = self.env.add_file(
+                path=temp_path,
+                name=filename,
+                description=f"Knowledge chunk from {source}"
+            )
+
+            duration = time.time() - start_time
+            praxos_logger.info(f"Ingested knowledge chunk from {source} (via file) in {duration:.2f}s")
+            
+            return {
+                "success": True,
+                "id": getattr(result, 'id', None) if result else None
+            }
+
+        except Exception as e:
+            praxos_logger.error(f"Failed to ingest knowledge chunk: {e}")
+            return {"error": str(e)}
+        finally:
+            # Clean up
+            if temp_path and os.path.exists(temp_path):
+                os.unlink(temp_path)
       
           

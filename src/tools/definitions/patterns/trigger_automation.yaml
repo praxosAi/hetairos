@@ -1,0 +1,25 @@
+tool_id: trigger_automation
+category: patterns
+display_name: "Pattern: Trigger-Based Automation (IF/THEN)"
+short_description: Explains how to automate tasks by connecting an event (IF) to an action (THEN).
+detailed_description: |
+  This is the primary way to create autonomous workflows. You are chaining a Source Tool (Event) to a Destination Tool (Action) using the glue tool 'setup_new_trigger'.
+  
+  Common triggers include:
+  - Email: "When I receive an email from X"
+  - Calendar: "10 minutes before a meeting"
+  - Time: "Every Friday at 5pm"
+  
+  Common actions include:
+  - Message: "Send me a WhatsApp"
+  - Task: "Create a Trello card"
+  - File: "Save attachment to Drive"
+
+use_cases:
+  - When the user asks to "notify me when X happens"
+  - When the user wants to "automatically" handle a recurring event.
+  - When connecting two different integrations (e.g., Gmail to Slack).
+
+examples:
+  - 'setup_new_trigger("If I get an email from my boss, then send me a Telegram message.")'
+  - 'setup_new_trigger("Every morning at 8am, message me my calendar for the day.")'

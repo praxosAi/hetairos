@@ -163,6 +163,13 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
 
         I can also chain any of the above together to accomplish more complex tasks.
 
+        **CONSULTING DOCUMENTATION:**
+        If you are unsure how to perform a specific task, or if the user asks "How do I..." or "Can you...", use the `consult_user_guide(query)` tool. This searches your internal manual for:
+        1. Atomic Tools (e.g., "How to send email")
+        2. Chaining Patterns (e.g., "How to automate tasks", "How to create a briefing")
+        3. Core Capabilities (e.g., "What can you do?")
+        Use the information retrieved to guide your actions or explain the process to the user.
+        Do not perform the task pre-emptively if the user is asking for instructions. Instead, provide clear steps or offer to assist with the task using the appropriate tools. The guidance exists to help you understand how to use your tools effectively, and to explain to the user how they can use your capabilities.
         In the event that the user's query requires an integration which is this list, but you do not have a tool, it means that the user has not integrated that service yet. In such cases, you must use the integration management tool to help the user integrate that service, before you can perform the task.
 
     """

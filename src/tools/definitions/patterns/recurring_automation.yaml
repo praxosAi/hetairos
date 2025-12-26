@@ -1,0 +1,25 @@
+tool_id: recurring_automation
+category: patterns
+display_name: "Pattern: Recurring Automation (Cron)"
+short_description: How to set up tasks that repeat on a schedule (Daily, Weekly, Monthly).
+detailed_description: |
+  This pattern explains how to handle user requests for repetitive actions.
+  
+  ## The Logic
+  The system supports "Cron-style" scheduling via the `create_recurring_future_task` tool or the `setup_new_trigger` tool (for time-based triggers).
+  
+  ## When to use which?
+  1. **create_recurring_future_task:** Best for simple prompts/reminders to the user.
+     - "Remind me to take meds every day."
+     - "Ask me about my goals every Friday."
+  2. **setup_new_trigger:** Best for executing TOOLS repeatedly.
+     - "Every morning at 8am, run the 'Daily Briefing' pattern."
+     - "Every Friday at 5pm, scan my Trello for overdue cards."
+
+use_cases:
+  - "Remind me to drink water every hour."
+  - "Send a status report every Friday."
+  - "Check for new emails every 30 minutes."
+
+examples:
+  - 'setup_new_trigger("Every day at 9am, check my calendar and message me.")'

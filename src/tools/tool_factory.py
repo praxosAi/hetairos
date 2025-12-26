@@ -42,6 +42,7 @@ from src.tools.integration_tools import create_integration_tools
 from src.tools.database_tools import create_database_access_tools
 from src.tools.google_lens import create_google_lens_tools
 from src.tools.google_places import create_google_places_tools
+from src.tools.user_guide import create_user_guide_tool
 import src.tools.mock_tools as mock_tools
 
 logger = setup_logger(__name__)
@@ -247,6 +248,14 @@ class AgentToolsFactory:
                 logger.info("Web tools created successfully.")
             except Exception as e:
                 logger.error(f"Error creating web tools: {e}", exc_info=True)
+
+        # User Guide (Documentation) is always included
+        
+        try:
+            tools.extend(create_user_guide_tool(tool_registry))
+            logger.info("User guide tools created successfully.")
+        except Exception as e:
+            logger.error(f"Error creating user guide tools: {e}", exc_info=True)
 
 
         # Weather tool - coupled with google_places_text_search

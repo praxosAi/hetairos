@@ -12,7 +12,8 @@ class Settings:
 
     # Operating Mode: 'cloud' for production, 'local' for open-source
     OPERATING_MODE = os.getenv("OPERATING_MODE", "cloud")
-
+    QWEN_API_KEY = os.getenv("QWEN_API_KEY")
+    QWEN_BASE_URL = os.getenv("QWEN_BASE_URL")
     # WhatsApp Business API
     WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
     WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET")

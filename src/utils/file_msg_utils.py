@@ -18,6 +18,39 @@ from src.core.models.agent_runner_models import AgentFinalResponse
 from src.utils.file_manager import file_manager
 logger = setup_logger(__name__)
 
+#### prefix reconstruction utilities
+
+def reconstruct_message_prefix(metadata: Dict[str, Any]) -> str:
+    """
+    Reconstruct message prefix from metadata.
+
+    Args:
+        metadata: Message metadata containing timestamp, user info, source, forwarding details
+
+    Returns:
+        Reconstructed prefix string
+    """
+    # Extract prefix components from metadata
+    timestamp = metadata.get("message_timestamp", "")
+    first_name = metadata.get("first_name", "")
+    last_name = metadata.get("last_name", "")
+    source = metadata.get("source", "")
+
+    # Build base prefix - matches format from agent_runner_langgraph.py
+    from_suffix = f"from {source}" if source and source not in ["scheduled", "recurring", "triggered"] else ""
+    prefix = f"message sent on date {timestamp} by {first_name} {last_name} {from_suffix}: "
+
+    # Add forwarding information if present
+    if metadata.get("forwarded"):
+        prefix += " [FORWARDED MESSAGE] "
+        if forward_origin := metadata.get("forward_origin"):
+            if forward_origin.get("original_sender_identifier"):
+                prefix += f"originally from {forward_origin['original_sender_identifier']} "
+            if forward_origin.get("forward_date"):
+                prefix += f"(sent: {forward_origin['forward_date']}) "
+
+    return prefix
+
 #### media message payload handling
 
 
@@ -142,6 +175,8 @@ async def generate_user_messages_parallel(
     messages: List[BaseMessage],
     conversation_id: str = None,
     base_message_prefix: str = "",
+    prefix_metadata: Dict[str, Any] = None,
+    message_category: str = None,
     user_context: UserContext = None,
     max_concurrency: int = 8,
 ) -> Tuple[List[BaseMessage], bool]:
@@ -201,16 +236,23 @@ async def generate_user_messages_parallel(
         files_info = structure_entry["files_info"]
         file_start = structure_entry["file_task_start_index"]
         file_count = structure_entry["file_count"]
-        
+
         # Add text message
         if text_content:
             text_content = text_content.strip().replace('/START_NEW','').replace('/start_new','').strip()
             if not text_content:
                 text_content = "The user sent a message with no text. if there are also no files, indicate that the user sent an empty message."
+
+            # Merge prefix metadata with message metadata
+            storage_metadata = {**metadata}
+            if prefix_metadata:
+                storage_metadata.update(prefix_metadata)
+
+            # Store raw content without prefix
+            await conversation_manager.add_user_message(user_context.user_id, conversation_id, text_content, storage_metadata, message_category)
+
+            # But use prefixed content for LLM history
             full_message = message_prefix + text_content
-    
-                
-            await conversation_manager.add_user_message(user_context.user_id, conversation_id, full_message, metadata)
             messages.append(HumanMessage(content=full_message))
             logger.info(f"Added text for message {i+1}/{len(input_messages)}")
         
@@ -228,21 +270,34 @@ async def generate_user_messages_parallel(
                 inserted_id = file_info.get("inserted_id")
                 
                 if inserted_id and conversation_id:
+                    # Prepare metadata for media message
+                    media_metadata = {"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
+                    if prefix_metadata:
+                        media_metadata.update(prefix_metadata)
+                    # Merge with any forwarding metadata
+                    if metadata:
+                        media_metadata.update(metadata)
+
+                    # Store empty content for media (prefix stored in metadata, added at placeholder)
                     await conversation_manager.add_user_media_message(
                         user_context.user_id,
-                        conversation_id, message_prefix, inserted_id,
+                        conversation_id, "", inserted_id,
                         message_type=ftype,
-                        metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
+                        metadata=media_metadata,
+                        message_category=message_category
                     )
                     if ftype in {'image', 'photo'}:
                         logger.info(f"adding the link to the conversation as a text message too, for image/photo types")
                         caption += " [Image Attached], the link to the image is: " + payload.get("image_url", "")
                     if caption:
+                        # Store raw caption without prefix
+                        caption_text = " as caption for media in the previous message: " + caption
                         await conversation_manager.add_user_message(
                             user_context.user_id,
                             conversation_id,
-                            message_prefix + " as caption for media in the previous message: " + caption,
-                            metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
+                            caption_text,
+                            metadata=media_metadata,
+                            message_category=message_category
                         )
 
 
@@ -266,6 +321,8 @@ async def generate_file_messages(
     model: str = None,           # kept for compatibility; unused
     conversation_id: str = None,
     message_prefix: str = "",
+    prefix_metadata: Dict[str, Any] = None,
+    message_category: str = None,
     max_concurrency: int = 8,
     user_id: str = None,
 ) -> List[BaseMessage]:
@@ -286,23 +343,33 @@ async def generate_file_messages(
 
         # Persist to conversation log first, in-order
         if ins_id and conversation_id:
+            # Prepare metadata including prefix components
+            media_metadata = {"inserted_id": ins_id, "timestamp": datetime.utcnow().isoformat()}
+            if prefix_metadata:
+                media_metadata.update(prefix_metadata)
+
+            # Store empty content for media (prefix stored in metadata)
             await conversation_manager.add_user_media_message(
                 user_id,
                 conversation_id,
-                message_prefix,
+                "",  # Empty content, prefix in metadata
                 ins_id,
                 message_type=ftype,
-                metadata={"inserted_id": ins_id, "timestamp": datetime.utcnow().isoformat()},
+                metadata=media_metadata,
+                message_category=message_category
             )
             if ftype in {'image', 'photo'}:
                 logger.info(f"adding the link to the conversation as a text message too, for image/photo types")
                 cap += " [Image Attached], the link to the image is: " + payload.get("image_url", "")
             if cap:
+                # Store raw caption without prefix
+                caption_text = " as caption for media in the previous message: " + cap
                 await conversation_manager.add_user_message(
                     user_id,
                     conversation_id,
-                    message_prefix + " as caption for media in the previous message: " + cap,
-                    metadata={"inserted_id": ins_id, "timestamp": datetime.utcnow().isoformat()},
+                    caption_text,
+                    metadata=media_metadata,
+                    message_category=message_category
                 )
 
     
@@ -429,9 +496,25 @@ async def get_conversation_history(
     conversation_manager: Any,
     conversation_id: str,
     max_concurrency: int = 8,
+    include_prefix: bool = True,
+    categories: Optional[List[str]] = None,
 ) -> List[BaseMessage]:
-    """Fetches and formats the conversation history with concurrent media fetches."""
-    context = await conversation_manager.get_conversation_context(conversation_id)
+    """
+    Fetches and formats the conversation history with concurrent media fetches.
+
+    Args:
+        conversation_manager: The conversation manager instance
+        conversation_id: The conversation ID to fetch history for
+        max_concurrency: Maximum number of concurrent media fetch operations
+        include_prefix: Whether to reconstruct and include message prefixes
+        categories: List of message categories to include (e.g., ["conversation"]).
+                   If None, returns all categories (default behavior).
+                   Use ["conversation"] to exclude tool execution and scheduled output logs.
+
+    Returns:
+        List of BaseMessage objects in chronological order
+    """
+    context = await conversation_manager.get_conversation_context(conversation_id, categories=categories)
     raw_msgs: List[Dict[str, Any]] = context.get("messages", [])
     n = len(raw_msgs)
     has_media = False
@@ -454,6 +537,11 @@ async def get_conversation_history(
                 tool_name = metadata.get("tool_name", "unknown_tool")
                 history_slots[i] = AIMessage(content=f'We called the tool {tool_name} with result {content}.')
             elif role == "user":
+                # Reconstruct prefix for user messages if requested
+                if include_prefix and metadata:
+                    prefix = reconstruct_message_prefix(metadata)
+                    if prefix:
+                        content = prefix + content
                 history_slots[i] = HumanMessage(content=content)
             else:
                 # Regular assistant message (may have tool_calls metadata)
@@ -600,16 +688,19 @@ async def update_history( conversation_manager: Any, new_messages: List[BaseMess
 
             if isinstance(msg, AIMessage) and msg.tool_calls:
                 # Persist AI messages with tool calls
+                from src.core.models import MessageCategory
                 tool_names = ', '.join([tc.get('name', 'unknown') for tc in msg.tool_calls])
                 content = msg.content if msg.content else f"[Calling tools: {tool_names}]"
                 await conversation_manager.add_assistant_message(
                     user_context.user_id,
                     conversation_id,
                     content,
-                    metadata={"tool_calls": [tc for tc in msg.tool_calls]}
+                    metadata={"tool_calls": [tc for tc in msg.tool_calls]},
+                    message_category=MessageCategory.TOOL_EXECUTION.value
                 )
             elif isinstance(msg, ToolMessage):
                 # Persist tool results
+                from src.core.models import MessageCategory
                 content = str(msg.content)
                 metadata = {
                     "tool_name": msg.name,
@@ -624,7 +715,8 @@ async def update_history( conversation_manager: Any, new_messages: List[BaseMess
                     user_context.user_id,
                     conversation_id,
                     content,
-                    metadata=metadata
+                    metadata=metadata,
+                    message_category=MessageCategory.TOOL_EXECUTION.value
                 )
             inserted_ct += 1
         except Exception as e:

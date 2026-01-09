@@ -79,7 +79,8 @@ class ConversationDatabase:
             "start_time": datetime.utcnow(),
             "last_activity": datetime.utcnow(),
             "status": "active",
-            "metadata": {}
+            "metadata": {},
+            "name": None  # Will be populated by auto-namer
         })
         return str(result.inserted_id)
 
@@ -102,18 +103,32 @@ class ConversationDatabase:
             {"$set": {"praxos_source_id": source_id}}
         )
 
-    async def add_message(self, user_id: str,conversation_id: str, role: str, content: str, 
-                           message_type: str = 'text', metadata: Dict = None) -> str:
+    async def update_conversation_name(self, conversation_id: str, name: str):
+        """Update the name of a conversation."""
+        await self.conversations.update_one(
+            {"_id": ObjectId(conversation_id)},
+            {"$set": {"name": name}}
+        )
+
+    async def add_message(self, user_id: str,conversation_id: str, role: str, content: str,
+                           message_type: str = 'text', metadata: Dict = None, message_category: str = None) -> str:
         """Add a message to a conversation and update last_activity."""
+        from src.core.models import MessageCategory, DEFAULT_MESSAGE_CATEGORY
+
         if metadata is None:
             metadata = {}
-        
+
+        # Default to CONVERSATION category if not specified
+        if message_category is None:
+            message_category = DEFAULT_MESSAGE_CATEGORY.value
+
         message_doc = {
             "conversation_id": ObjectId(conversation_id),
             "user_id": ObjectId(user_id),
             "role": role,
             "content": content,
             "message_type": message_type,
+            "message_category": message_category,
             "metadata": metadata,
             "timestamp": datetime.utcnow()
         }
@@ -124,11 +139,33 @@ class ConversationDatabase:
             {"$set": {"last_activity": datetime.utcnow()}}
         )
         return str(result.inserted_id)
-    async def get_conversation_messages(self, conversation_id: str, limit: int = 50) -> List[Dict]:
-        """Get the most recent messages for a conversation, ordered by timestamp (oldest first)."""
-        cursor = self.messages.find(
-            {"conversation_id": ObjectId(conversation_id)}
-        ).sort("timestamp", -1).limit(limit)
+    async def get_conversation_messages(
+        self,
+        conversation_id: str,
+        limit: int = 50,
+        categories: Optional[List[str]] = None
+    ) -> List[Dict]:
+        """
+        Get the most recent messages for a conversation, ordered by timestamp (oldest first).
+
+        Args:
+            conversation_id: The conversation ID to fetch messages for
+            limit: Maximum number of messages to return
+            categories: List of message categories to include (e.g., ["conversation"]).
+                       If None, returns all categories (for backward compatibility).
+                       If empty list, returns all categories.
+                       If specified, only returns messages in those categories.
+
+        Returns:
+            List of message dictionaries in chronological order (oldest to newest)
+        """
+        query = {"conversation_id": ObjectId(conversation_id)}
+
+        # Filter by categories if specified
+        if categories is not None and len(categories) > 0:
+            query["message_category"] = {"$in": categories}
+
+        cursor = self.messages.find(query).sort("timestamp", -1).limit(limit)
         messages = await cursor.to_list(length=limit)
         return list(reversed(messages))  # Reverse to get chronological order (oldest to newest)
 

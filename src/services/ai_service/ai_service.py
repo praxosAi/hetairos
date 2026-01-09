@@ -52,7 +52,20 @@ class AIService:
 
 
 
-    async def granular_planning(self, context: list[BaseMessage], user_integration_names: set[str]) -> Tuple[GranularPlanningResponse, Optional[list[str]], Optional[str]]:
+    async def granular_planning(self, context: list[BaseMessage], user_integration_names: set[str], stream_buffer: Optional['StreamBuffer'] = None) -> Tuple[GranularPlanningResponse, Optional[list[str]], Optional[str]]:
+        # Default to no-op if not provided
+        if stream_buffer is None:
+            from src.core.stream_buffer import NoOpStreamBuffer
+            stream_buffer = NoOpStreamBuffer()
+
+        # Stream status update (no-op if NoOpStreamBuffer)
+        await stream_buffer.write({
+            "type": "status",
+            "message": "Analyzing your request...",
+            "stage": "planning",
+            "display_as": "status"
+        })
+
         # Get cache name from Redis
         cache_name = await get_planning_cache_name()
         planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0, cached_content=cache_name)
@@ -151,6 +164,20 @@ class AIService:
                     In either case, make sure to use the appropriate tools that are provided to you for performing this task. Do not respond that you are doing a task, without actually doing it. instead, do the task, then send the user indication that you have done it, with any necessary result data.  \n\n""" + plan_str
                 plan = planning
                 logger.info(f"Added planning context to history: {plan_str}")
+
+        # Stream tool selection update
+        if required_tool_ids:
+            tool_names = ", ".join(required_tool_ids[:3])
+            if len(required_tool_ids) > 3:
+                tool_names += f" and {len(required_tool_ids) - 3} more"
+
+            await stream_buffer.write({
+                "type": "status",
+                "message": f"Loading tools: {tool_names}",
+                "stage": "tool_loading",
+                "display_as": "status"
+            })
+
         return plan, required_tool_ids, plan_str
 
     async def multi_modal_by_doc_id(self, prompt: str, doc_id: str):

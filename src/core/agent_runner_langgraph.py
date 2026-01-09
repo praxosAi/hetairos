@@ -78,7 +78,15 @@ class LangGraphAgentRunner:
 
 
     
-    async def run(self, user_context: UserContext, input: Dict, source: str, metadata: Optional[Dict] = None) -> AgentFinalResponse:
+    async def run(self, user_context: UserContext, input: Dict, source: str, metadata: Optional[Dict] = None, stream_buffer: Optional['StreamBuffer'] = None) -> AgentFinalResponse:
+        # Default to no-op buffer if not provided
+        if stream_buffer is None:
+            from src.core.stream_buffer import NoOpStreamBuffer
+            stream_buffer = NoOpStreamBuffer()
+
+        # Store buffer as instance variable for use throughout execution
+        self.stream_buffer = stream_buffer
+
         execution_id = str(uuid.uuid4())
         start_time = datetime.utcnow()
         execution_record = {
@@ -89,7 +97,7 @@ class LangGraphAgentRunner:
             "status": "running",
             "started_at": start_time,
         }
-        
+
         await db_manager.db["execution_history"].insert_one(execution_record)      
         try:
             
@@ -125,15 +133,33 @@ class LangGraphAgentRunner:
 
             from_message_prefix = "from " + source if source not in ["scheduled", "recurring", "triggered"] else ""
             message_prefix = f'message sent on date {current_time_user} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")} {from_message_prefix}: '
+
+            # Prepare prefix metadata for storage
+            prefix_metadata = {
+                "message_timestamp": current_time_user,
+                "first_name": user_context.user_record.get("first_name", ""),
+                "last_name": user_context.user_record.get("last_name", ""),
+                "source": source
+            }
+
+            # Determine message category based on source
+            from src.core.models import MessageCategory
+            if source in ["scheduled", "recurring", "triggered"]:
+                msg_category = MessageCategory.SCHEDULED_OUTPUT.value
+            else:
+                msg_category = MessageCategory.CONVERSATION.value
+
             # Process input based on type
             if isinstance(input, list):
                 # Grouped messages - use the parallel method
                 history, has_media = await generate_user_messages_parallel(
-                    conversation_manager=self.conversation_manager, 
+                    conversation_manager=self.conversation_manager,
                     input_messages=input,
-                    messages=history, 
+                    messages=history,
                     conversation_id=conversation_id,
                     base_message_prefix=message_prefix,
+                    prefix_metadata=prefix_metadata,
+                    message_category=msg_category,
                     user_context=user_context
                 )
             elif isinstance(input, dict):
@@ -143,17 +169,27 @@ class LangGraphAgentRunner:
                     input_text = input_text.replace('/START_NEW','').replace('/start_new','').strip()
                     if not input_text:
                         input_text = "The user sent a message with no text. if there are also no files, indicate that the user sent an empty message."
-                    await self.conversation_manager.add_user_message(user_context.user_id, conversation_id, message_prefix + input_text, metadata)
+
+                    # Merge prefix metadata with existing metadata
+                    storage_metadata = {**metadata, **prefix_metadata}
+
+                    # Store raw content without prefix
+                    await self.conversation_manager.add_user_message(user_context.user_id, conversation_id, input_text, storage_metadata, msg_category)
+                    # But use prefixed content for LLM history
                     history.append(HumanMessage(content=message_prefix + input_text))
                 
                 # Handle files for single message
                 if input_files:
+                    # Merge prefix metadata with file metadata
+                    file_storage_metadata = {**metadata, **prefix_metadata}
                     history = await generate_file_messages(
                         conversation_manager=self.conversation_manager,
-                        input_files=input_files, 
-                        messages=history, 
+                        input_files=input_files,
+                        messages=history,
                         conversation_id=conversation_id,
-                        message_prefix=message_prefix
+                        message_prefix=message_prefix,
+                        prefix_metadata=file_storage_metadata,
+                        message_category=msg_category
                     )
             else:
                 return AgentFinalResponse(response="Invalid input format.", delivery_platform=source, execution_notes="Input must be a dict or list of dicts.", output_modality="text", file_links=[], generation_instructions=None)            
@@ -185,7 +221,7 @@ class LangGraphAgentRunner:
             try:
                 user_integration_names = await integration_service.get_user_integration_names(user_context.user_id)
                 logger.info(f"User {user_context.user_id} has integrations: {user_integration_names}")
-                plan, required_tool_ids, plan_str = await ai_service.granular_planning(history,user_integration_names)
+                plan, required_tool_ids, plan_str = await ai_service.granular_planning(history, user_integration_names, stream_buffer=self.stream_buffer)
                 if plan and plan.query_type and plan.query_type == 'command':
                     conversational = False
             except Exception as e:
@@ -315,14 +351,8 @@ class LangGraphAgentRunner:
             #     execution_id=execution_id
             # )
             ### for now, we remove it.
-            final_state = await app.ainvoke(
-                initial_state,
-                {
-                    "recursion_limit": 100,
-                    # "callbacks": [tool_monitor],
-                    "tool_iter_counter": 0,
-                }
-            )
+            # Always use streaming - buffer decides what to do with events
+            final_state = await self._run_with_streaming(app, initial_state)
 
             # Persist only NEW intermediate messages from this execution
             new_messages = final_state['messages'][len(initial_state['messages']):]
@@ -365,3 +395,117 @@ class LangGraphAgentRunner:
                     logger.info(f"Cleared {cleared_count} media references from bus for conversation {conversation_id}")
             except Exception as e:
                 logger.error(f"Error clearing media bus: {e}", exc_info=True)
+
+    async def _run_with_streaming(
+        self,
+        app,
+        initial_state: dict
+    ) -> dict:
+        """Execute graph with streaming - writes to buffer"""
+        final_state = None
+
+        try:
+            async for event in app.astream_events(
+                initial_state,
+                config={
+                    "recursion_limit": 100,
+                    "tool_iter_counter": 0,
+                },
+                version="v2"
+            ):
+                # Parse event and write to buffer (buffer decides if it publishes)
+                await self._handle_stream_event(event)
+
+                # Capture final state
+                if event.get("event") == "on_chain_end" and event.get("name") == "LangGraph":
+                    final_state = event["data"]["output"]
+
+            return final_state
+
+        except Exception as e:
+            # Write error to buffer
+            logger.error(f"Streaming error: {e}", exc_info=True)
+            await self.stream_buffer.write({
+                "type": "error",
+                "message": str(e),
+                "severity": "error",
+                "recoverable": False
+            })
+
+            # Fallback to batch mode (non-streaming)
+            logger.info("Falling back to batch mode after streaming error")
+            return await app.ainvoke(
+                initial_state,
+                {"recursion_limit": 100, "tool_iter_counter": 0}
+            )
+
+    async def _handle_stream_event(self, event: dict) -> None:
+        """Parse LangGraph events and write to buffer"""
+        event_type = event.get("event")
+
+        try:
+            if event_type == "on_chat_model_stream":
+                # LLM token streaming - filter by node
+                chunk = event["data"]["chunk"]
+                if not hasattr(chunk, 'content') or not chunk.content:
+                    return
+
+                node_name = event.get("metadata", {}).get("langgraph_node", "")
+
+                # CRITICAL: Only stream tokens from "finalize" node as message
+                # Other nodes ("agent") are internal reasoning
+                if node_name == "finalize":
+                    # These are user-facing tokens from generate_final_response
+                    await self.stream_buffer.write({
+                        "type": "message_token",
+                        "content": chunk.content,
+                        "display_as": "message"
+                    })
+                elif node_name == "agent":
+                    # Optional: stream as "thinking" for transparency
+                    # Comment out if you don't want to show internal reasoning
+                    await self.stream_buffer.write({
+                        "type": "thinking_token",
+                        "content": chunk.content,
+                        "display_as": "thinking"
+                    })
+
+            elif event_type == "on_chain_start":
+                # Node execution start (for debugging)
+                node_name = event.get("name", "")
+                if node_name in ["agent", "router", "obtain_data", "action", "finalize"]:
+                    await self.stream_buffer.write({
+                        "type": "node_transition",
+                        "node": node_name,
+                        "phase": "start",
+                        "display_as": "debug"  # Only show in debug mode
+                    })
+
+            elif event_type == "on_chain_end":
+                # Node execution end (for debugging)
+                node_name = event.get("name", "")
+                if node_name in ["agent", "router", "obtain_data", "action", "finalize"]:
+                    await self.stream_buffer.write({
+                        "type": "node_transition",
+                        "node": node_name,
+                        "phase": "end",
+                        "display_as": "debug"  # Only show in debug mode
+                    })
+
+            elif event_type == "on_tool_end":
+                # Tool execution result - show friendly status, NOT raw output
+                tool_name = event.get("name", "")
+
+                # Don't stream raw tool results (like JSON from gmail_search)
+                # Instead, show friendly status message
+                friendly_name = tool_name.replace("_", " ").title()
+
+                await self.stream_buffer.write({
+                    "type": "tool_status",
+                    "tool": tool_name,
+                    "message": f"✓ {friendly_name}",
+                    "display_as": "status"
+                })
+
+        except Exception as e:
+            logger.error(f"Error handling stream event: {e}", exc_info=True)

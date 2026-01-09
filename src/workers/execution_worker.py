@@ -260,12 +260,26 @@ class ExecutionWorker:
                 # Start activity indicator (typing for Telegram)
                 typing_task_id = await egress_service.start_typing_indicator(event)
 
+                # Create stream buffer based on source
+                from src.core.stream_buffer import RedisStreamBuffer, NoOpStreamBuffer
+
+                if source == "websocket":
+                    # WebSocket: use Redis buffer
+                    redis_channel = f"ws-out:{user_context.user_id}"
+                    stream_buffer = RedisStreamBuffer(redis_channel)
+                    logger.info(f"Using RedisStreamBuffer for WebSocket")
+                else:
+                    # Webhooks (WhatsApp, Telegram, etc.): use no-op buffer
+                    stream_buffer = NoOpStreamBuffer()
+                    logger.info(f"Using NoOpStreamBuffer for {source}")
+
                 self.langgraph_agent_runner = LangGraphAgentRunner(trace_id=f"exec-{str(event['user_id'])}-{datetime.utcnow().isoformat()}", has_media=has_media)
                 result = await self.langgraph_agent_runner.run(
                     user_context=user_context,
                     input=event["payload"],
                     source=source,
-                    metadata=event.get("metadata", {})
+                    metadata=event.get("metadata", {}),
+                    stream_buffer=stream_buffer  # NEW parameter
                 )
                 await self.post_process_langgraph_response(result, event, typing_task_id)
             

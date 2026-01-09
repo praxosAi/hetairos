@@ -1,0 +1,18 @@
+tool_id: retrieval_pipeline
+category: patterns
+display_name: "Pattern: RAG (Search -> Retrieve -> Process)"
+short_description: The standard pipeline for finding and using information from uploaded files or past memories.
+detailed_description: |
+  This pattern involves three distinct steps to answer a question based on user data:
+  
+  1. Discovery: Search for the relevant file or fact using 'search_uploaded_files' or 'query_praxos_memory'. This gives you a 'source_id'.
+  2. Retrieval: Use 'retrieve_file_by_source_id' to download the content and load it into your active conversation history.
+  3. Processing: Synthesize the now-visible content to answer the user's specific request.
+
+use_cases:
+  - "Summarize the contract I uploaded."
+  - "What did we discuss about the budget in our last meeting?"
+  - "Find the date in that PDF receipt."
+
+examples:
+  - 'Step 1: search_uploaded_files("contract") -> Step 2: retrieve_file_by_source_id("src_123") -> Step 3: Summarize.'

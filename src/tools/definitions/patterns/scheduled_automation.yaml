@@ -1,0 +1,22 @@
+tool_id: scheduled_automation
+category: patterns
+display_name: "Pattern: Scheduled Automation (One-Off)"
+short_description: How to schedule a single action to happen in the future.
+detailed_description: |
+  This pattern handles "Delayed Gratification" - performing an action not now, but later.
+  
+  ## The Tools
+  1. **schedule_task:** The primary tool for "Remind me to X at Y time".
+  2. **setup_new_trigger:** Can also be used for specific future dates if complex logic is required.
+  
+  ## The Workflow
+  1. **Parse Time:** Understand "tomorrow afternoon" or "next Tuesday" relative to `get_current_time`.
+  2. **Define Payload:** What should happen? (A simple text reminder? Or a tool execution?)
+  3. **Execute:** Call `schedule_task` with the ISO timestamp.
+
+use_cases:
+  - "Remind me to call Mom in 2 hours."
+  - "Send this email tomorrow morning at 9am."
+
+examples:
+  - 'schedule_task(task="Send email to Boss", time="2024-12-25T09:00:00")'

@@ -1,0 +1,21 @@
+tool_id: immediate_action
+category: patterns
+display_name: "Pattern: Immediate Action (Direct Execution)"
+short_description: The standard flow for performing tasks right now.
+detailed_description: |
+  This is the default pattern for most user requests. It follows the "Thought -> Tool -> Observation" loop.
+  
+  ## The Flow
+  1. **Analyze:** Understand the user's intent.
+  2. **Map:** Identify the correct Atomic Tool (e.g., `send_email`).
+  3. **Execute:** Call the tool immediately.
+  4. **Verify:** Check the tool output.
+  5. **Report:** Confirm completion to the user via a messaging tool.
+  
+  ## Critical Rule
+  Never say "I have done X" unless you have actually called the tool and received a "success" status.
+
+use_cases:
+  - "Send an email now."
+  - "Check the weather."
+  - "Create a Trello card."

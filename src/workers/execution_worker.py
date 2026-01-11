@@ -264,10 +264,17 @@ class ExecutionWorker:
                 from src.core.stream_buffer import RedisStreamBuffer, NoOpStreamBuffer
 
                 if source == "websocket":
-                    # WebSocket: use Redis buffer
-                    redis_channel = f"ws-out:{user_context.user_id}"
-                    stream_buffer = RedisStreamBuffer(redis_channel)
-                    logger.info(f"Using RedisStreamBuffer for WebSocket")
+                    # WebSocket: use Redis buffer with token only
+                    # (WebSocket subscribes to ws-out:{token}, not ws-out:{token}:{conversation_id})
+                    token = event.get("metadata", {}).get("token")
+
+                    if token:
+                        redis_channel = f"ws-out:{token}"
+                        stream_buffer = RedisStreamBuffer(redis_channel)
+                        logger.info(f"Using RedisStreamBuffer for WebSocket channel: {redis_channel}")
+                    else:
+                        logger.warning(f"WebSocket event missing token, using NoOpStreamBuffer")
+                        stream_buffer = NoOpStreamBuffer()
                 else:
                     # Webhooks (WhatsApp, Telegram, etc.): use no-op buffer
                     stream_buffer = NoOpStreamBuffer()

@@ -421,6 +421,12 @@ class LangGraphAgentRunner:
                 if event.get("event") == "on_chain_end" and event.get("name") == "LangGraph":
                     final_state = event["data"]["output"]
 
+            # Signal stream completion
+            await self.stream_buffer.write({
+                "type": "stream_done",
+                "display_as": "status"
+            })
+
             return final_state
 
         except Exception as e:
@@ -490,7 +496,11 @@ class LangGraphAgentRunner:
             elif event_type == "on_tool_end":
                 # Tool execution result - show friendly status, NOT raw output
                 tool_name = event.get("name", "")
-
+                
+                # Extract output for frontend display
+                output = event.get("data", {}).get("output")
+                output_str = str(output) if output is not None else ""
+                
                 # Don't stream raw tool results (like JSON from gmail_search)
                 # Instead, show friendly status message
                 friendly_name = tool_name.replace("_", " ").title()
@@ -499,6 +509,7 @@ class LangGraphAgentRunner:
                     "type": "tool_status",
                     "tool": tool_name,
                     "message": f"✓ {friendly_name}",
+                    "output": output_str,
                     "display_as": "status"
                 })
 

@@ -680,10 +680,14 @@ def replace_media_with_placeholders(messages: List) -> List:
 
 async def update_history( conversation_manager: Any, new_messages: List[BaseMessage], conversation_id: str, user_context: UserContext, final_state: Dict[str, Any]):
     inserted_ct = 0
+    final_response_obj = final_state.get('final_response')
+    has_final_response_text = final_response_obj and final_response_obj.response and final_response_obj.response.strip()
+
     for msg in new_messages:
         try:
-        # Skip the final AI message (will be added separately below)
-            if msg == final_state['messages'][-1]:
+            # Skip the final AI message ONLY if we are going to add it later via final_response
+            # If final_response.response is empty (e.g. streamed), we MUST save this message here.
+            if msg == final_state['messages'][-1] and has_final_response_text:
                 continue
 
             if isinstance(msg, AIMessage) and msg.tool_calls:
@@ -717,6 +721,15 @@ async def update_history( conversation_manager: Any, new_messages: List[BaseMess
                     content,
                     metadata=metadata,
                     message_category=MessageCategory.TOOL_EXECUTION.value
+                )
+            elif isinstance(msg, AIMessage) and msg.content:
+                # Persist plain AI messages (text response)
+                from src.core.models import MessageCategory
+                await conversation_manager.add_assistant_message(
+                    user_context.user_id,
+                    conversation_id,
+                    str(msg.content),
+                    message_category=MessageCategory.CONVERSATION.value
                 )
             inserted_ct += 1
         except Exception as e:

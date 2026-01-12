@@ -47,16 +47,53 @@ async def generate_final_response(state: AgentState):
             "reply_count": len(messaging_tool_calls)
         }
 
+    # CHECK FOR WEBSOCKET STREAMING (Direct Text Response)
+    # If source is websocket, and the last message is a text response from AI, it was already streamed to the user.
+    # We should NOT treat this as a failure/fallback case.
+    last_msg = state['messages'][-1]
+    if source == 'websocket' and isinstance(last_msg, AIMessage) and last_msg.content and str(last_msg.content).strip():
+        # Ensure it's not JUST a tool call (though unlikely to reach here if so, as router would catch it)
+        # Standard AIMessage with content implies streaming happened.
+        logger.info("Skipping fallback - response already streamed via WebSocket (Direct Text)")
+        
+        from src.core.models.agent_runner_models import AgentFinalResponse
+        return {
+            "final_response": AgentFinalResponse(
+                response="",  # Empty - already streamed
+                execution_notes="Response streamed via WebSocket",
+                delivery_platform=source_to_use,
+                output_modality="text",
+                generation_instructions=None,
+                file_links=[]
+            ),
+            "reply_sent": True,
+            "reply_count": 1
+        }
+
     # Agent DID NOT use messaging tools - use fallback system
     logger.warning("Agent did not use messaging tools - using fallback response generation")
 
-    final_message = state['messages'][-2:] # Last message should be AI's final response
+    # Capture context: Last Human Message + Everything after it
     final_message_history = []
-    ### iterate in reverse until the first HumanMessage
-    for msg in reversed(state['messages']):
-        if isinstance(msg, HumanMessage):
-            final_message_history.insert(0,msg)
+    messages = state['messages']
+    
+    # Find index of last HumanMessage
+    last_human_idx = -1
+    for i in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[i], HumanMessage):
+            last_human_idx = i
             break
+    
+    if last_human_idx != -1:
+        final_message_history = messages[last_human_idx:]
+    else:
+        # Fallback if no human message found (unlikely)
+        final_message_history = messages[-2:]
+
+    # Extract the agent's draft response (the very last message) to inject into prompt
+    agent_draft_response = ""
+    if messages and isinstance(messages[-1], AIMessage):
+        agent_draft_response = str(messages[-1].content)
 
     # logger.info(f"final_message {str(state['messages'][-1])}")
     logger.info(f"Source channel: {source}, metadata: {state['metadata']}")
@@ -64,8 +101,8 @@ async def generate_final_response(state: AgentState):
         source_to_use = state['metadata']['output_type']
     prompt = (
         f"the system prompt given to the agent was: '''{system_prompt}'''\n\n"
-        f"Given the following final response from an agent:"
-        f"and knowing the initial request came from the '{source_to_use}' channel, "
+        f"The agent has generated the following draft response (or thought process): '''{agent_draft_response}'''\n\n"
+        f"knowing the initial request came from the '{source_to_use}' channel, "
         "format this into the required JSON structure. The delivery_platform must match the source channel, unless the user indicates or implies otherwise, or the command requires a different channel. Note that a scheduled/recurring/triggered command cannot have websocket as the delivery platform. If the user has specifically asked for a different delivery platform, you must comply. for example, if the user has sent an email, but requests a response on imessage, comply. Explain the choice of delivery platform in the execution_notes field, acknowledging if the user requested a particular platform or not. "
         "IF the source channel is 'websocket', you must always respond on websocket. assume that any actions that required different platforms, such as sending an email, have already been handled. "
         f"the user's original message in this case was {input_text}. pay attention to whether it contains a particular request for delivery platform. "

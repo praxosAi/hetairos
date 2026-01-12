@@ -13,18 +13,38 @@ class ConversationManager:
         self.integration_manager = integration_manager
         self.INACTIVITY_TIMEOUT = 15 * 60 
     ### TODO: This should be smarter. just randomly finding and consolidating conversations is not the best idea. it should be using praxos memory to find relevant conversations, me thinks.
-    async def get_or_create_conversation(self, user_id: str, platform: str,payload) -> str:
+    async def get_or_create_conversation(self, user_id: str, platform: str, payload: dict, conversation_id: Optional[str] = None) -> str:
         """Get existing active conversation or create new one"""
         logger.info(f"Getting or creating conversation for user {user_id} on platform {platform}")
-        conversation_id = await self.db.get_active_conversation(user_id)
-        conversation_info = await self.db.get_conversation_info(conversation_id)
-        logger.info(f"Existing conversation info: {conversation_info}")
+        
+        # 1. Use explicit conversation_id if provided
         if conversation_id:
-            if await self.is_conversation_active(conversation_id,payload) and conversation_info.get('platform') == platform:
+            logger.info(f"Using explicit conversation_id: {conversation_id}")
+            # Verify ownership/existence
+            info = await self.db.get_conversation_info(conversation_id)
+            if info and str(info.get('user_id')) == user_id:
                 return conversation_id
+            logger.warning(f"Explicit conversation_id {conversation_id} not found or invalid ownership")
+            # Fallback to creating new if invalid
+
+        # 2. For WebSocket, force NEW conversation if no ID provided (Explicit Session Mode)
+        # This replaces the time-based consolidation for web users
+        if platform == "websocket":
+            logger.info("WebSocket request without conversation_id - creating NEW session")
+            return await self.db.create_conversation(user_id, platform)
+
+        # 3. For other platforms (WhatsApp, Telegram), keep "Active Conversation" logic (Time-based)
+        active_id = await self.db.get_active_conversation(user_id)
+        conversation_info = await self.db.get_conversation_info(active_id) if active_id else None
+        
+        logger.info(f"Existing conversation info: {conversation_info}")
+        if active_id:
+            if await self.is_conversation_active(active_id, payload) and conversation_info.get('platform') == platform:
+                return active_id
             else:
-                await self.db.mark_conversation_for_consolidation(conversation_id)
+                await self.db.mark_conversation_for_consolidation(active_id)
                 return await self.db.create_conversation(user_id, platform)
+        
         return await self.db.create_conversation(user_id, platform)
 
     async def is_conversation_active(self, conversation_id: str, payload: dict = None) -> bool:

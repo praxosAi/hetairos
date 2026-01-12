@@ -29,6 +29,7 @@ class HttpIngressRequest(BaseModel):
     token: str = None
     files: Optional[List[FileInfo]] = []
     audio: Optional[FileInfo] = None
+    conversation_id: Optional[str] = None
 
 
 class FileUploadRequest(BaseModel):
@@ -77,7 +78,8 @@ async def handle_chat_request(
     input_text: str = Form(None),
     token: str = Form(None),
     files: List[UploadFile] = File(default=[]),
-    audio: UploadFile = File(None)
+    audio: UploadFile = File(None),
+    conversation_id: str = Form(None)
 ):
     """
     Handles a conversational request from HTTP client with optional files/audio.
@@ -218,7 +220,8 @@ async def handle_chat_request(
         input_text=input_text,
         token=token,
         files=file_data,
-        audio=audio_data
+        audio=audio_data,
+        conversation_id=conversation_id
     )
 
 
@@ -287,7 +290,18 @@ async def handle_chat_request(
             logger.error(f"Failed to process HTTP audio {request_obj.audio.filename}: {e}", exc_info=True)
 
     conversation_manager = ConversationManager(conversation_db, integration_service)
-    conversation_id = await conversation_manager.get_or_create_conversation(request_obj.user_id, "websocket", payload)
+    
+    # Determine conversation_id logic (body takes precedence if both present, but typically only one source)
+    target_conversation_id = request_obj.conversation_id
+    if request_body and request_body.conversation_id:
+        target_conversation_id = request_body.conversation_id
+        
+    conversation_id = await conversation_manager.get_or_create_conversation(
+        request_obj.user_id, 
+        "websocket", 
+        payload, 
+        conversation_id=target_conversation_id
+    )
     
 
     event = {

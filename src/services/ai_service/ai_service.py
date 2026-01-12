@@ -127,6 +127,7 @@ class AIService:
         except Exception as e:
             logger.error(f"Error updating cache TTL: {e}")
         plan = None
+        plan_str = ""
         required_tool_ids = None
 
         if planning:
@@ -177,7 +178,7 @@ class AIService:
                 "stage": "tool_loading",
                 "display_as": "status"
             })
-
+        
         return plan, required_tool_ids, plan_str
 
     async def multi_modal_by_doc_id(self, prompt: str, doc_id: str):

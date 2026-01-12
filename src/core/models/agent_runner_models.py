@@ -26,6 +26,7 @@ class GraphConfig(BaseModel):
     """Configuration and context for a single graph execution."""
     llm_with_tools: Runnable 
     structured_llm: Runnable
+    fast_llm: Runnable
     system_prompt: str
     initial_state_len: int
     plan_str: str

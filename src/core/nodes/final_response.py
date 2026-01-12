@@ -54,7 +54,6 @@ async def generate_final_response(state: AgentState):
     final_message_history = []
     ### iterate in reverse until the first HumanMessage
     for msg in reversed(state['messages']):
-        final_message_history.insert(0,msg)
         if isinstance(msg, HumanMessage):
             final_message_history.insert(0,msg)
             break

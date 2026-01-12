@@ -30,6 +30,8 @@ def create_platform_messaging_tools(
     """
     tools = []
     # Always create tool for source platform
+    ## force not create websocket tool for now.
+    # if platform != 'websocket':
     source_tool = _create_reply_tool(source, user_id, metadata, conversation_manager)
     tools.append(source_tool)
 

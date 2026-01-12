@@ -326,6 +326,7 @@ class LangGraphAgentRunner:
                 system_prompt=system_prompt,
                 initial_state_len=len(history),
                 plan_str=plan_str,
+                fast_llm = self.fast_llm,
                 required_tool_ids=required_tool_ids,
                 minimal_tools=minimal_tools,
                 source=source,
@@ -447,27 +448,21 @@ class LangGraphAgentRunner:
             if event_type == "on_chat_model_stream":
                 # LLM token streaming - filter by node
                 chunk = event["data"]["chunk"]
+                logger.info(f"LLM stream chunk: {chunk.content}")
                 if not hasattr(chunk, 'content') or not chunk.content:
                     return
 
                 node_name = event.get("metadata", {}).get("langgraph_node", "")
 
-                # CRITICAL: Only stream tokens from "finalize" node as message
-                # Other nodes ("agent") are internal reasoning
-                if node_name == "finalize":
-                    # These are user-facing tokens from generate_final_response
+                # Only stream "agent" node - finalize uses structured_llm which streams JSON
+                # - "agent" node: Composing message ✅ Stream this
+                # - "finalize" node: structured_llm streams JSON structure, not message ❌ Skip
+                if node_name == "agent":
+                    # These are user-facing tokens
                     await self.stream_buffer.write({
                         "type": "message_token",
                         "content": chunk.content,
                         "display_as": "message"
-                    })
-                elif node_name == "agent":
-                    # Optional: stream as "thinking" for transparency
-                    # Comment out if you don't want to show internal reasoning
-                    await self.stream_buffer.write({
-                        "type": "thinking_token",
-                        "content": chunk.content,
-                        "display_as": "thinking"
                     })
 
             elif event_type == "on_chain_start":

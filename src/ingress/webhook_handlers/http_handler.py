@@ -105,7 +105,7 @@ async def handle_chat_request(
 
     # Rate limiting for HTTP requests
     from src.utils.rate_limiter import rate_limiter
-    is_allowed, remaining = rate_limiter.check_limit(user_id, "http_requests")
+    is_allowed, remaining = await rate_limiter.check_limit(user_id, "http_requests")
     if not is_allowed:
         logger.warning(f"Rate limit exceeded for user {user_id} on HTTP requests")
         raise HTTPException(

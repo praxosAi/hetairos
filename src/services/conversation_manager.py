@@ -216,7 +216,7 @@ Conversation:
 Return only the conversation name, nothing else. Make it concise and descriptive."""
 
             name = await ai_service.flash_call(prompt)
-            name = name.strip().strip('"').strip("'")  # Clean up quotes
+            name = name.content.strip().strip('"').strip("'")  # Clean up quotes
 
             # Update conversation with the generated name
             await self.db.update_conversation_name(conversation_id, name)

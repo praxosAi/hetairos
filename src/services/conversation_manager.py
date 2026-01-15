@@ -17,21 +17,21 @@ class ConversationManager:
         """Get existing active conversation or create new one"""
         logger.info(f"Getting or creating conversation for user {user_id} on platform {platform}")
         
-        # 1. Use explicit conversation_id if provided
-        if conversation_id:
-            logger.info(f"Using explicit conversation_id: {conversation_id}")
-            # Verify ownership/existence
-            info = await self.db.get_conversation_info(conversation_id)
-            if info and str(info.get('user_id')) == user_id:
-                return conversation_id
-            logger.warning(f"Explicit conversation_id {conversation_id} not found or invalid ownership")
-            # Fallback to creating new if invalid
 
-        # 2. For WebSocket, force NEW conversation if no ID provided (Explicit Session Mode)
+
+        # 2. For WebSocket, force NEW conversation if no ID provided (Explicit Session Mode), FORCE NO NEW CONVERSATION IF ID PROVIDED
         # This replaces the time-based consolidation for web users
         if platform == "websocket":
             logger.info("WebSocket request without conversation_id - creating NEW session")
-            return await self.db.create_conversation(user_id, platform)
+            if conversation_id:
+                logger.info(f"Using explicit conversation_id: {conversation_id}")
+                # Verify ownership/existence
+                info = await self.db.get_conversation_info(conversation_id)
+                if info and str(info.get('user_id')) == user_id:
+                    return conversation_id
+                logger.warning(f"Explicit conversation_id {conversation_id} not found or invalid ownership")
+            else:
+                return await self.db.create_conversation(user_id, platform)
 
         # 3. For other platforms (WhatsApp, Telegram), keep "Active Conversation" logic (Time-based)
         active_id = await self.db.get_active_conversation(user_id)
@@ -94,7 +94,6 @@ class ConversationManager:
         messages = await self.db.get_conversation_messages(conversation_id, categories=categories)
         search_history = await self.db.get_recent_search_attempts(conversation_id)
         available_sources = await self.integration_manager.get_user_integrations(conversation['user_id'])
-        
         context = {
             'conversation_id': conversation_id,
             'user_id': str(conversation['user_id']),
@@ -106,7 +105,6 @@ class ConversationManager:
             'search_history': search_history,
             'available_sources': available_sources,
             'message_count': len(messages),
-
         }
         
         return context

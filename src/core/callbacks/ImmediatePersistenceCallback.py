@@ -1,4 +1,4 @@
-from langchain.callbacks.base import BaseCallbackHandler, AsyncCallbackHandler
+from langchain_core.callbacks.base import BaseCallbackHandler, AsyncCallbackHandler
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 from src.utils.logging import setup_logger

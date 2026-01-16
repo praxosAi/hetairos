@@ -24,6 +24,7 @@ from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64
 from src.services.user_service import user_service
 from src.services.ai_service.ai_service import ai_service
 # from src.core.callbacks.ToolMonitorCallback import ToolMonitorCallback
+from src.core.callbacks.ImmediatePersistenceCallback import ImmediatePersistenceCallback
 from src.core.nodes import call_model, generate_final_response, obtain_data, should_continue_router
 from src.utils.file_msg_utils import generate_file_messages,get_conversation_history,process_media_output, generate_user_messages_parallel,update_history
 logger = setup_logger(__name__)
@@ -351,14 +352,22 @@ class LangGraphAgentRunner:
             #     user_id=user_context.user_id,
             #     execution_id=execution_id
             # )
+            
+            # Create immediate persistence callback for tool outputs
+            persistence_callback = ImmediatePersistenceCallback(
+                conversation_manager=self.conversation_manager,
+                conversation_id=conversation_id,
+                user_id=user_context.user_id
+            )
+
             ### for now, we remove it.
             # Always use streaming - buffer decides what to do with events
-            final_state = await self._run_with_streaming(app, initial_state)
+            final_state = await self._run_with_streaming(app, initial_state, callbacks=[persistence_callback])
 
             # Persist only NEW intermediate messages from this execution
-            new_messages = final_state['messages'][len(initial_state['messages']):]
+            # new_messages = final_state['messages'][len(initial_state['messages']):]
 
-            await update_history( conversation_manager=self.conversation_manager, new_messages=new_messages, conversation_id=conversation_id, user_context=user_context, final_state=final_state)
+            # await update_history( conversation_manager=self.conversation_manager, new_messages=new_messages, conversation_id=conversation_id, user_context=user_context, final_state=final_state)
             final_response = final_state['final_response']
             output_blobs = []
             ### this actually should be handled directly now.
@@ -400,7 +409,8 @@ class LangGraphAgentRunner:
     async def _run_with_streaming(
         self,
         app,
-        initial_state: dict
+        initial_state: dict,
+        callbacks: list = []
     ) -> dict:
         """Execute graph with streaming - writes to buffer"""
         final_state = None
@@ -411,6 +421,7 @@ class LangGraphAgentRunner:
                 config={
                     "recursion_limit": 100,
                     "tool_iter_counter": 0,
+                    "callbacks": callbacks
                 },
                 version="v2"
             ):
@@ -443,7 +454,11 @@ class LangGraphAgentRunner:
             logger.info("Falling back to batch mode after streaming error")
             return await app.ainvoke(
                 initial_state,
-                {"recursion_limit": 100, "tool_iter_counter": 0}
+                {
+                    "recursion_limit": 100, 
+                    "tool_iter_counter": 0,
+                    "callbacks": callbacks
+                }
             )
 
     async def _handle_stream_event(self, event: dict) -> None:

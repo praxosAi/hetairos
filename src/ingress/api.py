@@ -190,10 +190,21 @@ async def websocket_endpoint(ws: WebSocket, session_token: Optional[str] = Cooki
     logger.info(f"WebSocket authenticated for user: {user_id}")
     user_id_var.set(user_id)
 
+    # Extract conversation_id from query params
+    conversation_id = ws.query_params.get("conversation_id")
+
     # ---- your normal logic below ----
     pubsub = None
     try:
-        channel = f"ws-out:{token}"  # ensure this stays reasonable length
+        # Use token + conversation_id for channel isolation
+        if conversation_id:
+            channel = f"ws-out:{token}:{conversation_id}"
+            logger.info(f"WebSocket subscribed to conversation-specific channel: {channel}")
+        else:
+            # Fallback to token-only channel (backward compatibility)
+            channel = f"ws-out:{token}"
+            logger.info(f"WebSocket subscribed to user-level channel: {channel}")
+
         pubsub = await subscribe_to_channel(channel)
 
         async def redis_listener():

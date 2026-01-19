@@ -72,7 +72,7 @@ class GmailIntegration(BaseIntegration):
         
         try:
             # Check rate limits
-            is_allowed, remaining = rate_limiter.check_limit(self.user_id, "emails")
+            is_allowed, remaining = await rate_limiter.check_limit(self.user_id, "emails")
             if not is_allowed:
                 logger.error(f"Email rate limit exceeded for user {self.user_id}")
                 return []

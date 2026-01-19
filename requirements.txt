@@ -5,6 +5,7 @@
 #    pip-compile --output-file=requirements.txt requirements.in
 #
 aiofiles==25.1.0
+
     # via -r requirements.in
 aiohappyeyeballs==2.6.1
     # via aiohttp
@@ -591,3 +592,4 @@ zstandard==0.25.0
 # The following packages are considered to be unsafe in a requirements file:
 # pip
 # setuptools
+httpx-aiohttp

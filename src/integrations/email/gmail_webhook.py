@@ -183,7 +183,7 @@ class GmailWebhookHandler:
 
         try:
             # Rate limit check
-            allowed, _ = rate_limiter.check_limit(self.test_user, "gmail_webhooks")
+            allowed, _ = await rate_limiter.check_limit(self.test_user, "gmail_webhooks")
             if not allowed:
                 log_gmail_rate_limit_hit("gmail_webhooks", self.test_user, 0)
                 return 0
@@ -256,7 +256,7 @@ class GmailWebhookHandler:
         """
         try:
             # Check rate limits for history API calls
-            allowed, remaining = rate_limiter.check_limit(self.test_user, "gmail_history_calls")
+            allowed, remaining = await rate_limiter.check_limit(self.test_user, "gmail_history_calls")
             if not allowed:
                 log_gmail_rate_limit_hit("gmail_history_calls", self.test_user, remaining)
                 return []

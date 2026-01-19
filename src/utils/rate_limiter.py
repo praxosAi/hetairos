@@ -29,7 +29,7 @@ class RateLimiter:
         except Exception as e:
             logger.warning(f"Redis not available for rate limiting: {e}. Using in-memory (local only)")
 
-    def check_limit(self, user_id: str, resource_type: str) -> tuple[bool, int]:
+    async def check_limit(self, user_id: str, resource_type: str) -> tuple[bool, int]:
         """
         Check if user has exceeded rate limit for resource type.
         Returns (is_allowed, remaining_count)
@@ -51,11 +51,11 @@ class RateLimiter:
         max_limit = limits[resource_type]
 
         if self.use_redis:
-            return self._check_limit_redis(user_id, resource_type, max_limit)
+            return await self._check_limit_redis(user_id, resource_type, max_limit)
         else:
-            return self._check_limit_memory(user_id, resource_type, max_limit)
+            return await self._check_limit_memory(user_id, resource_type, max_limit)
 
-    def _check_limit_redis(self, user_id: str, resource_type: str, max_limit: int) -> tuple[bool, int]:
+    async def _check_limit_redis(self, user_id: str, resource_type: str, max_limit: int) -> tuple[bool, int]:
         """Redis-based rate limiting (works across pods)"""
         try:
             import asyncio
@@ -72,7 +72,7 @@ class RateLimiter:
                 return int(count_str) if count_str else 0
 
             try:
-                current_count = asyncio.run(get_count())
+                current_count = await asyncio.run(get_count())
             except RuntimeError:
                 # Already in async context
                 loop = asyncio.get_event_loop()

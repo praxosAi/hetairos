@@ -24,11 +24,52 @@ from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64
 from src.services.user_service import user_service
 from src.services.ai_service.ai_service import ai_service
 # from src.core.callbacks.ToolMonitorCallback import ToolMonitorCallback
+from src.core.callbacks.ImmediatePersistenceCallback import ImmediatePersistenceCallback
 from src.core.nodes import call_model, generate_final_response, obtain_data, should_continue_router
 from src.utils.file_msg_utils import generate_file_messages,get_conversation_history,process_media_output, generate_user_messages_parallel,update_history
 logger = setup_logger(__name__)
 
 
+def extract_text_from_chunk(content: Any) -> str:
+    """Extract plain text from various message chunk content formats."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts = []
+        for part in content:
+            if isinstance(part, str):
+                text_parts.append(part)
+            elif isinstance(part, dict) and part.get("type") == "text":
+                text_parts.append(part.get("text", ""))
+        return "".join(text_parts)
+    return str(content) if content is not None else ""
+
+
+def extract_thinking_from_chunk(chunk: Any) -> str:
+    """Extract thinking/reasoning from chunk."""
+    # Handle OpenAI/Azure reasoning content if available
+    if hasattr(chunk, 'additional_kwargs'):
+        thought = chunk.additional_kwargs.get("thought")
+        if thought:
+            return thought
+            
+    # Handle Gemini 2.0 Thinking format
+    content = chunk.content
+    if isinstance(content, list):
+        thinking_parts = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "thought":
+                thinking_parts.append(part.get("thought", ""))
+            # Some versions might use 'reasoning' or just a different dict key
+            elif isinstance(part, dict) and part.get("type") == "reasoning":
+                thinking_parts.append(part.get("reasoning", ""))
+        return "".join(thinking_parts)
+    
+    # Check for dedicated reasoning_content field (newer LangChain)
+    if hasattr(chunk, 'reasoning_content') and chunk.reasoning_content:
+        return chunk.reasoning_content
+        
+    return ""
 
 
 class LangGraphAgentRunner:
@@ -227,7 +268,12 @@ class LangGraphAgentRunner:
             except Exception as e:
                 logger.error(f"Error during granular planning call: {e}", exc_info=True)
                 required_tool_ids = None  # Fallback to loading all tools
-             
+            if plan_str:
+                await self.stream_buffer.write({
+                    "type": "thinking_token",
+                    "content": plan_str,
+                    "display_as": "thinking"
+                })
             tools = await self.tools_factory.create_tools(
                 user_context,
                 metadata,
@@ -326,6 +372,7 @@ class LangGraphAgentRunner:
                 system_prompt=system_prompt,
                 initial_state_len=len(history),
                 plan_str=plan_str,
+                fast_llm = self.fast_llm,
                 required_tool_ids=required_tool_ids,
                 minimal_tools=minimal_tools,
                 source=source,
@@ -350,14 +397,22 @@ class LangGraphAgentRunner:
             #     user_id=user_context.user_id,
             #     execution_id=execution_id
             # )
+            
+            # Create immediate persistence callback for tool outputs
+            persistence_callback = ImmediatePersistenceCallback(
+                conversation_manager=self.conversation_manager,
+                conversation_id=conversation_id,
+                user_id=user_context.user_id
+            )
+
             ### for now, we remove it.
             # Always use streaming - buffer decides what to do with events
-            final_state = await self._run_with_streaming(app, initial_state)
+            final_state = await self._run_with_streaming(app, initial_state, callbacks=[persistence_callback])
 
             # Persist only NEW intermediate messages from this execution
-            new_messages = final_state['messages'][len(initial_state['messages']):]
+            # new_messages = final_state['messages'][len(initial_state['messages']):]
 
-            await update_history( conversation_manager=self.conversation_manager, new_messages=new_messages, conversation_id=conversation_id, user_context=user_context, final_state=final_state)
+            # await update_history( conversation_manager=self.conversation_manager, new_messages=new_messages, conversation_id=conversation_id, user_context=user_context, final_state=final_state)
             final_response = final_state['final_response']
             output_blobs = []
             ### this actually should be handled directly now.
@@ -399,7 +454,8 @@ class LangGraphAgentRunner:
     async def _run_with_streaming(
         self,
         app,
-        initial_state: dict
+        initial_state: dict,
+        callbacks: list = []
     ) -> dict:
         """Execute graph with streaming - writes to buffer"""
         final_state = None
@@ -410,6 +466,7 @@ class LangGraphAgentRunner:
                 config={
                     "recursion_limit": 100,
                     "tool_iter_counter": 0,
+                    "callbacks": callbacks
                 },
                 version="v2"
             ):
@@ -419,6 +476,12 @@ class LangGraphAgentRunner:
                 # Capture final state
                 if event.get("event") == "on_chain_end" and event.get("name") == "LangGraph":
                     final_state = event["data"]["output"]
+
+            # Signal stream completion
+            await self.stream_buffer.write({
+                "type": "stream_done",
+                "display_as": "status"
+            })
 
             return final_state
 
@@ -436,7 +499,11 @@ class LangGraphAgentRunner:
             logger.info("Falling back to batch mode after streaming error")
             return await app.ainvoke(
                 initial_state,
-                {"recursion_limit": 100, "tool_iter_counter": 0}
+                {
+                    "recursion_limit": 100, 
+                    "tool_iter_counter": 0,
+                    "callbacks": callbacks
+                }
             )
 
     async def _handle_stream_event(self, event: dict) -> None:
@@ -447,27 +514,49 @@ class LangGraphAgentRunner:
             if event_type == "on_chat_model_stream":
                 # LLM token streaming - filter by node
                 chunk = event["data"]["chunk"]
-                if not hasattr(chunk, 'content') or not chunk.content:
+                
+                # 1. Handle Tool Call Generation (Intent Streaming)
+                if (hasattr(chunk, 'tool_call_chunks') and chunk.tool_call_chunks):
+                    for tool_chunk in chunk.tool_call_chunks:
+                        # Only stream start event if we have a name (start of call)
+                        if tool_chunk.get("name"):
+                            tool_name = tool_chunk["name"]
+                            # Skip user-facing communication tools from technical stream
+                            if tool_name.startswith('reply_to_user_'):
+                                continue
+                                
+                            await self.stream_buffer.write({
+                                "type": "tool_start",
+                                "tool": tool_name,
+                                "tool_call_id": tool_chunk.get("id"),
+                                "display_as": "tool_call"
+                            })
+                    return
+
+                # 2. Handle Thinking Tokens
+                thinking_content = extract_thinking_from_chunk(chunk)
+                if thinking_content:
+                    await self.stream_buffer.write({
+                        "type": "thinking_token",
+                        "content": thinking_content,
+                        "display_as": "thinking"
+                    })
+
+                # 3. Handle Text Generation (Content Streaming)
+                # Robust text extraction to avoid technical metadata in the stream
+                text_content = extract_text_from_chunk(chunk.content)
+                
+                if not text_content:
                     return
 
                 node_name = event.get("metadata", {}).get("langgraph_node", "")
 
-                # CRITICAL: Only stream tokens from "finalize" node as message
-                # Other nodes ("agent") are internal reasoning
-                if node_name == "finalize":
-                    # These are user-facing tokens from generate_final_response
+                if node_name == "agent":
+                    # These are user-facing tokens
                     await self.stream_buffer.write({
                         "type": "message_token",
-                        "content": chunk.content,
+                        "content": text_content,
                         "display_as": "message"
-                    })
-                elif node_name == "agent":
-                    # Optional: stream as "thinking" for transparency
-                    # Comment out if you don't want to show internal reasoning
-                    await self.stream_buffer.write({
-                        "type": "thinking_token",
-                        "content": chunk.content,
-                        "display_as": "thinking"
                     })
 
             elif event_type == "on_chain_start":
@@ -495,15 +584,27 @@ class LangGraphAgentRunner:
             elif event_type == "on_tool_end":
                 # Tool execution result - show friendly status, NOT raw output
                 tool_name = event.get("name", "")
-
+                
+                # Extract output for frontend display
+                output = event.get("data", {}).get("output")
+                
+                output_str = ""
+                if hasattr(output, 'content'):
+                    output_str = output.content
+                elif isinstance(output, str):
+                    output_str = output
+                else:
+                    output_str = str(output) if output is not None else ""
+                
                 # Don't stream raw tool results (like JSON from gmail_search)
                 # Instead, show friendly status message
                 friendly_name = tool_name.replace("_", " ").title()
-
+                logger.info(f"Tool {tool_name} completed with output: {output_str}")
                 await self.stream_buffer.write({
                     "type": "tool_status",
                     "tool": tool_name,
                     "message": f"✓ {friendly_name}",
+                    "output": output_str,
                     "display_as": "status"
                 })
 

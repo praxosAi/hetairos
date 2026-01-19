@@ -13,18 +13,39 @@ class ConversationManager:
         self.integration_manager = integration_manager
         self.INACTIVITY_TIMEOUT = 15 * 60 
     ### TODO: This should be smarter. just randomly finding and consolidating conversations is not the best idea. it should be using praxos memory to find relevant conversations, me thinks.
-    async def get_or_create_conversation(self, user_id: str, platform: str,payload) -> str:
+    async def get_or_create_conversation(self, user_id: str, platform: str, payload: dict, conversation_id: Optional[str] = None) -> str:
         """Get existing active conversation or create new one"""
         logger.info(f"Getting or creating conversation for user {user_id} on platform {platform}")
-        conversation_id = await self.db.get_active_conversation(user_id)
-        conversation_info = await self.db.get_conversation_info(conversation_id)
-        logger.info(f"Existing conversation info: {conversation_info}")
-        if conversation_id:
-            if await self.is_conversation_active(conversation_id,payload) and conversation_info.get('platform') == platform:
-                return conversation_id
+        
+
+
+        # 2. For WebSocket, force NEW conversation if no ID provided (Explicit Session Mode), FORCE NO NEW CONVERSATION IF ID PROVIDED
+        # This replaces the time-based consolidation for web users
+        if platform == "websocket":
+            logger.info("WebSocket request")
+            if conversation_id:
+                logger.info(f"Using explicit conversation_id: {conversation_id}")
+                # Verify ownership/existence
+                info = await self.db.get_conversation_info(conversation_id)
+                if info and str(info.get('user_id')) == user_id:
+                    return conversation_id
+                logger.warning(f"Explicit conversation_id {conversation_id} not found or invalid ownership")
             else:
-                await self.db.mark_conversation_for_consolidation(conversation_id)
+                logger.info("No conversation_id provided, creating new WebSocket conversation")
                 return await self.db.create_conversation(user_id, platform)
+
+        # 3. For other platforms (WhatsApp, Telegram), keep "Active Conversation" logic (Time-based)
+        active_id = await self.db.get_active_conversation(user_id)
+        conversation_info = await self.db.get_conversation_info(active_id) if active_id else None
+        
+        logger.info(f"Existing conversation info: {conversation_info}")
+        if active_id:
+            if await self.is_conversation_active(active_id, payload) and conversation_info.get('platform') == platform:
+                return active_id
+            else:
+                await self.db.mark_conversation_for_consolidation(active_id)
+                return await self.db.create_conversation(user_id, platform)
+        
         return await self.db.create_conversation(user_id, platform)
 
     async def is_conversation_active(self, conversation_id: str, payload: dict = None) -> bool:
@@ -74,7 +95,6 @@ class ConversationManager:
         messages = await self.db.get_conversation_messages(conversation_id, categories=categories)
         search_history = await self.db.get_recent_search_attempts(conversation_id)
         available_sources = await self.integration_manager.get_user_integrations(conversation['user_id'])
-        
         context = {
             'conversation_id': conversation_id,
             'user_id': str(conversation['user_id']),
@@ -86,7 +106,6 @@ class ConversationManager:
             'search_history': search_history,
             'available_sources': available_sources,
             'message_count': len(messages),
-
         }
         
         return context
@@ -216,7 +235,7 @@ Conversation:
 Return only the conversation name, nothing else. Make it concise and descriptive."""
 
             name = await ai_service.flash_call(prompt)
-            name = name.strip().strip('"').strip("'")  # Clean up quotes
+            name = name.content.strip().strip('"').strip("'")  # Clean up quotes
 
             # Update conversation with the generated name
             await self.db.update_conversation_name(conversation_id, name)

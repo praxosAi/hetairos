@@ -399,17 +399,38 @@ class EgressService:
         except Exception as e:
             logger.error(f"Failed to send Discord response: {e}", exc_info=True)
 
-    async def _send_webhook_reponse(self, event, response_text):
+    async def _send_websocket_response(self, event, response_text):
         logging.info('attempting to publish to websocket')
-        token = event.get("metadata", {}).get("token")
+        metadata = event.get("metadata", {})
+        token = metadata.get("token")
+        conversation_id = metadata.get("conversation_id")
+        
         if not token:
-            logger.error(f"No user_id in event for WebSocket message. Event: {event}")
+            logger.error(f"No token in event metadata for WebSocket message. Event: {event}")
             return
 
-        # The channel name must match what the ingress WebSocket endpoint subscribes to.
-        channel = f"ws-out:{token}"
-        await publish_message(channel, response_text)
-        logger.info(f"Successfully published response to Redis channel '{channel}' for token {token}, which belongs to user {event.get('user_id')}")
+        # Determine channel based on presence of conversation_id
+        if conversation_id:
+            channel = f"ws-out:{token}:{conversation_id}"
+            logger.info(f"Publishing response to conversation channel '{channel}'")
+        else:
+            channel = f"ws-out:{token}"
+            logger.info(f"Publishing response to user channel '{channel}'")
+            
+        # Format as a streaming event so the frontend can parse it
+        # This makes the batch response look like a stream chunk to the frontend
+        import json
+        
+        # If response_text is JSON (from structured output), we might need to handle it differently
+        # For now, treat it as a plain message
+        payload = {
+            "type": "message_token",
+            "content": response_text,
+            "display_as": "message"
+        }
+        
+        await publish_message(channel, json.dumps(payload))
+        logger.info(f"Successfully published response to Redis channel '{channel}'")
 
     async def _send_mcp_response(self, event: dict, response_text: str, response_files):
         """Send response to MCP client via Redis pub/sub."""
@@ -582,7 +603,7 @@ class EgressService:
                 await self._send_discord_response(event, response_text, response_files)
 
             elif final_output_type == "websocket":
-                await self._send_webhook_reponse(event, response_text)
+                await self._send_websocket_response(event, response_text)
 
             elif final_output_type == "mcp":
                 await self._send_mcp_response(event, response_text, response_files)

@@ -6,7 +6,7 @@ load_dotenv()
 class Settings:
     # Praxos
     PRAXOS_API_KEY = os.getenv("PRAXOS_API_KEY")
-    PRAXOS_BASE_URL = "https://api.mypraxos.com"
+    PRAXOS_BASE_URL = os.getenv("PRAXOS_BASE_URL", "https://api.mypraxos.com")  # Allow override for local dev
     PRAXOS_ENVIRONMENT_NAME = os.getenv("PRAXOS_ENVIRONMENT_NAME")
     PORTKEY_API_KEY = os.getenv("PORTKEY_API_KEY")
 
@@ -56,7 +56,7 @@ class Settings:
     GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
     OUTLOOK_VALIDATION_TOKEN = os.getenv("OUTLOOK_VALIDATION_TOKEN")
     AZURE_SERVICEBUS_CONNECTION_STRING = os.getenv("AZURE_SERVICEBUS_CONNECTION_STRING")
-    AZURE_SERVICEBUS_QUEUE_NAME = 'events'
+    AZURE_SERVICEBUS_QUEUE_NAME = os.getenv("AZURE_SERVICEBUS_QUEUE_NAME", "events")
     AZURE_SERVICEBUS_SUSPENDED_QUEUE_NAME = 'suspended_events'
     AZURE_SERVICEBUS_BROWSER_TASKS_QUEUE = 'browser_tasks'
     AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")

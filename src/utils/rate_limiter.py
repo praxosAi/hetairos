@@ -53,7 +53,7 @@ class RateLimiter:
         if self.use_redis:
             return await self._check_limit_redis(user_id, resource_type, max_limit)
         else:
-            return self._check_limit_memory(user_id, resource_type, max_limit)
+            return await self._check_limit_memory(user_id, resource_type, max_limit)
 
     async def _check_limit_redis(self, user_id: str, resource_type: str, max_limit: int) -> tuple[bool, int]:
         """Redis-based rate limiting (works across pods)"""

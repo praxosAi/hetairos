@@ -535,7 +535,15 @@ async def get_conversation_history(
             # Check if this is a tool result message
             if role == "assistant" and metadata.get("message_type") == "tool_result":
                 tool_name = metadata.get("tool_name", "unknown_tool")
-                history_slots[i] = AIMessage(content=f'We called the tool {tool_name} with result {content}.')
+                tool_call_id = metadata.get("tool_call_id", "")
+                # Reconstruct as proper ToolMessage
+                history_slots[i] = ToolMessage(content=content, tool_call_id=tool_call_id, name=tool_name)
+            
+            elif role == "assistant" and metadata.get("tool_calls"):
+                # Reconstruct as AIMessage with tool_calls
+                tool_calls = metadata.get("tool_calls", [])
+                history_slots[i] = AIMessage(content=content, tool_calls=tool_calls)
+                
             elif role == "user":
                 # Reconstruct prefix for user messages if requested
                 if include_prefix and metadata:
@@ -544,7 +552,7 @@ async def get_conversation_history(
                         content = prefix + content
                 history_slots[i] = HumanMessage(content=content)
             else:
-                # Regular assistant message (may have tool_calls metadata)
+                # Regular assistant message
                 history_slots[i] = AIMessage(content=content)
             continue
 

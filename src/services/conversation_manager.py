@@ -22,7 +22,7 @@ class ConversationManager:
         # 2. For WebSocket, force NEW conversation if no ID provided (Explicit Session Mode), FORCE NO NEW CONVERSATION IF ID PROVIDED
         # This replaces the time-based consolidation for web users
         if platform == "websocket":
-            logger.info("WebSocket request without conversation_id - creating NEW session")
+            logger.info("WebSocket request")
             if conversation_id:
                 logger.info(f"Using explicit conversation_id: {conversation_id}")
                 # Verify ownership/existence
@@ -31,6 +31,7 @@ class ConversationManager:
                     return conversation_id
                 logger.warning(f"Explicit conversation_id {conversation_id} not found or invalid ownership")
             else:
+                logger.info("No conversation_id provided, creating new WebSocket conversation")
                 return await self.db.create_conversation(user_id, platform)
 
         # 3. For other platforms (WhatsApp, Telegram), keep "Active Conversation" logic (Time-based)

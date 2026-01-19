@@ -30,6 +30,46 @@ from src.utils.file_msg_utils import generate_file_messages,get_conversation_his
 logger = setup_logger(__name__)
 
 
+def extract_text_from_chunk(content: Any) -> str:
+    """Extract plain text from various message chunk content formats."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts = []
+        for part in content:
+            if isinstance(part, str):
+                text_parts.append(part)
+            elif isinstance(part, dict) and part.get("type") == "text":
+                text_parts.append(part.get("text", ""))
+        return "".join(text_parts)
+    return str(content) if content is not None else ""
+
+
+def extract_thinking_from_chunk(chunk: Any) -> str:
+    """Extract thinking/reasoning from chunk."""
+    # Handle OpenAI/Azure reasoning content if available
+    if hasattr(chunk, 'additional_kwargs'):
+        thought = chunk.additional_kwargs.get("thought")
+        if thought:
+            return thought
+            
+    # Handle Gemini 2.0 Thinking format
+    content = chunk.content
+    if isinstance(content, list):
+        thinking_parts = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "thought":
+                thinking_parts.append(part.get("thought", ""))
+            # Some versions might use 'reasoning' or just a different dict key
+            elif isinstance(part, dict) and part.get("type") == "reasoning":
+                thinking_parts.append(part.get("reasoning", ""))
+        return "".join(thinking_parts)
+    
+    # Check for dedicated reasoning_content field (newer LangChain)
+    if hasattr(chunk, 'reasoning_content') and chunk.reasoning_content:
+        return chunk.reasoning_content
+        
+    return ""
 
 
 class LangGraphAgentRunner:
@@ -228,7 +268,12 @@ class LangGraphAgentRunner:
             except Exception as e:
                 logger.error(f"Error during granular planning call: {e}", exc_info=True)
                 required_tool_ids = None  # Fallback to loading all tools
-             
+            if plan_str:
+                await self.stream_buffer.write({
+                    "type": "thinking_token",
+                    "content": plan_str,
+                    "display_as": "thinking"
+                })
             tools = await self.tools_factory.create_tools(
                 user_context,
                 metadata,
@@ -469,20 +514,48 @@ class LangGraphAgentRunner:
             if event_type == "on_chat_model_stream":
                 # LLM token streaming - filter by node
                 chunk = event["data"]["chunk"]
-                logger.info(f"LLM stream chunk: {chunk.content}")
-                if not hasattr(chunk, 'content') or not chunk.content:
+                
+                # 1. Handle Tool Call Generation (Intent Streaming)
+                if (hasattr(chunk, 'tool_call_chunks') and chunk.tool_call_chunks):
+                    for tool_chunk in chunk.tool_call_chunks:
+                        # Only stream start event if we have a name (start of call)
+                        if tool_chunk.get("name"):
+                            tool_name = tool_chunk["name"]
+                            # Skip user-facing communication tools from technical stream
+                            if tool_name.startswith('reply_to_user_'):
+                                continue
+                                
+                            await self.stream_buffer.write({
+                                "type": "tool_start",
+                                "tool": tool_name,
+                                "tool_call_id": tool_chunk.get("id"),
+                                "display_as": "tool_call"
+                            })
+                    return
+
+                # 2. Handle Thinking Tokens
+                thinking_content = extract_thinking_from_chunk(chunk)
+                if thinking_content:
+                    await self.stream_buffer.write({
+                        "type": "thinking_token",
+                        "content": thinking_content,
+                        "display_as": "thinking"
+                    })
+
+                # 3. Handle Text Generation (Content Streaming)
+                # Robust text extraction to avoid technical metadata in the stream
+                text_content = extract_text_from_chunk(chunk.content)
+                
+                if not text_content:
                     return
 
                 node_name = event.get("metadata", {}).get("langgraph_node", "")
 
-                # Only stream "agent" node - finalize uses structured_llm which streams JSON
-                # - "agent" node: Composing message ✅ Stream this
-                # - "finalize" node: structured_llm streams JSON structure, not message ❌ Skip
                 if node_name == "agent":
                     # These are user-facing tokens
                     await self.stream_buffer.write({
                         "type": "message_token",
-                        "content": chunk.content,
+                        "content": text_content,
                         "display_as": "message"
                     })
 
@@ -514,12 +587,19 @@ class LangGraphAgentRunner:
                 
                 # Extract output for frontend display
                 output = event.get("data", {}).get("output")
-                output_str = str(output) if output is not None else ""
+                
+                output_str = ""
+                if hasattr(output, 'content'):
+                    output_str = output.content
+                elif isinstance(output, str):
+                    output_str = output
+                else:
+                    output_str = str(output) if output is not None else ""
                 
                 # Don't stream raw tool results (like JSON from gmail_search)
                 # Instead, show friendly status message
                 friendly_name = tool_name.replace("_", " ").title()
-
+                logger.info(f"Tool {tool_name} completed with output: {output_str}")
                 await self.stream_buffer.write({
                     "type": "tool_status",
                     "tool": tool_name,

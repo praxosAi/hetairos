@@ -389,6 +389,7 @@ class LangGraphAgentRunner:
                 "config": graph_config,
                 "reply_sent": False,  # Track if agent used messaging tools
                 "reply_count": 0,  # Track number of messages sent
+                "is_direct_stream": False,  # Track if response was streamed
             }
             # --- END Graph Definition ---
 
@@ -409,15 +410,25 @@ class LangGraphAgentRunner:
             # Always use streaming - buffer decides what to do with events
             final_state = await self._run_with_streaming(app, initial_state, callbacks=[persistence_callback])
 
-            # Persist only NEW intermediate messages from this execution
-            # new_messages = final_state['messages'][len(initial_state['messages']):]
+            # Persist only NEW intermediate messages from this execution (tool calls, results, etc.)
+            new_messages = final_state['messages'][len(initial_state['messages']):]
+            await update_history(
+                conversation_manager=self.conversation_manager,
+                new_messages=new_messages,
+                conversation_id=conversation_id,
+                user_context=user_context,
+                final_state=final_state
+            )
 
-            # await update_history( conversation_manager=self.conversation_manager, new_messages=new_messages, conversation_id=conversation_id, user_context=user_context, final_state=final_state)
             final_response = final_state['final_response']
             output_blobs = []
-            ### this actually should be handled directly now.
-            if not final_state.get('reply_sent'):
-                await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, final_response.response)
+            
+            # Persist the final response if it wasn't already handled by a communication tool
+            # or if it was a direct WebSocket stream (which needs explicit persistence)
+            if not final_state.get('reply_sent') or final_state.get('is_direct_stream'):
+                if final_response.response and final_response.response.strip():
+                    await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, final_response.response)
+            
             logger.info(f"Final response generated for execution {execution_id}: {final_response.model_dump_json(indent=2)}")
             final_response = await process_media_output(conversation_manager=self.conversation_manager, final_response=final_response, user_context=user_context, source=source, conversation_id=conversation_id)
             execution_record["status"] = "completed"

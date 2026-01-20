@@ -59,7 +59,7 @@ async def generate_final_response(state: AgentState):
         from src.core.models.agent_runner_models import AgentFinalResponse
         return {
             "final_response": AgentFinalResponse(
-                response="",  # Empty - already streamed
+                response=str(last_msg.content),  # Capture content even if already streamed
                 execution_notes="Response streamed via WebSocket",
                 delivery_platform=source_to_use,
                 output_modality="text",
@@ -67,7 +67,8 @@ async def generate_final_response(state: AgentState):
                 file_links=[]
             ),
             "reply_sent": True,
-            "reply_count": 1
+            "reply_count": 1,
+            "is_direct_stream": True  # Flag for persistence
         }
 
     # Agent DID NOT use messaging tools - use fallback system

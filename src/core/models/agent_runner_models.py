@@ -47,5 +47,6 @@ class AgentState(MessagesState):
     data_iter_counter: int # Add this
     param_probe_done: bool # Add this
     config: GraphConfig # Add this
-    reply_sent: bool = False  # Track if agent sent reply via messaging tools
-    reply_count: int = 0  # Track how many replies sent
+    reply_sent: bool  # Track if agent sent reply via messaging tools
+    reply_count: int  # Track how many replies sent
+    is_direct_stream: bool # Track if response was streamed via WebSocket

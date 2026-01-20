@@ -16,6 +16,7 @@ class AgentFinalResponse(BaseModel):
     output_modality: Optional[str] = Field(description="The modality of the output, e.g., text, image, file, etc. unless otherwise specified by user needs, this should be text", enum=["text", "voice", 'audio', "image", "video",'file'])
     generation_instructions: Optional[str] = Field(description="Instructions for generating audio, video, or image if applicable.")
     file_links: Optional[List[FileLink]] = Field(description="Links to any files generated or used in the response.")
+    is_direct_stream: bool = Field(default=False, description="Internal flag to indicate if response was already streamed.")
     class Config:
         extra = "forbid"
         arbitrary_types_allowed = True

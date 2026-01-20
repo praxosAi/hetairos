@@ -64,11 +64,12 @@ async def generate_final_response(state: AgentState):
                 delivery_platform=source_to_use,
                 output_modality="text",
                 generation_instructions=None,
-                file_links=[]
+                file_links=[],
+                is_direct_stream=True  # Set flag on model
             ),
             "reply_sent": True,
             "reply_count": 1,
-            "is_direct_stream": True  # Flag for persistence
+            "is_direct_stream": True  # Keep for state tracking
         }
 
     # Agent DID NOT use messaging tools - use fallback system

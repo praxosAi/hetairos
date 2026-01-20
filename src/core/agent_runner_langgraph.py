@@ -425,7 +425,7 @@ class LangGraphAgentRunner:
             
             # Persist the final response if it wasn't already handled by a communication tool
             # or if it was a direct WebSocket stream (which needs explicit persistence)
-            if not final_state.get('reply_sent') or final_state.get('is_direct_stream'):
+            if not final_state.get('reply_sent') or final_response.is_direct_stream:
                 if final_response.response and final_response.response.strip():
                     await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, final_response.response)
             

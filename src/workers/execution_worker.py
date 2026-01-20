@@ -312,9 +312,9 @@ class ExecutionWorker:
         # Stop typing indicator
         await egress_service.stop_typing_indicator(typing_task_id)
 
-        # Check if response is empty (agent used messaging tools)
-        if not result.response or result.response.strip() == "":
-            logger.info("No fallback response needed - agent used communication tools directly")
+        # Check if response is empty (agent used messaging tools) OR if it was already streamed
+        if (not result.response or result.response.strip() == "") or getattr(result, 'is_direct_stream', False):
+            logger.info("No fallback response needed - agent used communication tools or response streamed directly")
             return
 
         # Fallback was used - send via egress service

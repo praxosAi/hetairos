@@ -59,7 +59,7 @@ async def generate_final_response(state: AgentState):
         from src.core.models.agent_runner_models import AgentFinalResponse
         return {
             "final_response": AgentFinalResponse(
-                response="",  # Empty - already streamed
+                response=str(last_msg.content),  # Capture content even if already streamed
                 execution_notes="Response streamed via WebSocket",
                 delivery_platform=source_to_use,
                 output_modality="text",

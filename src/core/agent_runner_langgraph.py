@@ -389,6 +389,7 @@ class LangGraphAgentRunner:
                 "config": graph_config,
                 "reply_sent": False,  # Track if agent used messaging tools
                 "reply_count": 0,  # Track number of messages sent
+                "is_direct_stream": False,  # Track if response was streamed
             }
             # --- END Graph Definition ---
 

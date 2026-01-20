@@ -67,7 +67,8 @@ async def generate_final_response(state: AgentState):
                 file_links=[]
             ),
             "reply_sent": True,
-            "reply_count": 1
+            "reply_count": 1,
+            "is_direct_stream": True  # Flag for persistence
         }
 
     # Agent DID NOT use messaging tools - use fallback system

@@ -184,7 +184,7 @@ class TelegramClient:
         inline_keyboard = {
             "inline_keyboard": [
                 [
-                    {"text": "Connect my telegram account", "url": f"https://app.mypraxos.com/integrations?auto-connect=true&provider=telegram&username=@{account_id}"}
+                    {"text": "Connect my telegram account", "url": f"https://app.mypraxos.com?overlay=connectors&auto-connect=true&provider=telegram&username=@{account_id}"}
                 ]
             ]
         }

@@ -1,5 +1,3 @@
-
-
 import json
 from langchain_google_genai import ChatGoogleGenerativeAI
 from src.config.settings import settings
@@ -15,15 +13,15 @@ from typing import Tuple
 import asyncio
 logger = setup_logger(__name__)
 class AIService:
-    def __init__(self, model_name: str = "gemini-2.5-pro"):
+    def __init__(self, model_name: str = "gemini-3-pro-preview"):
         self.model_gemini_pro = ChatGoogleGenerativeAI(model=model_name, google_api_key=settings.GEMINI_API_KEY)
         llm = init_chat_model("gpt-4o", model_provider="openai")
         from src.utils.portkey_headers_isolation import create_port_key_headers
         
         portkey_headers , portkey_gateway_url = create_port_key_headers(trace_id='internal_call')
         self.model_gpt_mini = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
-        self.model_gemini_flash = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY)
-        self.model_gemini_flash_no_thinking = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0)
+        self.model_gemini_flash = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", google_api_key=settings.GEMINI_API_KEY)
+        self.model_gemini_flash_no_thinking = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0)
     async def with_structured_output(self, schema: BaseModel, prompt: str):
         structured_llm = self.model_gemini_flash.with_structured_output(schema)
         return await structured_llm.ainvoke(prompt)
@@ -68,7 +66,7 @@ class AIService:
 
         # Get cache name from Redis
         cache_name = await get_planning_cache_name()
-        planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0, cached_content=cache_name)
+        planning_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0, cached_content=cache_name)
 
         """
         Enhanced planning call that returns specific tool function IDs needed for the task.
@@ -110,7 +108,7 @@ class AIService:
             messages.append(retry_hint)
 
             # Retry the planning call, with a stronger llm.
-            planning_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.GEMINI_API_KEY, cached_content=cache_name)
+            planning_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", google_api_key=settings.GEMINI_API_KEY, cached_content=cache_name)
             planning_llm = planning_llm.with_structured_output(GranularPlanningResponse)
             response_raw = await planning_llm.ainvoke(messages)
             for tool in response_raw.tool_calls:

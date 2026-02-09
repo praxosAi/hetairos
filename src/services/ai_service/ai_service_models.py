@@ -35,5 +35,3 @@ class GranularPlanningResponse(BaseModel):
     plan: Optional[str] = Field(None, description="A detailed plan outlining the steps, if needed.")
     steps: Optional[List[str]] = Field(default_factory=list, description="Actionable steps for the task.")
 
-
-

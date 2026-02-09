@@ -11,9 +11,8 @@ from typing import Dict, Any, Optional
 
 class SubscriptionTier(str, Enum):
     """Subscription tier levels"""
-    FREE = "free"
-    PRO = "pro"
-    ENTERPRISE = "enterprise"
+    PERSONAL = "personal"
+    PROFESSIONAL = "professional"
 
 
 class TierLimits:
@@ -21,60 +20,24 @@ class TierLimits:
 
     # Tier definitions
     TIERS = {
-        SubscriptionTier.FREE: {
-            # Messaging Platform Limits (only ONE total)
-            "messaging_platforms_total": 1,  # Can only connect ONE of: Telegram, WhatsApp, or iMessage
+        SubscriptionTier.PERSONAL: {
+            "messaging_platforms_total": -1,
             "messaging_platforms_allowed": ["telegram", "whatsapp", "imessage"],
-
-            # Email Workspace Limits (only ONE total)
-            "email_workspaces_total": 1,  # Can only connect ONE of: Gmail or Outlook
+            "email_workspaces_total": 1,
             "email_workspaces_allowed": ["gmail", "outlook"],
-
-            # Feature Restrictions
-            "video_generation_enabled": False,  # No video generation for free tier
-
-            # Additional Integration Limits
-            "calendar_integrations_total": 1,  # One calendar (Google or Microsoft)
-            "file_storage_total": 0,  # No additional file storage integrations (Dropbox, etc.)
-            "project_management_total": 0,  # No project management (Notion, Trello, etc.)
-            "communication_tools_total": 0,  # No additional communication tools (Slack, Discord, etc.)
-
-            # Usage Limits (for future rate limiting)
-            "messages_per_day": 50,
-            "messages_per_month": 1000,
-            "api_calls_per_hour": 100,
-            "file_uploads_per_day": 10,
-            "max_file_size_mb": 10,
-        },
-
-        SubscriptionTier.PRO: {
-            # Messaging Platform Limits (unlimited)
-            "messaging_platforms_total": -1,  # -1 = unlimited
-            "messaging_platforms_allowed": ["telegram", "whatsapp", "imessage"],
-
-            # Email Workspace Limits (unlimited)
-            "email_workspaces_total": -1,  # Unlimited
-            "email_workspaces_allowed": ["gmail", "outlook"],
-
-            # Feature Restrictions
-            "video_generation_enabled": True,  # Video generation enabled
-
-            # Additional Integration Limits
-            "calendar_integrations_total": -1,  # Unlimited
-            "file_storage_total": -1,  # Unlimited file storage integrations
-            "project_management_total": -1,  # Unlimited project management tools
-            "communication_tools_total": -1,  # Unlimited communication tools
-
-            # Usage Limits
-            "messages_per_day": -1,  # Unlimited
-            "messages_per_month": -1,  # Unlimited
+            "video_generation_enabled": True,
+            "calendar_integrations_total": -1,
+            "file_storage_total": -1,
+            "project_management_total": -1,
+            "communication_tools_total": -1,
+            "messages_per_day": -1,
+            "messages_per_month": -1,
             "api_calls_per_hour": 1000,
-            "file_uploads_per_day": -1,  # Unlimited
+            "file_uploads_per_day": -1,
             "max_file_size_mb": 100,
         },
 
-        SubscriptionTier.ENTERPRISE: {
-            # Same as PRO for now, can customize later
+        SubscriptionTier.PROFESSIONAL: {
             "messaging_platforms_total": -1,
             "messaging_platforms_allowed": ["telegram", "whatsapp", "imessage"],
             "email_workspaces_total": -1,
@@ -92,57 +55,21 @@ class TierLimits:
         }
     }
 
-    # Integration type mappings
-    INTEGRATION_CATEGORIES = {
-        "messaging": ["telegram", "whatsapp", "imessage"],
-        "email": ["gmail", "outlook"],
-        "calendar": ["google_calendar", "microsoft_calendar"],
-        "file_storage": ["dropbox", "google_drive", "onedrive"],
-        "project_management": ["notion", "trello", "asana"],
-        "communication": ["slack", "discord", "teams"]
-    }
-
     @classmethod
     def get_limits(cls, tier: str) -> Dict[str, Any]:
-        """
-        Get the limits for a specific tier.
-
-        Args:
-            tier: The subscription tier (free, pro, enterprise)
-
-        Returns:
-            Dictionary containing all limits for the tier
-        """
-        tier_enum = SubscriptionTier(tier.lower())
-        return cls.TIERS.get(tier_enum, cls.TIERS[SubscriptionTier.FREE])
-
-    @classmethod
-    def get_limit(cls, tier: str, limit_name: str) -> Any:
-        """
-        Get a specific limit value for a tier.
-
-        Args:
-            tier: The subscription tier
-            limit_name: The name of the limit to retrieve
-
-        Returns:
-            The limit value, or None if not found
-        """
-        limits = cls.get_limits(tier)
-        return limits.get(limit_name)
+        if tier == "free":
+            tier_enum = SubscriptionTier.PERSONAL
+        elif tier == "pro" or tier == "enterprise":
+            tier_enum = SubscriptionTier.PROFESSIONAL
+        else:
+            try:
+                tier_enum = SubscriptionTier(tier.lower())
+            except ValueError:
+                tier_enum = SubscriptionTier.PERSONAL
+        return cls.TIERS.get(tier_enum, cls.TIERS[SubscriptionTier.PERSONAL])
 
     @classmethod
     def is_feature_enabled(cls, tier: str, feature_name: str) -> bool:
-        """
-        Check if a feature is enabled for a tier.
-
-        Args:
-            tier: The subscription tier
-            feature_name: The feature to check (e.g., 'video_generation_enabled')
-
-        Returns:
-            True if the feature is enabled, False otherwise
-        """
         limits = cls.get_limits(tier)
         return limits.get(feature_name, False)
 
@@ -164,6 +91,12 @@ class TierLimits:
         Returns:
             Tuple of (can_add: bool, error_message: Optional[str])
         """
+        # Clean tier input
+        if tier == "free": 
+            tier = SubscriptionTier.PERSONAL
+        elif tier == "pro" or tier == "enterprise":
+            tier = SubscriptionTier.PROFESSIONAL
+
         limits = cls.get_limits(tier)
 
         # Determine the category and limit
@@ -199,8 +132,8 @@ class TierLimits:
 
         # Check if limit reached
         if current_count >= max_allowed:
-            if tier == SubscriptionTier.FREE:
-                return False, f"Free tier is limited to {max_allowed} {category} integration(s). Upgrade to Pro for unlimited access."
+            if tier == SubscriptionTier.PERSONAL:
+                return False, f"Personal tier is limited to {max_allowed} {category} integration(s). Upgrade to Professional for unlimited access."
             else:
                 return False, f"Maximum {category} integrations reached for your tier."
 
@@ -255,6 +188,5 @@ class TierLimits:
 
 
 # Export for easy access
-FREE_TIER_LIMITS = TierLimits.TIERS[SubscriptionTier.FREE]
-PRO_TIER_LIMITS = TierLimits.TIERS[SubscriptionTier.PRO]
-ENTERPRISE_TIER_LIMITS = TierLimits.TIERS[SubscriptionTier.ENTERPRISE]
+PERSONAL_TIER_LIMITS = TierLimits.TIERS[SubscriptionTier.PERSONAL]
+PROFESSIONAL_TIER_LIMITS = TierLimits.TIERS[SubscriptionTier.PROFESSIONAL]

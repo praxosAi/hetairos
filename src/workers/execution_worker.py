@@ -329,13 +329,13 @@ class ExecutionWorker:
             for item in event['payload']:
                 if item.get('type') in ['voice','video','audio','image','file','document']:
                     has_media = True
-                    logger.info(f"Event has media file, setting has_audio to True so we use gemini-2.5-pro model")
+                    logger.info(f"Event has media file, setting has_audio to True so we use gemini-3-pro-preview model")
                     break
         elif isinstance(event.get('payload'), dict):
             for file in event.get('payload', {}).get('files', []):
                 if file.get('type') in ['voice','video','audio','image','file','document']:
                     has_media = True
-                    logger.info(f"Event has media file, setting has_audio to True so we use gemini-2.5-pro model")
+                    logger.info(f"Event has media file, setting has_audio to True so we use gemini-3-pro-preview model")
                     break
         else:
             logger.info(f"Event payload is neither list nor dict, cannot determine media presence: {event.get('payload')}")

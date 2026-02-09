@@ -52,7 +52,7 @@ async def _regenerate_gemini_planning_cache() -> str:
 
         # Create cached content
         cache_result = client_gemini.caches.create(
-            model="gemini-2.5-flash",
+            model="gemini-3-flash-preview",
             config=types.CreateCachedContentConfig(
                 display_name='praxos_planning_prompt',
                 system_instruction=(

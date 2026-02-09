@@ -86,13 +86,13 @@ class LangGraphAgentRunner:
         self.llm = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
         ### temporary, investigating refusals.
         self.media_llm =ChatGoogleGenerativeAI(
-            model="gemini-2.5-pro",
+            model="gemini-3-pro-preview",
             api_key=settings.GEMINI_API_KEY,
             temperature=0.2,
             )
         # self.media_llm = self.llm
         self.fast_llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
+            model="gemini-3-flash-preview",
             api_key=settings.GEMINI_API_KEY,
             temperature=0.2,
             thinking_budget=0

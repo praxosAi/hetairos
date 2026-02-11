@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional
 
 class SubscriptionTier(str, Enum):
     """Subscription tier levels"""
-    PERSONAL = "personal"
+    PERSONAL = "free"
     PROFESSIONAL = "professional"
 
 

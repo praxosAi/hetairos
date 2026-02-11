@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional
 
 class SubscriptionTier(str, Enum):
     """Subscription tier levels"""
-    PERSONAL = "free"
+    PERSONAL = "personal"
     PROFESSIONAL = "professional"
 
 
@@ -57,9 +57,9 @@ class TierLimits:
 
     @classmethod
     def get_limits(cls, tier: str) -> Dict[str, Any]:
-        if tier == "free":
+        if tier == "personal":
             tier_enum = SubscriptionTier.PERSONAL
-        elif tier == "pro" or tier == "enterprise":
+        elif tier == "professional" or tier == "enterprise":
             tier_enum = SubscriptionTier.PROFESSIONAL
         else:
             try:

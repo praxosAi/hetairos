@@ -125,7 +125,7 @@ class UserService:
     def get_user_tier(self, user: dict) -> str:
         """Get user's current tier with automatic detection"""
         # If tier is explicitly set, use it
-        if user.get('tier') and user.get('tier') != SubscriptionTier.PERSONAL:
+        if user.get('tier') and (user.get('tier') != SubscriptionTier.PERSONAL or user.get('tier') == 'personal'):
             return user.get('tier')
 
         # Auto-detect tier based on billing status
@@ -152,7 +152,7 @@ class UserService:
 
         # Get user's tier
         tier = self.get_user_tier(user)
-
+        logger.info(f"User {str(user.get('_id'))} is on {tier} tier")
         # Free tier users always have access
         if tier == SubscriptionTier.PERSONAL:
             logger.info(f"User {str(user.get('_id'))} has free tier access")

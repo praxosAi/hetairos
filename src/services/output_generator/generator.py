@@ -100,7 +100,7 @@ class OutputGenerator:
         Generates speech from text using the Gemini API.
         """
         response = self.client.models.generate_content(
-            model="gemini-3-flash-preview-preview-tts",
+            model="gemini-2.5-flash-preview-preview-tts",
             contents=[text],
             config=types.GenerateContentConfig(
                 response_modalities=["AUDIO"],

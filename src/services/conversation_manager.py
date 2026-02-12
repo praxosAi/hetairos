@@ -75,10 +75,6 @@ class ConversationManager:
 
         message_id = await self.db.add_message(user_id, conversation_id, 'assistant', content, message_type, metadata, message_category)
 
-        # Fire-and-forget naming after first assistant response
-        import asyncio
-        asyncio.create_task(self._try_name_conversation(conversation_id))
-
         return message_id
 
     async def add_system_message(self, user_id: str, conversation_id: str, content: str, metadata: Dict = None, message_category: str = None) -> str:
@@ -235,7 +231,12 @@ Conversation:
 Return only the conversation name, nothing else. Make it concise and descriptive."""
 
             name = await ai_service.flash_call(prompt)
-            name = name.content.strip().strip('"').strip("'")  # Clean up quotes
+            name_text = ''
+            for part in name.content:
+                if part['type'] == 'text':
+                    name_text += part['text']
+
+            name = name_text.strip().strip('"').strip("'")  # Clean up quotes
 
             # Update conversation with the generated name
             await self.db.update_conversation_name(conversation_id, name)

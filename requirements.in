@@ -31,8 +31,8 @@ langgraph-prebuilt
 langchain[openai]
 langchain-community
 google-genai
-google-ai-generativelanguage==0.8.0
-langchain-google-genai==3.0.0
+google-ai-generativelanguage==0.10.0
+langchain-google-genai==4.0.0
 langchain_google_community
 pydantic
 croniter
@@ -57,3 +57,4 @@ python-multipart
 google-search-results
 slack-sdk
 PyNaCl
+httpx-aiohttp

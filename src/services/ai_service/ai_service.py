@@ -20,8 +20,8 @@ class AIService:
         
         portkey_headers , portkey_gateway_url = create_port_key_headers(trace_id='internal_call')
         self.model_gpt_mini = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
-        self.model_gemini_flash = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", google_api_key=settings.GEMINI_API_KEY)
-        self.model_gemini_flash_no_thinking = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0)
+        self.model_gemini_flash = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", google_api_key=settings.GEMINI_API_KEY,   include_thoughts=True)
+        self.model_gemini_flash_no_thinking = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", google_api_key=settings.GEMINI_API_KEY, thinking_level = 'minimal', include_thoughts=False)
     async def with_structured_output(self, schema: BaseModel, prompt: str):
         structured_llm = self.model_gemini_flash.with_structured_output(schema)
         return await structured_llm.ainvoke(prompt)
@@ -66,7 +66,7 @@ class AIService:
 
         # Get cache name from Redis
         cache_name = await get_planning_cache_name()
-        planning_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", google_api_key=settings.GEMINI_API_KEY, thinking_budget=0, cached_content=cache_name)
+        planning_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", google_api_key=settings.GEMINI_API_KEY, thinking_level = 'minimal', cached_content=cache_name, include_thoughts=True)
 
         """
         Enhanced planning call that returns specific tool function IDs needed for the task.
@@ -108,7 +108,7 @@ class AIService:
             messages.append(retry_hint)
 
             # Retry the planning call, with a stronger llm.
-            planning_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", google_api_key=settings.GEMINI_API_KEY, cached_content=cache_name)
+            planning_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", google_api_key=settings.GEMINI_API_KEY, cached_content=cache_name , include_thoughts=True)
             planning_llm = planning_llm.with_structured_output(GranularPlanningResponse)
             response_raw = await planning_llm.ainvoke(messages)
             for tool in response_raw.tool_calls:

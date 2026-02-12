@@ -79,7 +79,7 @@ class OutputGenerator:
                     logger.warning(f"Could not add reference image: {e}")
 
         response = self.client.models.generate_content(
-            model="gemini-3-flash-preview-image",
+            model="gemini-3-pro-image-preview",
             contents=contents,
         )
         logger.info(f"image generated")
@@ -100,7 +100,7 @@ class OutputGenerator:
         Generates speech from text using the Gemini API.
         """
         response = self.client.models.generate_content(
-            model="gemini-2.5-flash-preview-preview-tts",
+            model="gemini-2.5-pro-tts",
             contents=[text],
             config=types.GenerateContentConfig(
                 response_modalities=["AUDIO"],

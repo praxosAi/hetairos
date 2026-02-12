@@ -1,4 +1,5 @@
 import pytz
+import asyncio
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple,Literal
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,ToolMessage
@@ -89,13 +90,15 @@ class LangGraphAgentRunner:
             model="gemini-3-pro-preview",
             api_key=settings.GEMINI_API_KEY,
             temperature=0.2,
+            include_thoughts=True
             )
         # self.media_llm = self.llm
         self.fast_llm = ChatGoogleGenerativeAI(
             model="gemini-3-flash-preview",
             api_key=settings.GEMINI_API_KEY,
             temperature=0.2,
-            thinking_budget=0
+            thinking_level = 'minimal',
+            include_thoughts=True,
             )
         self.llm = self.media_llm
         
@@ -431,6 +434,10 @@ class LangGraphAgentRunner:
             
             logger.info(f"Final response generated for execution {execution_id}: {final_response.model_dump_json(indent=2)}")
             final_response = await process_media_output(conversation_manager=self.conversation_manager, final_response=final_response, user_context=user_context, source=source, conversation_id=conversation_id)
+            
+            # Trigger conversation naming at the end of the execution cycle
+            asyncio.create_task(self.conversation_manager._try_name_conversation(conversation_id))
+
             execution_record["status"] = "completed"
             try:
                 messages_dictified = [msg.dict() for msg in final_state['messages']]

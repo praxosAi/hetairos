@@ -1,4 +1,4 @@
-from typing import Optional, List, Any, Dict
+from typing import Optional, List, Any, Dict, Union
 from langchain_core.tools import tool
 from src.integrations.gdrive.google_sheets_client import GoogleSheetsIntegration
 from src.tools.tool_types import ToolExecutionResponse
@@ -72,7 +72,7 @@ def create_sheets_tools(sheets_integration: GoogleSheetsIntegration, tool_regist
     async def update_sheet_values(
         spreadsheet_id: str,
         range_name: str,
-        values: List[List[Any]],
+        values: List[List[Union[str, int, float, bool]]], 
         account: Optional[str] = None
     ) -> ToolExecutionResponse:
         """
@@ -110,7 +110,7 @@ def create_sheets_tools(sheets_integration: GoogleSheetsIntegration, tool_regist
     async def append_sheet_rows(
         spreadsheet_id: str,
         range_name: str,
-        values: List[List[Any]],
+        values: List[List[Union[str, int, float, bool]]], 
         account: Optional[str] = None
     ) -> ToolExecutionResponse:
         """
@@ -215,7 +215,7 @@ def create_sheets_tools(sheets_integration: GoogleSheetsIntegration, tool_regist
         sheet_name: str,
         row: int,
         column: str,
-        value: Any,
+        value: Union[str, int, float, bool],
         account: Optional[str] = None
     ) -> ToolExecutionResponse:
         """

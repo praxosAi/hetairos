@@ -493,70 +493,70 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
                 context={"node_id": node_id}
             )
 
-    @tool
-    async def check_connected_integrations() -> ToolExecutionResponse:
-        """
-        Check which integrations the user has connected (Gmail, Slack, Notion, etc.).
-        Use this to determine what capabilities are available before planning actions.
+    # @tool
+    # async def check_connected_integrations() -> ToolExecutionResponse:
+    #     """
+    #     Check which integrations the user has connected (Gmail, Slack, Notion, etc.).
+    #     Use this to determine what capabilities are available before planning actions.
 
-        This is useful for:
-        - Checking if user has required integrations before attempting operations
-        - Discovering available integrations to suggest to the user
-        - Understanding the user's connected ecosystem
+    #     This is useful for:
+    #     - Checking if user has required integrations before attempting operations
+    #     - Discovering available integrations to suggest to the user
+    #     - Understanding the user's connected ecosystem
 
-        Returns:
-            List of connected integrations with their status and capabilities
+    #     Returns:
+    #         List of connected integrations with their status and capabilities
 
-        Example Usage:
-            User: "Can I send a Slack message?"
-            → Check integrations first, if Slack is connected, proceed; otherwise, offer to connect it
-        """
-        try:
-            logger.info("Checking connected integrations")
+    #     Example Usage:
+    #         User: "Can I send a Slack message?"
+    #         → Check integrations first, if Slack is connected, proceed; otherwise, offer to connect it
+    #     """
+    #     try:
+    #         logger.info("Checking connected integrations")
 
-            integrations = await praxos_client.get_nodes_by_type(
-                type_name="schema:Integration",
-                include_literals=True,
-                max_results=50
-            )
+    #         integrations = await praxos_client.get_nodes_by_type(
+    #             type_name="schema:Integration",
+    #             include_literals=True,
+    #             max_results=50
+    #         )
 
-            if isinstance(integrations, dict) and 'error' in integrations:
-                return ErrorResponseBuilder.from_exception(
-                    operation="check_connected_integrations",
-                    exception=Exception(integrations['error']),
-                    integration="Praxos"
-                )
+    #         if isinstance(integrations, dict) and 'error' in integrations:
+    #             return ErrorResponseBuilder.from_exception(
+    #                 operation="check_connected_integrations",
+    #                 exception=Exception(integrations['error']),
+    #                 integration="Praxos"
+    #             )
 
-            # Format for AI consumption
-            integration_summary = []
-            for integ in integrations:
-                data = integ.get('data', {})
-                properties = data.get('properties', {})
+    #         # Format for AI consumption
+    #         integration_summary = []
+    #         for integ in integrations:
+    #             data = integ.get('data', {})
+    #             properties = data.get('properties', {})
 
-                integration_summary.append({
-                    "name": data.get('label', 'Unknown'),
-                    "type": properties.get('integration_type', 'Unknown'),
-                    "status": properties.get('status', 'Unknown'),
-                    "capabilities": properties.get('capabilities', []),
-                    "account": properties.get('account', 'N/A')
-                })
+    #             integration_summary.append({
+    #                 "name": data.get('label', 'Unknown'),
+    #                 "type": properties.get('integration_type', 'Unknown'),
+    #                 "status": properties.get('status', 'Unknown'),
+    #                 "capabilities": properties.get('capabilities', []),
+    #                 "account": properties.get('account', 'N/A')
+    #             })
 
-            return ToolExecutionResponse(
-                status="success",
-                result={
-                    "integrations": integration_summary,
-                    "count": len(integration_summary),
-                    "connected": [i['type'] for i in integration_summary if i['status'] == 'active']
-                }
-            )
+    #         return ToolExecutionResponse(
+    #             status="success",
+    #             result={
+    #                 "integrations": integration_summary,
+    #                 "count": len(integration_summary),
+    #                 "connected": [i['type'] for i in integration_summary if i['status'] == 'active']
+    #             }
+    #         )
 
-        except Exception as e:
-            logger.error(f"Error checking integrations: {e}", exc_info=True)
-            return ErrorResponseBuilder.from_exception(
-                operation="check_connected_integrations",
-                exception=e,
-                integration="Praxos"
-            )
+    #     except Exception as e:
+    #         logger.error(f"Error checking integrations: {e}", exc_info=True)
+    #         return ErrorResponseBuilder.from_exception(
+    #             operation="check_connected_integrations",
+    #             exception=e,
+    #             integration="Praxos"
+    #         )
 
     all_tools = [
         query_praxos_memory,
@@ -570,7 +570,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
         update_knowledge_graph_literal,
         update_entity_properties_in_knowledge_graph,
         delete_from_knowledge_graph,
-        check_connected_integrations
+        # check_connected_integrations
     ]
     if tool_registry:
         tool_registry.apply_descriptions_to_tools(all_tools)

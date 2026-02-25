@@ -22,6 +22,60 @@ QWEN_API_KEY = settings.QWEN_API_KEY
 QWEN_MODEL_NAME = "Qwen/Qwen3-Embedding-0.6B"
 QWEN_DIMENSIONS = 1024
 
+
+import asyncio
+import httpx
+import numpy as np
+from google import genai
+from google.genai import types
+
+GEMINI_MODEL = "gemini-embedding-001"
+GEMINI_DIM = 768
+
+class GeminiEmbedder:
+    def __init__(self, api_key: str, *, max_conns=500, max_keepalive=200):
+        limits = httpx.Limits(
+            max_connections=max_conns,
+            max_keepalive_connections=max_keepalive,
+            keepalive_expiry=60.0,
+        )
+        transport = httpx.AsyncHTTPTransport(retries=0)
+        self._httpx = httpx.AsyncClient(limits=limits, transport=transport, timeout=60.0)
+
+        http_options = types.HttpOptions(
+            httpx_async_client=self._httpx,   # reuse pool
+        )
+        self._client = genai.Client(api_key=api_key, http_options=http_options)
+
+    async def aclose(self):
+        # docs: close async client explicitly
+        await self._client.aio.aclose()
+        await self._httpx.aclose()
+
+    async def embed_texts(self, texts, *, subbatch_size=50, concurrency=32):
+        sem = asyncio.Semaphore(concurrency)
+
+        async def one_batch(batch):
+            async with sem:
+                resp = await self._client.aio.models.embed_content(
+                    model=GEMINI_MODEL,
+                    contents=batch,
+                    config=types.EmbedContentConfig(
+                        output_dimensionality=GEMINI_DIM,
+                        task_type="CLUSTERING",
+                    ),
+                )
+                # resp.embeddings is SDK-structured; normalize to np here
+                return [np.array(e.values, dtype=np.float32) for e in resp.embeddings]
+
+        tasks = [
+            one_batch(texts[i:i+subbatch_size])
+            for i in range(0, len(texts), subbatch_size)
+        ]
+        out = await asyncio.gather(*tasks)
+        return [v for sub in out for v in sub]
+    
+gemini_embed = GeminiEmbedder(api_key=os.environ['GOOGLE_API_KEY'])
 async def get_embeddings_for_texts_qwen(texts, subbatch_size=100):
     """
     Get embeddings for a list of texts using the Qwen embedding engine.
@@ -259,7 +313,7 @@ class UserDocsManager:
 
         texts = [d["content"] for d in self.docs]
         try:
-            vectors = await get_embeddings_for_texts_qwen(texts)
+            vectors = await gemini_embed.embed_texts(texts)
             self.doc_vectors = np.array(vectors)
         except Exception as e:
             logger.error(f"Error embedding documents with Qwen: {e}")
@@ -279,7 +333,7 @@ class UserDocsManager:
 
         try:
             # Embed the query
-            query_embeddings = await get_embeddings_for_texts_qwen([query])
+            query_embeddings = await gemini_embed.embed_texts([query])
             if not query_embeddings:
                 return {"tools": [], "patterns": [], "capabilities": []}
             

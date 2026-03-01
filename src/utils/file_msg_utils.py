@@ -623,8 +623,51 @@ async def get_conversation_history(
             logger.warning(f"Could not add media to bus: {e}")
 
     logger.info(f"Fetched and reconstructed {len(fetch_tasks)} media messages")
-    # Return in original order, skipping any None (e.g., malformed entries)
-    return [m for m in history_slots if m is not None],has_media
+    
+    valid_history = []
+    history_slots_clean = [m for m in history_slots if m is not None]
+
+    made_tool_calls = set()
+    for msg in history_slots_clean:
+        if isinstance(msg, AIMessage) and getattr(msg, 'tool_calls', None):
+            for tc in msg.tool_calls:
+                made_tool_calls.add(tc.get('id'))
+                
+    answered_tool_calls = set()
+    for msg in history_slots_clean:
+        if isinstance(msg, ToolMessage) and getattr(msg, 'tool_call_id', None) in made_tool_calls:
+            answered_tool_calls.add(msg.tool_call_id)
+            
+    for msg in history_slots_clean:
+        if isinstance(msg, AIMessage) and getattr(msg, 'tool_calls', None):
+            valid_calls = [tc for tc in msg.tool_calls if tc.get('id') in answered_tool_calls]
+            if valid_calls:
+                msg.tool_calls = valid_calls
+                valid_history.append(msg)
+            else:
+                msg.tool_calls = []
+                if not msg.content:
+                    msg.content = "I tried to call a tool but there was an error."
+                valid_history.append(msg)
+        elif isinstance(msg, ToolMessage):
+            if getattr(msg, 'tool_call_id', None) in answered_tool_calls:
+                valid_history.append(msg)
+        else:
+            valid_history.append(msg)
+
+    # Final normalization pass for Gemini API strictness:
+    # A function call turn (AIMessage with tool_calls) MUST NOT be the first message 
+    # and MUST NOT immediately follow a SystemMessage.
+    final_history = []
+    for msg in valid_history:
+        if isinstance(msg, AIMessage) and getattr(msg, 'tool_calls', None):
+            if not final_history:
+                final_history.append(HumanMessage(content="(System initialized)"))
+            elif getattr(final_history[-1], 'type', '') == 'system' or isinstance(final_history[-1], SystemMessage):
+                final_history.append(HumanMessage(content="(System instruction acknowledged)"))
+        final_history.append(msg)
+
+    return final_history, has_media
 
 
 ##### placeholder for planner

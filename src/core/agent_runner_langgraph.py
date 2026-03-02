@@ -611,6 +611,7 @@ class LangGraphAgentRunner:
                 text_content = extract_text_from_chunk(chunk.content)
                 
                 if not text_content:
+                    logger.info("Received empty text content from chunk, skipping stream event.")
                     return
 
                 node_name = event.get("metadata", {}).get("langgraph_node", "")

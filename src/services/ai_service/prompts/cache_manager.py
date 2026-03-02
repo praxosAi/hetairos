@@ -17,7 +17,7 @@ TOOL_DOCS_HASH_KEY = "praxos:tool_docs_hash"
 GEMINI_CACHE_NAME_KEY = "praxos:gemini_planning_cache_name"
 CACHE_REGENERATION_LOCK_KEY = "praxos:cache_regeneration_lock"
 LOCK_TIMEOUT = 120  # 2 minutes
-GEMINI_CACHE_TTL = 1200  # 20 minutes (must match Gemini cache TTL)
+GEMINI_CACHE_TTL = 12000  # 20 minutes (must match Gemini cache TTL)
 
 
 async def _regenerate_gemini_planning_cache() -> str:
@@ -211,6 +211,8 @@ async def get_gemini_planning_cache_name() -> Optional[str]:
         cache_name = await redis_client.get(GEMINI_CACHE_NAME_KEY)
         if cache_name:
             cache_name = cache_name.decode() if isinstance(cache_name, bytes) else cache_name
+        else:
+            logger.error("Failed to get Gemini cache name from Redis after regeneration")
         return cache_name
 
     except Exception as e:

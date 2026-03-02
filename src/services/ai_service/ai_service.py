@@ -13,7 +13,7 @@ from typing import Tuple
 import asyncio
 logger = setup_logger(__name__)
 class AIService:
-    def __init__(self, model_name: str = "gemini-3-pro-preview"):
+    def __init__(self, model_name: str = "gemini-3.1-pro-preview"):
         self.model_gemini_pro = ChatGoogleGenerativeAI(model=model_name, google_api_key=settings.GEMINI_API_KEY)
         llm = init_chat_model("gpt-4o", model_provider="openai")
         from src.utils.portkey_headers_isolation import create_port_key_headers

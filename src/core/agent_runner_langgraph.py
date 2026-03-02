@@ -92,7 +92,7 @@ class LangGraphAgentRunner:
         self.llm = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
         ### temporary, investigating refusals.
         self.media_llm =ChatGoogleGenerativeAI(
-            model="gemini-3-pro-preview",
+            model="gemini-3.1-pro-preview",
             api_key=settings.GEMINI_API_KEY,
             temperature=0.2,
             include_thoughts=True
@@ -282,6 +282,8 @@ class LangGraphAgentRunner:
                     "content": plan_str,
                     "display_as": "thinking"
                 })
+            else:
+                logger.info(f"No plan string generated from granular planning. query_type {plan.query_type if plan else 'None'}, reasoning: {plan.reason if plan else 'None'}")
             tools = await self.tools_factory.create_tools(
                 user_context,
                 metadata,
@@ -290,7 +292,7 @@ class LangGraphAgentRunner:
                 required_tool_ids=required_tool_ids,
                 conversation_manager=self.conversation_manager
             )
-
+            logger.info(f"Tools loaded based on planning. ")
             # NEW: Type-driven parameter resolution
             resolution_context = None
             # if required_tool_ids and not minimal_tools:
@@ -454,8 +456,7 @@ class LangGraphAgentRunner:
             output_blobs = []
             
             # Persist the final response if it wasn't already handled by a communication tool
-            # or if it was a direct WebSocket stream (which needs explicit persistence)
-            if not final_state.get('reply_sent') or final_response.is_direct_stream:
+            if not final_state.get('reply_sent'):
                 if final_response.response and final_response.response.strip():
                     await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, final_response.response)
             
@@ -648,6 +649,14 @@ class LangGraphAgentRunner:
                 # Tool execution result - show friendly status, NOT raw output
                 tool_name = event.get("name", "")
                 
+                # 1. Ignore empty wrapper nodes (fixes UNKNOWN TOOL)
+                if not tool_name or tool_name in ["action", "unknown_tool"]:
+                    return
+                    
+                # 2. Ignore background communication tools (fixes REPLY_TO_USER_...)
+                if tool_name.startswith('reply_to_user_'):
+                    return
+
                 # Extract output for frontend display
                 output = event.get("data", {}).get("output")
                 

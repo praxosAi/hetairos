@@ -282,6 +282,8 @@ class LangGraphAgentRunner:
                     "content": plan_str,
                     "display_as": "thinking"
                 })
+            else:
+                logger.info(f"No plan string generated from granular planning. query_type {plan.query_type if plan else 'None'}, reasoning: {plan.reason if plan else 'None'}")
             tools = await self.tools_factory.create_tools(
                 user_context,
                 metadata,
@@ -290,7 +292,7 @@ class LangGraphAgentRunner:
                 required_tool_ids=required_tool_ids,
                 conversation_manager=self.conversation_manager
             )
-
+            logger.info(f"Tools loaded based on planning. ")
             # NEW: Type-driven parameter resolution
             resolution_context = None
             # if required_tool_ids and not minimal_tools:

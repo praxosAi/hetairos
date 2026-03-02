@@ -9,7 +9,7 @@ from bson import ObjectId
 from src.services.output_generator.generator import OutputGenerator
 from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64
 from src.utils.logging.base_logger import setup_logger
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,ToolMessage,SystemMessage
 from src.core.context import UserContext
 import asyncio
 from src.core.media_bus import media_bus

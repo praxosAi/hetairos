@@ -73,6 +73,11 @@ def extract_thinking_from_chunk(chunk: Any) -> str:
     return ""
 
 
+class ExecutionCancelledError(Exception):
+    """Exception raised when an agent execution is cancelled by the user."""
+    pass
+
+
 class LangGraphAgentRunner:
     def __init__(self,trace_id: str, has_media: bool = False,override_user_id: Optional[str] = None):
         
@@ -411,7 +416,29 @@ class LangGraphAgentRunner:
 
             ### for now, we remove it.
             # Always use streaming - buffer decides what to do with events
-            final_state = await self._run_with_streaming(app, initial_state, callbacks=[persistence_callback])
+            
+            # --- Cancellation Mechanism Setup ---
+            cancel_event = asyncio.Event()
+            
+            async def watch_for_cancellation(conv_id: str):
+                from src.utils.redis_client import redis_client
+                while not cancel_event.is_set():
+                    try:
+                        # Check Redis for the cancellation flag
+                        if await redis_client.get(f"cancel_exec:{conv_id}"):
+                            logger.info(f"Cancellation flag detected in Redis for conversation {conv_id}")
+                            cancel_event.set()
+                            break
+                    except Exception as e:
+                        logger.warning(f"Error checking cancellation flag: {e}")
+                    await asyncio.sleep(0.5)
+            
+            watcher_task = asyncio.create_task(watch_for_cancellation(conversation_id))
+            
+            try:
+                final_state = await self._run_with_streaming(app, initial_state, callbacks=[persistence_callback], cancel_event=cancel_event)
+            finally:
+                watcher_task.cancel()
 
             # Persist only NEW intermediate messages from this execution (tool calls, results, etc.)
             new_messages = final_state['messages'][len(initial_state['messages']):]
@@ -446,6 +473,16 @@ class LangGraphAgentRunner:
                 logger.error(f"Error uploading state messages to blob storage: {e}", exc_info=True)
             return final_response
 
+        except ExecutionCancelledError as e:
+            logger.info(f"Execution {execution_id} was cancelled by user.")
+            execution_record["status"] = "cancelled"
+            
+            # Notify frontend that the stream was aborted
+            await self.stream_buffer.write({"type": "stream_cancelled", "display_as": "status"})
+            
+            # Return empty response to prevent downstream context updates
+            return AgentFinalResponse(response="", delivery_platform=source, execution_notes="Cancelled", output_modality="text", file_links=[], generation_instructions=None)
+
         except Exception as e:
             logger.error(f"Error during agent run {execution_id}: {e}", exc_info=True)
             execution_record["status"] = "failed"
@@ -473,7 +510,8 @@ class LangGraphAgentRunner:
         self,
         app,
         initial_state: dict,
-        callbacks: list = []
+        callbacks: list = [],
+        cancel_event: Optional[asyncio.Event] = None
     ) -> dict:
         """Execute graph with streaming - writes to buffer"""
         final_state = None
@@ -488,6 +526,9 @@ class LangGraphAgentRunner:
                 },
                 version="v2"
             ):
+                if cancel_event and cancel_event.is_set():
+                    raise ExecutionCancelledError("Generation stopped by user.")
+
                 # Parse event and write to buffer (buffer decides if it publishes)
                 await self._handle_stream_event(event)
 
@@ -502,6 +543,10 @@ class LangGraphAgentRunner:
             })
 
             return final_state
+
+        except ExecutionCancelledError:
+            # Let this bubble up naturally so the main try-except block in run() handles it
+            raise
 
         except Exception as e:
             # Write error to buffer

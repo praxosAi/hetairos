@@ -79,7 +79,7 @@ class OutputGenerator:
                     logger.warning(f"Could not add reference image: {e}")
 
         response = self.client.models.generate_content(
-            model="gemini-3-pro-image-preview",
+            model="gemini-3.1-flash-image-preview",
             contents=contents,
         )
         logger.info(f"image generated")

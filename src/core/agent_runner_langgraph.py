@@ -508,7 +508,7 @@ class LangGraphAgentRunner:
             logger.error(f"Streaming error: {e}", exc_info=True)
             await self.stream_buffer.write({
                 "type": "error",
-                "message": str(e),
+                "message": "I'm sorry, I'm having trouble processing your request. Please try again later.",
                 "severity": "error",
                 "recoverable": False
             })

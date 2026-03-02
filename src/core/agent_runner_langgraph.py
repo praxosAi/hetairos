@@ -454,8 +454,7 @@ class LangGraphAgentRunner:
             output_blobs = []
             
             # Persist the final response if it wasn't already handled by a communication tool
-            # or if it was a direct WebSocket stream (which needs explicit persistence)
-            if not final_state.get('reply_sent') or final_response.is_direct_stream:
+            if not final_state.get('reply_sent'):
                 if final_response.response and final_response.response.strip():
                     await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, final_response.response)
             
@@ -648,6 +647,14 @@ class LangGraphAgentRunner:
                 # Tool execution result - show friendly status, NOT raw output
                 tool_name = event.get("name", "")
                 
+                # 1. Ignore empty wrapper nodes (fixes UNKNOWN TOOL)
+                if not tool_name or tool_name in ["action", "unknown_tool"]:
+                    return
+                    
+                # 2. Ignore background communication tools (fixes REPLY_TO_USER_...)
+                if tool_name.startswith('reply_to_user_'):
+                    return
+
                 # Extract output for frontend display
                 output = event.get("data", {}).get("output")
                 

@@ -637,7 +637,7 @@ async def get_conversation_history(
     for msg in history_slots_clean:
         if isinstance(msg, ToolMessage) and getattr(msg, 'tool_call_id', None) in made_tool_calls:
             answered_tool_calls.add(msg.tool_call_id)
-            
+            logger.info(f"Tool call with ID {msg.tool_call_id} was made and has a corresponding tool result message.")
     for msg in history_slots_clean:
         if isinstance(msg, AIMessage) and getattr(msg, 'tool_calls', None):
             valid_calls = [tc for tc in msg.tool_calls if tc.get('id') in answered_tool_calls]
@@ -647,6 +647,7 @@ async def get_conversation_history(
             else:
                 msg.tool_calls = []
                 if not msg.content:
+                    logger.info("AIMessage had tool calls but none were answered, and no content. Adding placeholder content.")
                     msg.content = "I tried to call a tool but there was an error."
                 valid_history.append(msg)
         elif isinstance(msg, ToolMessage):

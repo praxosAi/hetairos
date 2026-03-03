@@ -809,10 +809,10 @@ def extract_text_from_chunk(content: Any) -> str:
 def extract_thinking_from_chunk(chunk: Any) -> str:
     """Extract thinking/reasoning from chunk."""
     # Handle OpenAI/Azure reasoning content if available
-    if hasattr(chunk, 'additional_kwargs'):
-        thought = chunk.additional_kwargs.get("thought")
-        if thought:
-            return thought
+    # if hasattr(chunk, 'additional_kwargs'):
+    #     thought = chunk.additional_kwargs.get("thought")
+    #     if thought:
+    #         return thought
             
 
     content = chunk.content

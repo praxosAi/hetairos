@@ -60,7 +60,7 @@ async def generate_final_response(state: AgentState):
             last_msg_content = extract_text_from_chunk(last_msg.content)
             if isinstance(last_msg_content, str) and last_msg_content.strip():
                 logger.info("Skipping fallback - response already streamed via WebSocket (Direct Text), response content: " + str(last_msg_content[:200]) + "...")
-                msg_reasoning = extract_thinking_from_chunk(last_msg.content)
+                msg_reasoning = extract_thinking_from_chunk(last_msg)
                 from src.core.models.agent_runner_models import AgentFinalResponse
                 return {
                     "final_response": AgentFinalResponse(

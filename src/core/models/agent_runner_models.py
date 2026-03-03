@@ -11,8 +11,8 @@ class AgentFinalResponse(BaseModel):
     """The final structured response from the agent."""
     response: str = Field(description="The final, user-facing response to be delivered.")
     execution_notes: Optional[str] = Field(description="Internal notes about the execution, summarizing tool calls or errors.")
-
-    delivery_platform: str = Field(description="The channel for the response. Should be the same as the input source, unless otherwise specified.", enum=["email", "whatsapp", "websocket", "telegram",'imessage','slack','discord','mcp'])
+    reasonings: Optional[str] = Field(description="Detailed reasoning or thought process of the agent, if applicable.")
+    delivery_platform: str = Field(default='',description="The channel for the response. Should be the same as the input source, unless otherwise specified.", enum=["email", "whatsapp", "websocket", "telegram",'imessage','slack','discord','mcp'])
     output_modality: Optional[str] = Field(description="The modality of the output, e.g., text, image, file, etc. unless otherwise specified by user needs, this should be text", enum=["text", "voice", 'audio', "image", "video",'file'])
     generation_instructions: Optional[str] = Field(description="Instructions for generating audio, video, or image if applicable.")
     file_links: Optional[List[FileLink]] = Field(description="Links to any files generated or used in the response.")

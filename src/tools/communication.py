@@ -31,15 +31,15 @@ def create_platform_messaging_tools(
     tools = []
     # Always create tool for source platform
     ## force not create websocket tool for now.
-    # if source.lower() != 'websocket':
-    source_tool = _create_reply_tool(source, user_id, metadata, conversation_manager)
-    tools.append(source_tool)
+    if source.lower() != 'websocket':
+        source_tool = _create_reply_tool(source, user_id, metadata, conversation_manager)
+        tools.append(source_tool)
 
     # Optionally create tools for other connected platforms
     if available_platforms:
         for platform in available_platforms:
-            # if platform.lower == 'websocket':
-            #     continue  # skip websocket tool for other platforms
+            if platform.lower == 'websocket':
+                continue  # skip websocket tool for other platforms
             if platform.lower() != source.lower() and platform.lower() not in ['email']:
                 platform_tool = _create_reply_tool(platform.lower(), user_id, metadata)
                 tools.append(platform_tool)

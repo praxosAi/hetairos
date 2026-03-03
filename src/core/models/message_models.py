@@ -67,6 +67,12 @@ class MessageCategory(str, Enum):
     These are purely internal and should never be shown to users.
     Currently rarely used, reserved for future internal messaging needs.
     """
+    REASONING = "reasoning"
+    """
+    Dedicated category for reasoning content extracted from model responses.
+    This allows reasoning content to be stored separately and accessed directly,
+    rather than being mixed into conversation messages.
+    """
 
 
 # Default category for backward compatibility with existing messages

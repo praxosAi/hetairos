@@ -89,7 +89,6 @@ class AIService:
 
         # structured_llm = planning_llm.with_structured_output(GranularPlanningResponse)
         response_raw = await planning_llm.ainvoke(messages)
-
         ## now, we must cast it
         planning = None
         for tool in response_raw.tool_calls:

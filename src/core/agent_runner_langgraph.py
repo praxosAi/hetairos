@@ -27,50 +27,10 @@ from src.services.ai_service.ai_service import ai_service
 # from src.core.callbacks.ToolMonitorCallback import ToolMonitorCallback
 from src.core.callbacks.ImmediatePersistenceCallback import ImmediatePersistenceCallback
 from src.core.nodes import call_model, generate_final_response, obtain_data, should_continue_router
-from src.utils.file_msg_utils import generate_file_messages,get_conversation_history,process_media_output, generate_user_messages_parallel,update_history
+from src.utils.file_msg_utils import generate_file_messages,get_conversation_history,process_media_output, generate_user_messages_parallel,update_history, extract_text_from_chunk,extract_thinking_from_chunk
 logger = setup_logger(__name__)
 
 
-def extract_text_from_chunk(content: Any) -> str:
-    """Extract plain text from various message chunk content formats."""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        text_parts = []
-        for part in content:
-            if isinstance(part, str):
-                text_parts.append(part)
-            elif isinstance(part, dict) and part.get("type") == "text":
-                text_parts.append(part.get("text", ""))
-        return "".join(text_parts)
-    return str(content) if content is not None else ""
-
-
-def extract_thinking_from_chunk(chunk: Any) -> str:
-    """Extract thinking/reasoning from chunk."""
-    # Handle OpenAI/Azure reasoning content if available
-    if hasattr(chunk, 'additional_kwargs'):
-        thought = chunk.additional_kwargs.get("thought")
-        if thought:
-            return thought
-            
-    # Handle Gemini 2.0 Thinking format
-    content = chunk.content
-    if isinstance(content, list):
-        thinking_parts = []
-        for part in content:
-            if isinstance(part, dict) and part.get("type") == "thought":
-                thinking_parts.append(part.get("thought", ""))
-            # Some versions might use 'reasoning' or just a different dict key
-            elif isinstance(part, dict) and part.get("type") == "reasoning":
-                thinking_parts.append(part.get("reasoning", ""))
-        return "".join(thinking_parts)
-    
-    # Check for dedicated reasoning_content field (newer LangChain)
-    if hasattr(chunk, 'reasoning_content') and chunk.reasoning_content:
-        return chunk.reasoning_content
-        
-    return ""
 
 
 class ExecutionCancelledError(Exception):
@@ -457,9 +417,11 @@ class LangGraphAgentRunner:
             
             # Persist the final response if it wasn't already handled by a communication tool
             if not final_state.get('reply_sent'):
+                logger.info("Final response was not sent via communication tool, adding to conversation history.")
                 if final_response.response and final_response.response.strip():
                     await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, final_response.response)
-            
+                if final_response.reasonings and final_response.reasonings.strip():
+                    await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, final_response.reasonings, message_type='text', message_category=MessageCategory.REASONING.value)
             logger.info(f"Final response generated for execution {execution_id}: {final_response.model_dump_json(indent=2)}")
             final_response = await process_media_output(conversation_manager=self.conversation_manager, final_response=final_response, user_context=user_context, source=source, conversation_id=conversation_id)
             
@@ -611,8 +573,10 @@ class LangGraphAgentRunner:
                 text_content = extract_text_from_chunk(chunk.content)
                 
                 if not text_content:
+                    logger.info("Received empty text content from chunk, skipping stream event. content: " + str(chunk.content))
                     return
-
+                else:
+                    logger.info(f"Extracted text content from chunk for streaming: {text_content[:500]}...")  # Log first 500 chars
                 node_name = event.get("metadata", {}).get("langgraph_node", "")
 
                 if node_name == "agent":

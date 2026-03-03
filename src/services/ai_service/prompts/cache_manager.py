@@ -102,13 +102,13 @@ async def check_and_regenerate_cache_if_needed():
         # Get current hash from YAML
         current_hash = get_tool_docs_hash()
         logger.info(f"Current tool docs hash: {current_hash}")
-
+        cache_exists = await redis_client.get(GEMINI_CACHE_NAME_KEY) is not None
         # Get stored hash from Redis
         stored_hash = await redis_client.get(TOOL_DOCS_HASH_KEY)
         if stored_hash:
             stored_hash = stored_hash.decode() if isinstance(stored_hash, bytes) else stored_hash
 
-        if stored_hash and stored_hash == current_hash:
+        if stored_hash and stored_hash == current_hash and cache_exists:
             logger.info("Tool docs hash unchanged, cache is up to date")
             return False
 

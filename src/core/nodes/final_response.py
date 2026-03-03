@@ -5,6 +5,7 @@ from langgraph.types import Command
 from src.core.models.agent_runner_models import AgentState
 from src.tools.tool_types import ToolExecutionResponse
 from src.utils.logging import setup_logger
+from src.utils.file_msg_utils import extract_text_from_chunk,extract_thinking_from_chunk
 import json
 logger = setup_logger('generate_final_response')
 
@@ -51,26 +52,34 @@ async def generate_final_response(state: AgentState):
     # If source is websocket, and the last message is a text response from AI, it was already streamed to the user.
     # We should NOT treat this as a failure/fallback case.
     last_msg = state['messages'][-1]
+    
     if source == 'websocket' and isinstance(last_msg, AIMessage) and last_msg.content and str(last_msg.content).strip():
         # Ensure it's not JUST a tool call (though unlikely to reach here if so, as router would catch it)
         # Standard AIMessage with content implies streaming happened.
-        logger.info("Skipping fallback - response already streamed via WebSocket (Direct Text)")
-        
-        from src.core.models.agent_runner_models import AgentFinalResponse
-        return {
-            "final_response": AgentFinalResponse(
-                response=str(last_msg.content),  # Capture content even if already streamed
-                execution_notes="Response streamed via WebSocket",
-                delivery_platform=source_to_use,
-                output_modality="text",
-                generation_instructions=None,
-                file_links=[],
-                is_direct_stream=True  # Set flag on model
-            ),
-            "reply_sent": True,
-            "reply_count": 1,
-            "is_direct_stream": True  # Keep for state tracking
-        }
+        try:
+            last_msg_content = extract_text_from_chunk(last_msg.content)
+            if isinstance(last_msg_content, str) and last_msg_content.strip():
+                logger.info("Skipping fallback - response already streamed via WebSocket (Direct Text), response content: " + str(last_msg_content[:200]) + "...")
+                msg_reasoning = extract_thinking_from_chunk(last_msg.content)
+                from src.core.models.agent_runner_models import AgentFinalResponse
+                return {
+                    "final_response": AgentFinalResponse(
+                        response=str(last_msg_content),  # Capture content even if already streamed
+                        execution_notes="Response streamed via WebSocket",
+                        reasonings=msg_reasoning,
+                        delivery_platform=source_to_use,
+                        output_modality="text",
+                        generation_instructions=None,
+                        file_links=[],
+                        is_direct_stream=True  # Set flag on model
+                    ),
+                    "reply_sent": False,
+                    "reply_count": 1,
+                    "is_direct_stream": True  # Keep for state tracking
+                }
+        except Exception as e:
+            logger.error(f"Error extracting text from last message for WebSocket check: {e}. Content was: {str(last_msg.content)}", exc_info=True)
+            # If we fail to extract text, we should still proceed with fallback rather than crashing.
 
     # Agent DID NOT use messaging tools - use fallback system
     logger.warning("Agent did not use messaging tools - using fallback response generation")

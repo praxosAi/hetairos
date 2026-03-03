@@ -90,7 +90,12 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
             logger.info("Last message is a ToolMessage; checking for errors. or final message")
             tool_response = last_message.content
             logger.info(f"Tool response content: {tool_response}")
-            tool_response = ToolExecutionResponse(**json.loads(tool_response)) if isinstance(tool_response, str) else tool_response
+            try:
+                tool_response = ToolExecutionResponse(**json.loads(tool_response)) if isinstance(tool_response, str) else tool_response
+            except Exception as e:
+                logger.error(f"Failed to parse tool response: {e}. Content was: {tool_response}")
+                # If we can't parse the tool response, we should probably finalize to avoid an infinite loop
+                tool_response = tool_response
             if isinstance(tool_response, ToolExecutionResponse) and tool_response.final_message:
                 logger.info("Tool execution provided a final message; proceeding to finalize.")
             

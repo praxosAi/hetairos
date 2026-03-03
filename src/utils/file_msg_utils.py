@@ -787,3 +787,49 @@ async def update_history( conversation_manager: Any, new_messages: List[BaseMess
         except Exception as e:
             logger.error(f"Error persisting intermediate message: {e}", exc_info=True)
     logger.info(f"Persisted {inserted_ct} new intermediate messages to conversation log")
+
+
+
+
+def extract_text_from_chunk(content: Any) -> str:
+    """Extract plain text from various message chunk content formats."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts = []
+        for part in content:
+            if isinstance(part, str):
+                text_parts.append(part)
+            elif isinstance(part, dict) and part.get("type") == "text":
+                text_parts.append(part.get("text", ""))
+        return "".join(text_parts)
+    return str(content) if content is not None else ""
+
+
+def extract_thinking_from_chunk(chunk: Any) -> str:
+    """Extract thinking/reasoning from chunk."""
+    # Handle OpenAI/Azure reasoning content if available
+    if hasattr(chunk, 'additional_kwargs'):
+        thought = chunk.additional_kwargs.get("thought")
+        if thought:
+            return thought
+            
+
+    content = chunk.content
+    if isinstance(content, list):
+        thinking_parts = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "thought":
+                thinking_parts.append(part.get("thought", ""))
+            # Some versions might use 'reasoning' or just a different dict key
+            elif isinstance(part, dict) and part.get("type") == "reasoning":
+                thinking_parts.append(part.get("reasoning", ""))
+            elif isinstance(part, dict) and part.get("type") == "thinking":
+                thinking_parts.append(part.get("thinking", ""))
+        return "".join(thinking_parts)
+    
+    # Check for dedicated reasoning_content field (newer LangChain)
+    if hasattr(chunk, 'reasoning_content') and chunk.reasoning_content:
+        return chunk.reasoning_content
+        
+    return ""

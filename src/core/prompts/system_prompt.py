@@ -202,4 +202,5 @@ ONLY ASK THE USER for information that is NOT in the knowledge graph.
         system_prompt += f"\n\nThe following plan has been created for you:\n{plan}\n Use it to guide your actions, but do not feel bound by it. You can deviate from the plan if you think it's necessary."
 
     system_prompt += "\n\n**FINAL REMINDER**: You MUST use reply_to_user tools to communicate with the user. Your responses do NOT automatically reach the user unless you call the messaging tools. Always send your responses through the appropriate messaging tool for the platform."
+    system_prompt += " EXCEPTION: If the source is 'websocket', you must simply stream your response to the user. there is no tool for this. if you see mention of such a tool, note that it has been deprecated."
     return system_prompt

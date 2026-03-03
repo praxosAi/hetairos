@@ -70,7 +70,7 @@ class ConversationManager:
         if not content or (isinstance(content, str) and content.replace(' ', '').lower() == ''):
             content = "No response from the assistant."
         if not isinstance(content, str):
-            logger.warning('we are casting content to str in add_assistant_message. this is strange, and must be investigated')
+            logger.warning(f'we are casting content to str in add_assistant_message. this is strange, and must be investigated. content was: {str(content)}')
             content = str(content)
 
         message_id = await self.db.add_message(user_id, conversation_id, 'assistant', content, message_type, metadata, message_category)

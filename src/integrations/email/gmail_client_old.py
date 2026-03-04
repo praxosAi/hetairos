@@ -125,9 +125,9 @@ class GmailIntegration(BaseIntegration):
                         processed_count += 1
                         
                         # Update rate limiter
-                        rate_limiter.increment_usage(self.user_id, "emails", 1)
+                        await rate_limiter.increment_usage(self.user_id, "emails", 1)
                         if message_attachment_count > 0:
-                            rate_limiter.increment_usage(self.user_id, "email_attachments", message_attachment_count)
+                            await rate_limiter.increment_usage(self.user_id, "email_attachments", message_attachment_count)
                     
                 except HttpError as e:
                     logger.error(f"Error fetching message {message['id']}: {e}")

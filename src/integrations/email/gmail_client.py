@@ -617,9 +617,9 @@ class GmailIntegration(BaseIntegration):
                     if attachment_count + msg_attachments <= settings.MAX_EMAIL_ATTACHMENTS:
                         detailed_messages.append(formatted_message)
                         attachment_count += msg_attachments
-                        rate_limiter.increment_usage(self.user_id, "emails", 1)
+                        await rate_limiter.increment_usage(self.user_id, "emails", 1)
                         if msg_attachments > 0:
-                            rate_limiter.increment_usage(self.user_id, "email_attachments", msg_attachments)
+                            await rate_limiter.increment_usage(self.user_id, "email_attachments", msg_attachments)
                 except HttpError as e:
                     logger.error(f"Error fetching message {message['id']} for {resolved_account}: {e}")
                     continue

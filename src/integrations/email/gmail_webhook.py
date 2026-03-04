@@ -236,7 +236,7 @@ class GmailWebhookHandler:
                 except Exception as e:
                     logger.error(f"Failed to process email message {message_id}: {e}")
 
-            rate_limiter.increment_usage(self.test_user, "gmail_webhooks", 1)
+            await rate_limiter.increment_usage(self.test_user, "gmail_webhooks", 1)
             return len(new_message_ids)
 
         except Exception as e:
@@ -272,7 +272,7 @@ class GmailWebhookHandler:
             history_items = history_result.get('history', [])
             
             # Update rate limiter
-            rate_limiter.increment_usage(self.test_user, "gmail_history_calls", 1)
+            await rate_limiter.increment_usage(self.test_user, "gmail_history_calls", 1)
             
             # Enhanced logging
             fetch_time = time.time() - time.time()  # This would be calculated properly in real implementation

@@ -2,7 +2,7 @@ import pytz
 import asyncio
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple,Literal
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage,ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
 import json
@@ -219,13 +219,13 @@ class LangGraphAgentRunner:
             plan_str = ''
             conversational = True
             if source in ['scheduled','recurring','triggered']:
-                ### here, we add an AI Message that indicates the scheduled nature of the request.
+                ### here, we add a Human Message that indicates the scheduled nature of the request.
                 if source == 'scheduled':
-                    schedule_msg = AIMessage(content=f"NOTE: This command was previously scheduled. The user scheduled this command to happen now. I must now perform the requested actions. I should not ask the user for confirmation. if the request was of form 'remind me to ...', I should interpret this as a command to send the user a message now, and not set up a future reminder.")
+                    schedule_msg = HumanMessage(content=f"[SYSTEM NOTIFICATION]: This command was previously scheduled. The user scheduled this command to happen now. You must now perform the requested actions. You must not ask the user for confirmation. If the request was of the form 'remind me to ...', you must interpret this as a command to send the user a message now, and you must not set up a future reminder.")
                 if source == 'recurring':
-                    schedule_msg = AIMessage(content=f"NOTE: This command was previously set to recur. The user set this command to recur, and this moment is one of the times it must be performed. I must now perform the requested actions. I should not ask the user for confirmation. if the request was of form 'remind me to ...', I should interpret this as a command to send the user a message now, and not set up a future reminder.")
+                    schedule_msg = HumanMessage(content=f"[SYSTEM NOTIFICATION]: This command was previously set to recur. The user set this command to recur, and this moment is one of the times it must be performed. You must now perform the requested actions. You must not ask the user for confirmation. If the request was of the form 'remind me to ...', you must interpret this as a command to send the user a message now, and you must not set up a future reminder.")
                 if source == 'triggered':
-                    schedule_msg = AIMessage(content=f"NOTE: This command was previously set to be triggered by an event. The triggering event has now occurred, and I must perform the requested actions. I should not ask the user for confirmation. if the request was of form 'if X happens, remind me to ...', I should interpret this as a command to send the user a message now, and not set up a future reminder.")
+                    schedule_msg = HumanMessage(content=f"[SYSTEM NOTIFICATION]: This command was previously set to be triggered by an event. The triggering event has now occurred, and you must perform the requested actions. You must not ask the user for confirmation. If the request was of the form 'if X happens, remind me to ...', you must interpret this as a command to send the user a message now, and you must not set up a future reminder.")
                 history.append(schedule_msg)
             try:
                 user_integration_names = await integration_service.get_user_integration_names(user_context.user_id)

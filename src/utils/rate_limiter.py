@@ -58,25 +58,15 @@ class RateLimiter:
     async def _check_limit_redis(self, user_id: str, resource_type: str, max_limit: int) -> tuple[bool, int]:
         """Redis-based rate limiting (works across pods)"""
         try:
-            import asyncio
-
             # Key format: rate_limit:{user_id}:{resource_type}:{hour}
             # Using hour-based windows
             now = datetime.utcnow()
             hour_key = now.strftime('%Y%m%d%H')
             redis_key = f"rate_limit:{user_id}:{resource_type}:{hour_key}"
 
-            # Run async Redis call in sync context
-            async def get_count():
-                count_str = await self.redis_client.get(redis_key)
-                return int(count_str) if count_str else 0
-
-            try:
-                current_count = await asyncio.run(get_count())
-            except RuntimeError:
-                # Already in async context
-                loop = asyncio.get_event_loop()
-                current_count = loop.run_until_complete(get_count())
+            # Direct async call
+            count_str = await self.redis_client.get(redis_key)
+            current_count = int(count_str) if count_str else 0
 
             is_allowed = current_count < max_limit
             remaining = max_limit - current_count
@@ -109,34 +99,24 @@ class RateLimiter:
 
         return is_allowed, remaining
 
-    def increment_usage(self, user_id: str, resource_type: str, count: int = 1):
+    async def increment_usage(self, user_id: str, resource_type: str, count: int = 1):
         """Increment usage count for user and resource type"""
         if self.use_redis:
-            self._increment_redis(user_id, resource_type, count)
+            await self._increment_redis(user_id, resource_type, count)
         else:
             self._increment_memory(user_id, resource_type, count)
 
-    def _increment_redis(self, user_id: str, resource_type: str, count: int):
+    async def _increment_redis(self, user_id: str, resource_type: str, count: int):
         """Increment in Redis"""
         try:
-            import asyncio
-
             now = datetime.utcnow()
             hour_key = now.strftime('%Y%m%d%H')
             redis_key = f"rate_limit:{user_id}:{resource_type}:{hour_key}"
 
-            async def increment():
-                # Increment counter
-                await self.redis_client.incrby(redis_key, count)
-                # Set expiry to 2 hours (allow for clock skew)
-                await self.redis_client.expire(redis_key, 7200)
-
-            try:
-                asyncio.run(increment())
-            except RuntimeError:
-                # Already in async context
-                loop = asyncio.get_event_loop()
-                loop.run_until_complete(increment())
+            # Increment counter
+            await self.redis_client.incrby(redis_key, count)
+            # Set expiry to 2 hours (allow for clock skew)
+            await self.redis_client.expire(redis_key, 7200)
 
         except Exception as e:
             logger.error(f"Redis increment failed: {e}")

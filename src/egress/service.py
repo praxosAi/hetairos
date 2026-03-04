@@ -213,9 +213,9 @@ class EgressService:
             await send_unauthorised_user_bot_reply(event.get("original_message"))
 
         elif event.get("email_type") == "reply":
-            await send_bot_reply(event.get('metadata',{}).get("original_message"), response_text)
+            await send_bot_reply((event.get('metadata') or {}).get("original_message"), response_text)
         elif event.get("email_type") == "new" :
-            await send_new_email_bot(event.get('metadata',{}).get("original_message"), event.get("new_email_message"))
+            await send_new_email_bot((event.get('metadata') or {}).get("original_message"), event.get("new_email_message"))
         else:
             logger.error(f"Unknown email_type '{event.get('email_type')}' in event metadata. Cannot send email response.")
             

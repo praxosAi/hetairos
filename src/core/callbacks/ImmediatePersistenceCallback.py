@@ -118,7 +118,10 @@ class ImmediatePersistenceCallback(AsyncCallbackHandler):
         """Run when tool ends running."""
         try:
             tool_name = kwargs.get('name', 'unknown_tool')
+            if tool_name == 'get_media_by_id':
+                return
             logger.info(f"ImmediatePersistenceCallback received tool end for {tool_name}, with output {output}")
+
             ### actually, it should be persisted for recording purposes, just not sent to user if messaging tool
             if tool_name.startswith('reply_to_user_'):
                 return

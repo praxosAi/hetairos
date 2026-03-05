@@ -98,12 +98,14 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
     nyc_tz = pytz.timezone(timezone_name)
     current_time_nyc = datetime.now(nyc_tz).isoformat()
     time_prompt = f"\nThe current time in the user's timezone is {current_time_nyc}. You should always assume the user is in the '{timezone_name}' timezone unless specified otherwise."
-    logger.info(time_prompt)
     tool_output_prompt = (
         "\nThe output format of most tools will be an object containing information, including the status of the tool execution. "
         "If the execution is successful, the status will be 'success'. In cases where the tool execution is not successful, "
         "there might be a property called 'user_message' which contains an error message. This message must be relayed to the user EXACTLY as it is. "
         "Do not add any other text to the user's message in these cases. If the preferd language has been set up to something different than English, you must translate the 'user_message' message to prefered language in the unsuccessful cases."
+        "\n**CRITICAL: Error Handling**"
+        "\nIf a tool call returns a status of 'error', or if you receive a system error (like a 500 or 503 Service Unavailable), you MUST use the `analyze_error` tool before taking any other action. "
+        "Use it to diagnose the failure based on the ErrorDetails provided and state your recovery plan. Do not simply repeat the same failed call without modification."
     )
     side_effect_explanation_prompt = """ note that there is a difference between the final output delivery modality, and using tools to send a response. the tool usage for communication is to be used when the act of sending a communication is a side effect, and not the final output or goal. """
     

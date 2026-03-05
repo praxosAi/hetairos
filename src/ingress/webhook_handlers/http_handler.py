@@ -116,7 +116,7 @@ async def handle_chat_request(
         )
 
     # Increment request count
-    rate_limiter.increment_usage(user_id, "http_requests", 1)
+    await rate_limiter.increment_usage(user_id, "http_requests", 1)
 
     # Check number of files
     if len(files) > settings.MAX_FILES_PER_REQUEST:

@@ -42,7 +42,8 @@ async def generate_final_response(state: AgentState):
                 delivery_platform=source_to_use,
                 output_modality="text",
                 generation_instructions=None,
-                file_links=[]
+                file_links=[],
+                reasonings=""
             ),
             "reply_sent": True,
             "reply_count": len(messaging_tool_calls)

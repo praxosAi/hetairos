@@ -1,0 +1,30 @@
+tool_id: analyze_error
+category: basic
+display_name: Analyze Error
+short_description: Analyzes an error from a previous tool call and proposes a recovery plan
+description: >
+  Use this tool when you encounter an error from a previous tool call.
+  It allows you to explicitly state your understanding of the error,
+  the root cause, and your proposed recovery plan before you take the next action.
+  This is mandatory for complex errors where the standard recovery actions are not sufficient.
+
+parameters:
+  - name: error_context
+    type: string
+    description: A brief summary of what went wrong based on the ErrorDetails provided to you.
+    required: true
+  - name: root_cause
+    type: string
+    description: Your analysis of the underlying reason for the error (e.g., "invalid parameter format", "expired authentication", "rate limiting").
+    required: true
+  - name: proposed_solution
+    type: string
+    description: Step-by-step plan for what you will do next to recover from this error.
+    required: true
+
+usage_guidelines:
+  - Call this tool if you encounter an error that prevents you from completing the user's request.
+  - Your proposed solution must take into account the recovery_actions provided in the error details.
+
+example_calls:
+  - 'analyze_error(error_context="Got a rate limit error from Gmail", root_cause="I sent too many requests in a short time", proposed_solution="I will wait 60 seconds as suggested and then retry the search")'

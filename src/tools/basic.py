@@ -37,6 +37,21 @@ def create_basic_tools(user_time_zone, tool_registry) -> list:
             result=plan
         )
 
+    @tool
+    def analyze_error(error_context: str, root_cause: str, proposed_solution: str) -> ToolExecutionResponse:
+        """Allows the AI to explicitly analyze and plan recovery for a tool error."""
+        analysis = (
+            f"**Error Analysis Logged**\n\n"
+            f"**Context:** {error_context}\n"
+            f"**Root Cause:** {root_cause}\n"
+            f"**Proposed Recovery Plan:** {proposed_solution}\n\n"
+            f"Please proceed with the execution of your recovery plan."
+        )
+        return ToolExecutionResponse(
+            status="success",
+            result=analysis
+        )
+
     # @tool
     # def ask_user_for_missing_params(params: str, question: str) -> ToolExecutionResponse:
     #     """Ask the user for missing parameters. this is a record keeping tool. you should call it if this is the case, as it will allow you to continue and ask the user. otherwise, you will get stuck. after this, you should simply reply to the user appropriately."""
@@ -47,6 +62,6 @@ def create_basic_tools(user_time_zone, tool_registry) -> list:
     #     )
 
     # return [get_current_time, get_current_task_plan_and_step, ask_user_for_missing_params]
-    all_tools = [get_current_time, get_current_task_plan_and_step]
+    all_tools = [get_current_time, get_current_task_plan_and_step, analyze_error]
     tool_registry.apply_descriptions_to_tools(all_tools)
     return all_tools

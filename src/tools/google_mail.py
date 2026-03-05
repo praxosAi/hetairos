@@ -183,7 +183,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
 
             return ToolExecutionResponse(
                 status="success", 
-                result=f"Successfully retrieved attachment '{filename}' and loaded it into the conversation context. You can now answer questions about it. Media ID, which you can use to access it from the bus to put it in context is : {media_id}, "
+                result=f"Successfully retrieved attachment '{filename}' and loaded it into the media bus. you can request it to be put into the context via its Media ID, which you can use to access it from the bus to put it in context. the media is : {media_id}, "
             )
         except Exception as e:
             return ErrorResponseBuilder.from_exception(

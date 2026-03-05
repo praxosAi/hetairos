@@ -9,8 +9,8 @@ or received during the current conversation, enabling:
 """
 
 from typing import Optional, Dict
-from langchain_core.tools import tool
-from langchain_core.messages import AIMessage
+
+from langchain_core.messages import AIMessage, HumanMessage
 from src.core.media_bus import media_bus
 from src.services.conversation_manager import ConversationManager
 from src.services.integration_service import integration_service
@@ -18,6 +18,9 @@ from src.utils.database import db_manager
 from src.utils.blob_utils import download_from_blob_storage_and_encode_to_base64
 from src.tools.tool_types import ToolExecutionResponse
 from src.tools.error_helpers import ErrorResponseBuilder
+from langchain.tools import tool
+
+
 from src.utils.logging import setup_logger
 
 logger = setup_logger(__name__)
@@ -105,7 +108,7 @@ def create_media_bus_tools(conversation_id: str, user_id: str, tool_registry = N
             )
 
     @tool
-    async def get_media_by_id(media_id: str) -> ToolExecutionResponse:
+    async def get_media_by_id( media_id: str) -> ToolExecutionResponse:
         """Retrieve a specific media item by its ID and load it into conversation context.
 
         This tool retrieves media from the media bus and adds it to the current conversation
@@ -192,6 +195,7 @@ def create_media_bus_tools(conversation_id: str, user_id: str, tool_registry = N
                     logger.warning(f"No blob_path for {ref.file_type}, using text description")
                     payload = {"type": "text", "text": f"[{ref.file_type.upper()}] {ref.description}"}
             elif ref.file_type in {"document", "file"}:
+                logger.info(f"Processing document media type for {ref.file_name}")
                 # Documents: download and encode
                 if ref.blob_path:
                     try:
@@ -209,6 +213,8 @@ def create_media_bus_tools(conversation_id: str, user_id: str, tool_registry = N
                 else:
                     payload = {"type": "text", "text": f"[{ref.file_type.upper()}] {ref.description}"}
 
+            
+
             # Add to conversation history so agent can reference it
             await conversation_manager.add_assistant_message(
                 user_id,
@@ -216,9 +222,9 @@ def create_media_bus_tools(conversation_id: str, user_id: str, tool_registry = N
                 f"[Retrieved media from bus] {ref.description}",
                 metadata={"media_id": media_id, "media_type": ref.file_type, "action": "media_retrieval"}
             )
-
+            
             # Mark as loaded to prevent duplicate loading
-            media_bus.mark_loaded_in_context(conversation_id, media_id)
+            
 
             logger.info(f"Added media {media_id} to conversation context (type={ref.file_type})")
 
@@ -226,18 +232,21 @@ def create_media_bus_tools(conversation_id: str, user_id: str, tool_registry = N
             return ToolExecutionResponse(
                 status="success",
                 result={
+                    "tool_name": "get_media_by_id",
                     "url": ref.url,
                     "file_name": ref.file_name,
                     "file_type": ref.file_type,
                     "description": ref.description,
                     "source": ref.source,
                     "media_id": ref.media_id,
-                    "message": f"Media loaded into context. {ref.description}"
+                    'conversation_id': conversation_id,
+                    "payload": payload,
+                    "message": f"Media ready for loading into context, router will auto load it when we get to that node. ref is described as {ref.description}"
                 }
             )
 
         except Exception as e:
-            logger.error(f"Error getting media by ID {media_id}: {e}", exc_info=True)
+            logger.error(f"Error getting media by ID {media_id}: {str(e)}", exc_info=True)
             return ErrorResponseBuilder.from_exception(
                 operation="get_media_by_id",
                 exception=e,

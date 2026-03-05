@@ -177,18 +177,23 @@ class GmailIntegration(BaseIntegration):
         return body
 
     async def _extract_attachments(self, message: Dict) -> List[Dict]:
-        """Extract attachment information from message"""
+        """Extract attachment information from message by recursively walking parts."""
         attachments = []
-        if 'parts' in message['payload']:
-            for part in message['payload']['parts']:
-                if part.get('filename'):
-                    attachments.append({
-                        "id": part['body'].get('attachmentId'),
-                        "filename": part['filename'],
-                        "mimetype": part['mimeType'],
-                        "size": part['body'].get('size', 0),
-                        "message_id": message['id']
-                    })
+        
+        def _walk_parts(p: Dict):
+            yield p
+            for child in p.get('parts', []) or []:
+                yield from _walk_parts(child)
+                
+        for part in _walk_parts(message.get('payload', {})):
+            if part.get('filename') and part.get('body', {}).get('attachmentId'):
+                attachments.append({
+                    "id": part['body'].get('attachmentId'),
+                    "filename": part['filename'],
+                    "mimetype": part.get('mimeType', 'application/octet-stream'),
+                    "size": part['body'].get('size', 0),
+                    "message_id": message.get('id')
+                })
         return attachments
 
     async def send_email(self, recipient: str, subject: str, body: str) -> Dict:

@@ -741,7 +741,10 @@ async def update_history( conversation_manager: Any, new_messages: List[BaseMess
             # If final_response.response is empty (e.g. streamed), we MUST save this message here.
             if msg == final_state['messages'][-1] and has_final_response_text:
                 continue
-
+            if isinstance(msg, HumanMessage) and '[PRAXOS SYSTEM NOTIFICATION]:' in msg.content:
+                logger.info("Skipping system notification message from conversation log persistence")
+                # Skip persisting system notifications as user messages
+                continue
             if isinstance(msg, AIMessage) and msg.tool_calls:
                 # Persist AI messages with tool calls
                 from src.core.models import MessageCategory
@@ -777,12 +780,17 @@ async def update_history( conversation_manager: Any, new_messages: List[BaseMess
             elif isinstance(msg, AIMessage) and msg.content:
                 # Persist plain AI messages (text response)
                 from src.core.models import MessageCategory
-                await conversation_manager.add_assistant_message(
-                    user_context.user_id,
-                    conversation_id,
-                    str(msg.content),
-                    message_category=MessageCategory.CONVERSATION.value
-                )
+                text_content = extract_text_from_chunk(msg.content)
+                reasoning_content = extract_thinking_from_chunk(msg.content)
+                if reasoning_content:
+                    await conversation_manager.add_assistant_message(user_context.user_id, conversation_id, reasoning_content, message_type='text', message_category=MessageCategory.REASONING.value)
+                if text_content:
+                    await conversation_manager.add_assistant_message(
+                        user_context.user_id,
+                        conversation_id,
+                        str(text_content),
+                        message_category=MessageCategory.CONVERSATION.value
+                    )
             inserted_ct += 1
         except Exception as e:
             logger.error(f"Error persisting intermediate message: {e}", exc_info=True)
@@ -814,8 +822,10 @@ def extract_thinking_from_chunk(chunk: Any) -> str:
     #     if thought:
     #         return thought
             
-
-    content = chunk.content
+    if isinstance(chunk, list):
+        content = chunk
+    else:
+        content = chunk.content if hasattr(chunk, 'content') else None
     if isinstance(content, list):
         thinking_parts = []
         for part in content:

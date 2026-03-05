@@ -221,11 +221,11 @@ class LangGraphAgentRunner:
             if source in ['scheduled','recurring','triggered']:
                 ### here, we add a Human Message that indicates the scheduled nature of the request.
                 if source == 'scheduled':
-                    schedule_msg = HumanMessage(content=f"[SYSTEM NOTIFICATION]: This command was previously scheduled. The user scheduled this command to happen now. You must now perform the requested actions. You must not ask the user for confirmation. If the request was of the form 'remind me to ...', you must interpret this as a command to send the user a message now, and you must not set up a future reminder.")
+                    schedule_msg = HumanMessage(content=f"[PRAXOS SYSTEM NOTIFICATION]: This command was previously scheduled. The user scheduled this command to happen now. You must now perform the requested actions. You must not ask the user for confirmation. If the request was of the form 'remind me to ...', you must interpret this as a command to send the user a message now, and you must not set up a future reminder.")
                 if source == 'recurring':
-                    schedule_msg = HumanMessage(content=f"[SYSTEM NOTIFICATION]: This command was previously set to recur. The user set this command to recur, and this moment is one of the times it must be performed. You must now perform the requested actions. You must not ask the user for confirmation. If the request was of the form 'remind me to ...', you must interpret this as a command to send the user a message now, and you must not set up a future reminder.")
+                    schedule_msg = HumanMessage(content=f"[PRAXOS SYSTEM NOTIFICATION]: This command was previously set to recur. The user set this command to recur, and this moment is one of the times it must be performed. You must now perform the requested actions. You must not ask the user for confirmation. If the request was of the form 'remind me to ...', you must interpret this as a command to send the user a message now, and you must not set up a future reminder.")
                 if source == 'triggered':
-                    schedule_msg = HumanMessage(content=f"[SYSTEM NOTIFICATION]: This command was previously set to be triggered by an event. The triggering event has now occurred, and you must perform the requested actions. You must not ask the user for confirmation. If the request was of the form 'if X happens, remind me to ...', you must interpret this as a command to send the user a message now, and you must not set up a future reminder.")
+                    schedule_msg = HumanMessage(content=f"[PRAXOS SYSTEM NOTIFICATION]: This command was previously set to be triggered by an event. The triggering event has now occurred, and you must perform the requested actions. You must not ask the user for confirmation. If the request was of the form 'if X happens, remind me to ...', you must interpret this as a command to send the user a message now, and you must not set up a future reminder.")
                 history.append(schedule_msg)
             try:
                 user_integration_names = await integration_service.get_user_integration_names(user_context.user_id)
@@ -635,7 +635,10 @@ class LangGraphAgentRunner:
                 # Don't stream raw tool results (like JSON from gmail_search)
                 # Instead, show friendly status message
                 friendly_name = tool_name.replace("_", " ").title()
-                logger.info(f"Tool {tool_name} completed with output: {output_str}")
+                if tool_name == 'get_media_by_id':
+                    logger.info('fetched file from media bus, preparing analysis')
+                else:
+                    logger.info(f"Tool {tool_name} completed with output: {output_str}")
                 await self.stream_buffer.write({
                     "type": "tool_status",
                     "tool": tool_name,

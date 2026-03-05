@@ -399,6 +399,7 @@ class GmailIntegration(BaseIntegration):
         part: Dict[str, Any],
         account: str, # Account is required here as it's an internal method
     ) -> Dict[str, Any]:
+        import json
         """Downloads a single attachment to blob storage for a specific account."""
         service, _, resolved_account = self._get_services_for_account(account)
         body = part.get("body", {}) or {}
@@ -412,10 +413,12 @@ class GmailIntegration(BaseIntegration):
         data_b64 = att.get("data")
         if not data_b64:
             return {}
-
+        
         raw_bytes = base64.urlsafe_b64decode(data_b64.encode("utf-8"))
         filename = part.get("filename") or "attachment"
-        mime_type = part.get("mimeType") or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        mime_type = part.get("mimeType") 
+        if mime_type is None or mime_type == "application/octet-stream":
+            mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
 
         # Account is now part of the blob path to prevent collisions
         blob_name = f"{str(user_record['_id'])}/gmail/{resolved_account}/{message_id}/{filename}"
@@ -630,18 +633,24 @@ class GmailIntegration(BaseIntegration):
             return []
 
     async def _extract_attachments(self, message: Dict) -> List[Dict]:
-        """Extract attachment information from message"""
+        """Extract attachment information from message by recursively walking parts."""
         attachments = []
-        if 'parts' in message['payload']:
-            for part in message['payload']['parts']:
-                if part.get('filename'):
-                    attachments.append({
-                        "id": part['body'].get('attachmentId'),
-                        "filename": part['filename'],
-                        "mimetype": part['mimeType'],
-                        "size": part['body'].get('size', 0),
-                        "message_id": message['id']
-                    })
+        import json
+        logger.info(f"message is {json.dumps(message,indent=4)}")
+        def _walk_parts(p: Dict):
+            yield p
+            for child in p.get('parts', []) or []:
+                yield from _walk_parts(child)
+                
+        for part in _walk_parts(message.get('payload', {})):
+            if part.get('filename') and part.get('body', {}).get('attachmentId'):
+                attachments.append({
+                    "id": part['body'].get('attachmentId'),
+                    "filename": part['filename'],
+                    "mimetype": part.get('mimeType', 'application/octet-stream'),
+                    "size": part['body'].get('size', 0),
+                    "message_id": message.get('id')
+                })
         return attachments
     async def get_message_by_id(self, message_id: str, *, account: Optional[str] = None) -> Dict:
         """
@@ -657,6 +666,34 @@ class GmailIntegration(BaseIntegration):
         except HttpError as e:
             logger.error(f"Error fetching message ID {message_id} for {resolved_account}: {e}")
             raise Exception(f"Could not retrieve email with ID {message_id}.") from e
+
+    async def retrieve_and_store_attachment(
+        self,
+        user_record: Dict[str, Any],
+        message_id: str,
+        attachment_id: str,
+        filename: str = "attachment",
+        mime_type: str = "application/octet-stream",
+        account: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Public wrapper to download an attachment by ID and store it in Blob storage.
+        Returns a normalized file dictionary.
+        """
+        mock_part = {
+            "filename": filename,
+            "mimeType": mime_type,
+            "body": {
+                "attachmentId": attachment_id
+            }
+        }
+        service, _, resolved_account = self._get_services_for_account(account)
+        return await self._download_and_store_attachment(
+            user_record=user_record,
+            message_id=message_id,
+            part=mock_part,
+            account=resolved_account
+        )
 
     async def reply_to_message(self, original_message_id: str, body: str, reply_all: bool = False, *, account: Optional[str] = None) -> Dict:
         """

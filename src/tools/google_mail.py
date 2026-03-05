@@ -10,7 +10,7 @@ from typing import Optional
 logger = setup_logger(__name__)
 
 
-def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry) -> List:
+def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conversation_id: Optional[str] = None) -> List:
     """
     Creates a comprehensive set of Gmail and Google Contacts tools.
     The tools are dynamically configured based on the user's connected accounts.
@@ -114,7 +114,9 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry) -> Li
         """
         try:
             # NOTE: Assumes you will add a `get_message_by_id` method to your GmailIntegration class.
+            logger.info(f"Attempting to retrieve email content. Message ID: {message_id}, Account: {account}")
             email_content = await gmail_integration.get_message_by_id(message_id=message_id, account=account)
+            logger.info(f"Successfully retrieved email content for Message ID: {message_id}. Email subject: {email_content.get('subject', 'N/A')}")
             return ToolExecutionResponse(status="success", result=email_content)
         except Exception as e:
             return ErrorResponseBuilder.from_exception(
@@ -122,6 +124,73 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry) -> Li
                 exception=e,
                 integration="Gmail",
                 context={"message_id": message_id, "resource_type": "email"}
+            )
+
+    @tool
+    async def retrieve_email_attachment(
+        message_id: str,
+        attachment_id: str,
+        filename: str,
+        mime_type: str,
+        account: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """
+        Downloads a specific email attachment and loads it into the conversation context so you can analyze it.
+        You MUST provide the filename and mime_type exactly as they appear in the email metadata.
+        """
+        try:
+            logger.info(f"Attempting to retrieve attachment. Message ID: {message_id}, Attachment ID: {attachment_id}, Filename: {filename}, MIME Type: {mime_type}, Account: {account}")
+            from src.services.user_service import user_service
+            user_record = user_service.get_user_by_id(gmail_integration.user_id)
+            if not user_record:
+                raise Exception("User not found.")
+
+            file_rec = await gmail_integration.retrieve_and_store_attachment(
+                user_record=user_record,
+                message_id=message_id,
+                attachment_id=attachment_id,
+                filename=filename,
+                mime_type=mime_type,
+                account=account
+            )
+            
+            if not file_rec:
+                raise Exception("Failed to download attachment or attachment was empty.")
+            logger.info(f"Successfully retrieved attachment and stored in blob storage. Blob path: {file_rec.get('blob_path')}, Inserted ID: {file_rec.get('inserted_id')}")
+            media_id = None
+            if conversation_id:
+                from src.core.media_bus import media_bus
+                
+                file_type = "document"
+                if mime_type.startswith("image/"):
+                    file_type = "image"
+                elif mime_type.startswith("audio/"):
+                    file_type = "audio"
+                elif mime_type.startswith("video/"):
+                    file_type = "video"
+                    
+                media_id = await media_bus.add_media(
+                    conversation_id=conversation_id,
+                    url="",  # No direct URL for blob storage items yet
+                    file_name=filename,
+                    file_type=file_type,
+                    description=f"Email attachment: {filename}",
+                    source="gmail",
+                    blob_path=file_rec.get("blob_path"),
+                    mime_type=mime_type,
+                    metadata={"inserted_id": file_rec.get("inserted_id")}
+                )
+
+            return ToolExecutionResponse(
+                status="success", 
+                result=f"Successfully retrieved attachment '{filename}' and loaded it into the conversation context. You can now answer questions about it. Media ID, which you can use to access it from the bus to put it in context is : {media_id}, "
+            )
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="retrieve_email_attachment",
+                exception=e,
+                integration="Gmail",
+                context={"message_id": message_id, "attachment_id": attachment_id}
             )
 
     @tool
@@ -392,7 +461,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry) -> Li
 
     all_tools = [
         send_email, reply_to_email, search_gmail, get_email_content,
-        get_emails_from_sender, find_contact_email, archive_email, mark_email_as_read,
+        retrieve_email_attachment, get_emails_from_sender, find_contact_email, archive_email, mark_email_as_read,
         mark_email_as_unread, star_email, unstar_email, move_email_to_spam,
         move_email_to_trash, create_email_draft, list_gmail_labels,
         add_label_to_email, remove_label_from_email

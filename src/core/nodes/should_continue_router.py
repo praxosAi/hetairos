@@ -1,18 +1,18 @@
 import json
 from typing import Literal
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
 from src.core.models.agent_runner_models import AgentState
 from src.tools.tool_types import ToolExecutionResponse, ErrorDetails
 from src.utils.logging import setup_logger
-
+from src.core.media_bus import media_bus
 logger = setup_logger('should_continue_router')
 
 
 def _format_error_for_ai(error_details: ErrorDetails) -> str:
     """Format error details into AI-readable guidance"""
-    msg = f"**Error in {error_details.operation}**\n\n"
+    msg = f"[PRAXOS SYSTEM NOTIFICATION]: **Error in {error_details.operation}**\n\n"
     msg += f"Category: {error_details.category.value}\n"
     msg += f"Message: {error_details.error_message}\n\n"
 
@@ -37,7 +37,7 @@ def _build_retry_message(error_details: ErrorDetails, attempt: int, max_attempts
     if not error_details:
         return f"The last tool execution resulted in an error. Retrying with adjusted approach (attempt {attempt}/{max_attempts})..."
 
-    msg = f"**Tool Execution Failed:** {error_details.operation}\n\n"
+    msg = f"[PRAXOS SYSTEM NOTIFICATION]: **Tool Execution Failed:** {error_details.operation}\n\n"
     msg += f"**Error Type:** {error_details.category.value}\n"
     msg += f"**Issue:** {error_details.error_message}\n\n"
 
@@ -79,7 +79,34 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
         new_messages = state['messages'][config.initial_state_len:]
         last_message = state['messages'][-1] if state['messages'] else None
         # --- Early exit conditions and specific routing ---
-
+        media_to_context = []
+        for msg in reversed(new_messages):
+            try:
+                if isinstance(msg,ToolMessage):
+                    tool_response = msg.content
+                    tool_response = ToolExecutionResponse(**json.loads(tool_response)) if isinstance(tool_response, str) else tool_response
+                    if isinstance(tool_response.result, dict) and tool_response.result.get('tool_name')== 'get_media_by_id' and tool_response.status == 'success':
+                        # now we must check if the media is added to context
+                        conv_id = state.get('metadata', {}).get('conversation_id')
+                        media_id = tool_response.result.get('media_id') 
+                        ref = media_bus.get_media(conv_id, media_id)
+                        if ref.loaded_in_context:
+                            continue
+                        payload = tool_response.result.pop('payload',{})
+                        if payload and payload.get('type') != 'text':
+                            media_to_context.append(HumanMessage(content=[payload]))
+                            media_bus.mark_loaded_in_context(conv_id, media_id)
+                        logger.info(f"added a payload to context")
+            except Exception as e:
+                logger.warning(f"Error while checking tool message for media context loading: {e}", exc_info=True)
+                continue  # If there's an error in this process, we should just skip and not block the agent's progress.
+        if len(media_to_context) > 0:
+            logger.info(f"Adding {len(media_to_context)} media items to context as new messages.")
+            return Command(
+                goto="agent",
+                update={"messages": state["messages"] + media_to_context}
+            )
+            # media_bus.mark_loaded_in_context(conversation_id, media_id)
                 # Special case: Scheduled/recurring/triggered note detected
         if isinstance(last_message, AIMessage) and last_message.content and "NOTE: This command was previously" in last_message.content:
             logger.info("Detected scheduled/recurring/triggered note; proceeding to action.")
@@ -89,7 +116,7 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
             # Check if the last tool call resulted in an error and if we can retry
             logger.info("Last message is a ToolMessage; checking for errors. or final message")
             tool_response = last_message.content
-            logger.info(f"Tool response content: {tool_response}")
+            logger.info(f"Tool response content: {tool_response[:200]}")
             try:
                 tool_response = ToolExecutionResponse(**json.loads(tool_response)) if isinstance(tool_response, str) else tool_response
             except Exception as e:
@@ -98,7 +125,7 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
                 tool_response = tool_response
             if isinstance(tool_response, ToolExecutionResponse) and tool_response.final_message:
                 logger.info("Tool execution provided a final message; proceeding to finalize.")
-            
+
                 return Command(
                     goto="finalize",
                     update={'reply_sent': True}
@@ -121,7 +148,7 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
                         f"Non-retryable error ({error_details.category.value}). "
                         f"Finalizing to inform user."
                     )
-                    appended_msg = AIMessage(content=_format_error_for_ai(error_details))
+                    appended_msg = HumanMessage(content=_format_error_for_ai(error_details))
                     return Command(
                         goto="finalize",
                         update={"messages": state["messages"] + [appended_msg]}
@@ -135,9 +162,9 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
                         f"{error_details.category.value if error_details else 'unknown'}"
                     )
                     if error_details:
-                        final_msg = AIMessage(content=_format_error_for_ai(error_details))
+                        final_msg = HumanMessage(content=_format_error_for_ai(error_details))
                     else:
-                        final_msg = AIMessage(content="Maximum retry attempts reached. Unable to complete the operation.")
+                        final_msg = HumanMessage(content="[PRAXOS SYSTEM NOTIFICATION]: Maximum retry attempts reached. It seems that you are unable to complete the operation.")
                     return Command(
                         goto="finalize",
                         update={"messages": state["messages"] + [final_msg]}
@@ -158,12 +185,12 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
                     else:
                         logger.info(f"Retrying with recovery strategy. Attempt {next_count}/{config.MAX_TOOL_ITERS}")
                 else:
-                    retry_msg = f"The last tool execution resulted in an error. Retrying with adjusted approach (attempt {next_count}/{config.MAX_TOOL_ITERS})..."
+                    retry_msg = f"[PRAXOS SYSTEM NOTIFICATION]: The last tool execution resulted in an error. Retry with adjusted approach (attempt {next_count}/{config.MAX_TOOL_ITERS})..."
                     logger.warning(f"Retrying without error_details. Attempt {next_count}/{config.MAX_TOOL_ITERS}")
 
                 return Command(
                     goto="agent",
-                    update={"messages": state["messages"] + [AIMessage(content=retry_msg)], "tool_iter_counter": next_count},
+                    update={"messages": state["messages"] + [HumanMessage(content=retry_msg)], "tool_iter_counter": next_count},
                 )
             ### if the last message is a tool message, and it was neither and error nor a final message, we just continue as normal.
 
@@ -180,9 +207,10 @@ def should_continue_router(state: AgentState) -> Command[Literal["obtain_data", 
         # 2) Stalled-tool path: If tools are expected but none were called, force an action.
         if not config.minimal_tools:
             tool_called = any(isinstance(m, AIMessage) and getattr(m, "tool_calls", None) for m in new_messages)
+            
             if not tool_called:
                 next_count = state.get("tool_iter_counter", 0) + 1
-                appended_msg = AIMessage(content=f"I need to use a tool to proceed. Consulting the plan and using the appropriate tool. Original plan:\n\n{config.plan_str}. If there is an issue preventing me from proceeding, I should use the reply tools to reply to the user and inform them, or ask for clarification.")
+                appended_msg = HumanMessage(content=f"[PRAXOS SYSTEM NOTIFICATION]: You need to use a tool to proceed. Consult the plan and use the appropriate tool. Original plan:\n\n{config.plan_str}. If there is an issue preventing you from proceeding, you should use the reply tools to reply to the user and inform them, or ask for clarification.")
                 
                 if next_count > config.MAX_TOOL_ITERS:
                     logger.error("Too many iterations without tool usage; finalizing.")

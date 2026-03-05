@@ -371,7 +371,7 @@ class AgentToolsFactory:
             idx, gmail_integration = integration_map['gmail']
             if authenticated_integrations[idx] is True:
                 try:
-                    tools.extend(create_gmail_tools(gmail_integration, tool_registry))
+                    tools.extend(create_gmail_tools(gmail_integration, tool_registry, conversation_id=conversation_id))
                     have_email_tool = True
                     logger.info("Gmail tools loaded")
                 except Exception as e:

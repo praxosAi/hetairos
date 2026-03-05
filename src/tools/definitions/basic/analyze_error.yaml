@@ -1,6 +1,7 @@
 tool_id: analyze_error
-
+category: basic
 display_name: Analyze Error
+short_description: Analyzes an error from a previous tool call and proposes a recovery plan
 description: >
   Use this tool when you encounter an error from a previous tool call.
   It allows you to explicitly state your understanding of the error,

@@ -1,0 +1,39 @@
+tool_id: retrieve_email_attachment
+category: gmail
+display_name: Retrieve Email Attachment
+short_description: Downloads a specific email attachment and loads it into the conversation context
+description: >
+  Downloads a specific email attachment using its attachment ID and loads it into the conversation context.
+  You MUST provide the filename and mime_type exactly as they appear in the email metadata.
+  Once retrieved, you will be able to view and answer questions about the file's content.
+  Use this after finding an email with attachments via `search_gmail` or `get_email_content`.
+
+parameters:
+  - name: message_id
+    type: string
+    description: The unique ID of the email message containing the attachment.
+    required: true
+  - name: attachment_id
+    type: string
+    description: The unique ID of the attachment (extracted from the email's 'attachments' array).
+    required: true
+  - name: filename
+    type: string
+    description: The exact filename of the attachment (e.g., 'invoice.pdf').
+    required: true
+  - name: mime_type
+    type: string
+    description: The exact mimeType of the attachment (e.g., 'application/pdf').
+    required: true
+  - name: account
+    type: string
+    description: The specific account to use if the user has multiple Gmail accounts connected. Optional.
+    required: false
+
+usage_guidelines:
+  - Call this tool only when the user explicitly asks about an attachment or its contents, or if understanding the attachment is strictly necessary.
+  - Make sure you pass the exact `attachment_id`, `filename`, and `mime_type` obtained from the email data.
+  - After successfully calling this tool, the document/media will be injected into your multimodal context automatically.
+
+example_calls:
+  - 'retrieve_email_attachment(message_id="18a1b2c3d4e5f6g7", attachment_id="ANGjdJ8...", filename="report.pdf", mime_type="application/pdf")'

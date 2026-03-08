@@ -155,7 +155,7 @@ class MicrosoftGraphIntegration(BaseIntegration):
         
         try:
             async with aiohttp.ClientSession() as session:
-                encoded_params = urlencode(params, safe="='+$()")
+                encoded_params = urlencode(params, safe="$\"'()", quote_via=quote)
                 url = f"{self.graph_endpoint}/me/messages?{encoded_params}"
                 
                 # We'll follow pagination up to a reasonable limit (e.g. 1000 messages) to build the frequency map
@@ -361,20 +361,21 @@ class MicrosoftGraphIntegration(BaseIntegration):
         if not self.access_token:
             raise Exception("Not authenticated")
         
-        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json","ConsistencyLevel": "eventual"}
         params = {
             "$filter": f"from/emailAddress/address eq '{sender_email}'",
             "$top": str(max_results),
-            "$orderby": "receivedDateTime desc"
+            "$orderby": "receivedDateTime desc",
+            "$count": "true",   # ← required alongside ConsistencyLevel
         }
         
         try:
             async with aiohttp.ClientSession() as session:
                 # Use URL encoded string for params to prevent issue with quoting
                 # Ensure we only encode it once
-                encoded_params = urlencode(params, safe="='+$()")
-                url = f"{self.graph_endpoint}/me/messages?{encoded_params}"
-                async with session.get(url, headers=headers) as response:
+                # encoded_params = urlencode(params, safe="$\"'()", quote_via=quote)
+                url = f"{self.graph_endpoint}/me/messages"
+                async with session.get(url, headers=headers, params=params) as response:
                     response.raise_for_status()
                     data = await response.json()
             
@@ -480,9 +481,9 @@ class MicrosoftGraphIntegration(BaseIntegration):
         
         try:
             async with aiohttp.ClientSession() as session:
-                encoded_params = urlencode(params, safe="=\"'+$()")
-                url = f"{self.graph_endpoint}/me/messages?{encoded_params}"
-                async with session.get(url, headers=headers) as response:
+                # encoded_params = urlencode(params, safe="$\"'", quote_via=quote)
+                url = f"{self.graph_endpoint}/me/messages"
+                async with session.get(url, headers=headers, params=params) as response:
                     response.raise_for_status()
                     data = await response.json()
                     

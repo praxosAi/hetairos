@@ -131,7 +131,7 @@ class MicrosoftGraphIntegration(BaseIntegration):
             logger.error(f"Error fetching Outlook messages: {e}")
             return []
 
-    async def get_frequent_senders(self, days_back: int = 30, max_senders: int = 15) -> List[Dict[str, Any]]:
+    async def get_frequent_senders(self, days_back: int = 30, max_senders: int = 15,max_messages: int = 1000) -> List[Dict[str, Any]]:
         """
         Fetches a summary of the most frequent email senders over the specified time period.
         It pulls only the 'from' metadata from recent emails to quickly aggregate counts.
@@ -155,15 +155,15 @@ class MicrosoftGraphIntegration(BaseIntegration):
         
         try:
             async with aiohttp.ClientSession() as session:
-                encoded_params = urlencode(params, safe="$\"'()", quote_via=quote)
-                url = f"{self.graph_endpoint}/me/messages?{encoded_params}"
+                # encoded_params = urlencode(params, safe="$\"'()", quote_via=quote)
+                url = f"{self.graph_endpoint}/me/messages"
                 
                 # We'll follow pagination up to a reasonable limit (e.g. 1000 messages) to build the frequency map
                 messages_processed = 0
-                max_messages_to_process = 1000
+                max_messages_to_process = max_messages
                 
                 while url and messages_processed < max_messages_to_process:
-                    async with session.get(url, headers=headers) as response:
+                    async with session.get(url, headers=headers, params=params) as response:
                         response.raise_for_status()
                         data = await response.json()
                         
@@ -361,12 +361,12 @@ class MicrosoftGraphIntegration(BaseIntegration):
         if not self.access_token:
             raise Exception("Not authenticated")
         
-        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json","ConsistencyLevel": "eventual"}
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
         params = {
-            "$filter": f"from/emailAddress/address eq '{sender_email}'",
+            "$search": f'"from:{sender_email}"',
             "$top": str(max_results),
-            "$orderby": "receivedDateTime desc",
-            "$count": "true",   # ← required alongside ConsistencyLevel
+            # "$orderby": "receivedDateTime desc",
+            # "$count": "true",   # ← required alongside ConsistencyLevel
         }
         
         try:
@@ -586,27 +586,44 @@ class MicrosoftGraphIntegration(BaseIntegration):
         return {"processed": len(message_ids), "successes": success_count, "failures": len(message_ids) - success_count, "results": results}
 
     async def bulk_move_emails(self, message_ids: List[str], destination_folder_id: str) -> Dict[str, Any]:
-        """Moves multiple emails simultaneously using concurrency."""
         if not self.access_token:
             raise Exception("Not authenticated")
-
+        
         headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
         payload = {"destinationId": destination_folder_id}
-        
-        async def _move(session, msg_id):
-            try:
-                async with session.post(f"{self.graph_endpoint}/me/messages/{msg_id}/move", headers=headers, json=payload) as resp:
-                    resp.raise_for_status()
-                    return {"id": msg_id, "status": "success"}
-            except Exception as ex:
-                return {"id": msg_id, "status": "failed", "error": str(ex)}
+        all_results = []
 
-        async with aiohttp.ClientSession() as session:
-            tasks = [_move(session, msg_id) for msg_id in message_ids]
-            results = await asyncio.gather(*tasks)
+        # Graph $batch supports up to 20 requests per call
+        for chunk in [message_ids[i:i+20] for i in range(0, len(message_ids), 20)]:
+            batch_body = {
+                "requests": [
+                    {
+                        "id": str(idx),
+                        "method": "POST",
+                        "url": f"/me/messages/{msg_id}/move",
+                        "headers": {"Content-Type": "application/json"},
+                        "body": payload,
+                    }
+                    for idx, msg_id in enumerate(chunk)
+                ]
+            }
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "https://graph.microsoft.com/v1.0/$batch",
+                    headers=headers, json=batch_body
+                ) as resp:
+                    resp.raise_for_status()
+                    data = await resp.json()
+                    for r in data.get("responses", []):
+                        msg_id = chunk[int(r["id"])]
+                        status = "success" if 200 <= r["status"] < 300 else "failed"
+                        all_results.append({"id": msg_id, "status": status})
             
-        success_count = sum(1 for r in results if r["status"] == "success")
-        return {"processed": len(message_ids), "successes": success_count, "failures": len(message_ids) - success_count, "results": results}
+            await asyncio.sleep(1)  # breathing room between batches
+
+        success_count = sum(1 for r in all_results if r["status"] == "success")
+        return {"processed": len(message_ids), "successes": success_count,
+                "failures": len(message_ids) - success_count, "results": all_results}
     async def _graph_get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         headers = {
             "Authorization": f"Bearer {self.access_token}",

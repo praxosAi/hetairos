@@ -15,7 +15,7 @@ from src.services.message_encryption import message_encryption
 
 class ConversationDatabase:
     def __init__(self, connection_string: str = settings.MONGO_CONNECTION_STRING, db_name: str = settings.MONGO_DB_NAME):
-        self.client = motor.motor_asyncio.AsyncIOMotorClient(connection_string)
+        self.client = motor.motor_asyncio.AsyncIOMotorClient(connection_string, maxIdleTimeMS=120000)
         self.db = self.client[db_name]
         self.conversations = self.db["conversations"]
         self.users = self.db["users"]
@@ -334,7 +334,7 @@ class DatabaseManager:
     """Handles persistent storage for system/infrastructure data using MongoDB."""
     
     def __init__(self, connection_string: str = settings.MONGO_CONNECTION_STRING, db_name: str = settings.MONGO_DB_NAME):
-        self.client = motor.motor_asyncio.AsyncIOMotorClient(connection_string)
+        self.client = motor.motor_asyncio.AsyncIOMotorClient(connection_string, maxIdleTimeMS=120000)
         self.db = self.client[db_name]
         self.integrations = self.db["integrations"]
         self.integration_tokens = self.db["integration_tokens"]

@@ -1,8 +1,8 @@
-tool_id: get_emails_from_sender
+tool_id: get_google_emails_from_sender
 category: gmail
-display_name: get_emails_from_sender
+display_name: get_google_emails_from_sender
 
-short_description: Fetches recent emails from a specific sender
+short_description: Fetches recent emails on Gmail from a specific sender
 
 arguments:
   - name: sender_email
@@ -16,7 +16,7 @@ arguments:
     default: 10
   - name: account
     type: str
-    description: Account identifier (when multiple accounts connected)
+    description: Account identifier (when multiple Google accounts connected)
     required: false
 
 returns: List of emails from the specified sender

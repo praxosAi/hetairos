@@ -279,13 +279,29 @@ class AgentToolsFactory:
             return tools
 
         # Determine which integrations need authentication based on required tools
-        needs_gmail = needs_category(['send_email', 'reply_to_email', 'search_gmail', 'get_email_content','get_emails_from_sender', 'find_contact_email', 'archive_email', 'mark_email_as_read','mark_email_as_unread', 'star_email', 'unstar_email', 'move_email_to_spam','move_email_to_trash', 'create_email_draft', 'list_gmail_labels','add_label_to_email', 'remove_label_from_email'])
+        needs_gmail = needs_category([
+            'send_google_email', 'reply_to_google_email', 'search_google_email', 
+            'get_google_email_content', 'get_google_emails_from_sender', 
+            'find_google_contact_email', 'archive_google_email', 
+            'mark_google_email_as_read', 'mark_google_email_as_unread', 
+            'star_google_email', 'unstar_google_email', 'move_google_email_to_spam',
+            'move_google_email_to_trash', 'create_google_email_draft', 
+            'list_google_email_labels', 'add_label_to_google_email', 
+            'remove_label_from_google_email', 'retrieve_google_email_attachment'
+        ])
         needs_gcal = needs_category(['get_calendar_events', 'create_calendar_event'])
         needs_gdrive = needs_category(['search_google_drive_files', 'save_file_to_drive', 'create_text_file_in_drive', 'read_file_content_by_id', 'list_drive_files'])
         needs_gdocs = needs_category(['create_google_doc', 'get_google_doc_content', 'insert_text_in_doc', 'append_text_to_doc', 'format_doc_text', 'insert_paragraph_in_doc', 'insert_table_in_doc', 'delete_doc_content', 'replace_text_in_doc', 'search_google_doc'])
         needs_gsheets = needs_category(['create_google_sheet', 'get_sheet_values', 'update_sheet_values', 'append_sheet_rows', 'clear_sheet_range', 'get_single_cell', 'set_single_cell', 'add_sheet_tab', 'delete_sheet_tab', 'insert_sheet_rows', 'insert_sheet_columns', 'delete_sheet_rows', 'get_spreadsheet_info', 'search_google_sheet'])
         needs_gslides = needs_category(['create_google_presentation', 'get_presentation_info', 'add_slide', 'delete_slide', 'insert_text_in_slide', 'insert_image_in_slide', 'format_slide_text', 'create_table_in_slide', 'delete_slide_object', 'search_google_presentation'])
-        needs_outlook = needs_category(['send_outlook_email', 'fetch_outlook_calendar_events', 'get_outlook_emails_from_sender', 'find_outlook_contact_email'])
+        needs_outlook = needs_category([
+            'send_outlook_email', 'fetch_outlook_calendar_events', 
+            'get_outlook_emails_from_sender', 'find_outlook_contact_email',
+            'mark_outlook_email_read', 'categorize_outlook_email', 
+            'move_outlook_email', 'search_outlook_emails', 'get_outlook_email_content',
+            'list_outlook_folders', 'create_outlook_folder', 'create_outlook_rule', 'bulk_categorize_outlook_emails', 
+            'bulk_move_outlook_emails', 'move_outlook_emails_by_sender', 'categorize_outlook_emails_by_sender'
+        ])
         needs_notion = needs_category(['list_databases', 'list_notion_pages', 'query_notion_database', 'get_all_workspace_entries', 'search_notion_pages_by_keyword', 'create_notion_page', 'create_notion_database_entry', 'create_notion_database', 'append_to_notion_page', 'update_notion_page_properties', 'get_notion_page_content'])
         needs_dropbox = needs_category(['save_file_to_dropbox', 'read_file_from_dropbox','list_dropbox_files','search_dropbox_files'])
         needs_trello = needs_category(['list_trello_accounts','list_trello_organizations','list_trello_boards','get_trello_board_details','create_trello_board','share_trello_board','create_trello_list','list_trello_cards','get_trello_card','create_trello_card','update_trello_card','move_trello_card','add_trello_comment','create_trello_checklist','get_board_members','get_card_members','assign_member_to_card','unassign_member_from_card','search_trello']) 

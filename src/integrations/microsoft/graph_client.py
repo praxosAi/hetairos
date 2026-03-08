@@ -59,7 +59,7 @@ class MicrosoftGraphIntegration(BaseIntegration):
         token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
         payload = {
             'client_id': settings.MICROSOFT_CLIENT_ID,
-            'scope': 'offline_access user.read mail.readwrite mail.send calendars.readwrite',
+            'scope': 'offline_access user.read mail.readwrite mail.send calendars.readwrite MailboxSettings.ReadWrite',
             'refresh_token': refresh_token,
             'grant_type': 'refresh_token',
             'client_secret': settings.MICROSOFT_CLIENT_SECRET,
@@ -129,6 +129,65 @@ class MicrosoftGraphIntegration(BaseIntegration):
             return formatted_messages
         except Exception as e:
             logger.error(f"Error fetching Outlook messages: {e}")
+            return []
+
+    async def get_frequent_senders(self, days_back: int = 30, max_senders: int = 15) -> List[Dict[str, Any]]:
+        """
+        Fetches a summary of the most frequent email senders over the specified time period.
+        It pulls only the 'from' metadata from recent emails to quickly aggregate counts.
+        """
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        since = datetime.utcnow() - timedelta(days=days_back)
+        since_str = since.strftime('%Y-%m-%dT%H:%M:%SZ')
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        
+        # We only need the 'from' field to aggregate counts. Requesting up to 500 max per page to get a good sample size.
+        params = {
+            "$filter": f"receivedDateTime ge {since_str}",
+            "$select": "from",
+            "$top": "500",
+            "$orderby": "receivedDateTime desc"
+        }
+        
+        sender_counts = {}
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                encoded_params = urlencode(params, safe="='+$()")
+                url = f"{self.graph_endpoint}/me/messages?{encoded_params}"
+                
+                # We'll follow pagination up to a reasonable limit (e.g. 1000 messages) to build the frequency map
+                messages_processed = 0
+                max_messages_to_process = 1000
+                
+                while url and messages_processed < max_messages_to_process:
+                    async with session.get(url, headers=headers) as response:
+                        response.raise_for_status()
+                        data = await response.json()
+                        
+                    messages = data.get('value', [])
+                    for msg in messages:
+                        from_data = msg.get("from", {}).get("emailAddress", {})
+                        email = from_data.get("address")
+                        name = from_data.get("name")
+                        
+                        if email:
+                            if email not in sender_counts:
+                                sender_counts[email] = {"name": name, "email": email, "count": 0}
+                            sender_counts[email]["count"] += 1
+                            
+                    messages_processed += len(messages)
+                    # Get the next page URL if it exists
+                    url = data.get('@odata.nextLink')
+                    
+            # Sort by count descending and return the top N
+            sorted_senders = sorted(sender_counts.values(), key=lambda x: x["count"], reverse=True)
+            return sorted_senders[:max_senders]
+            
+        except Exception as e:
+            logger.error(f"Error aggregating frequent senders: {e}", exc_info=True)
             return []
 
     async def _fetch_calendar_events(self, since: datetime) -> List[Dict]:
@@ -305,13 +364,17 @@ class MicrosoftGraphIntegration(BaseIntegration):
         headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
         params = {
             "$filter": f"from/emailAddress/address eq '{sender_email}'",
-            "$top": max_results,
+            "$top": str(max_results),
             "$orderby": "receivedDateTime desc"
         }
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.graph_endpoint}/me/messages", headers=headers, params=params) as response:
+                # Use URL encoded string for params to prevent issue with quoting
+                # Ensure we only encode it once
+                encoded_params = urlencode(params, safe="='+$()")
+                url = f"{self.graph_endpoint}/me/messages?{encoded_params}"
+                async with session.get(url, headers=headers) as response:
                     response.raise_for_status()
                     data = await response.json()
             
@@ -351,6 +414,198 @@ class MicrosoftGraphIntegration(BaseIntegration):
         except Exception as e:
             logger.error(f"Error searching for contact '{name}': {e}", exc_info=True)
             return []
+
+    async def mark_email_read(self, message_id: str, is_read: bool = True) -> bool:
+        """Marks a specific email as read or unread."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        payload = {"isRead": is_read}
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(f"{self.graph_endpoint}/me/messages/{message_id}", headers=headers, json=payload) as response:
+                    response.raise_for_status()
+                    return True
+        except Exception as e:
+            logger.error(f"Error marking email {message_id} as read={is_read}: {e}", exc_info=True)
+            raise
+
+    async def categorize_email(self, message_id: str, categories: List[str]) -> bool:
+        """Adds or removes categories from a specific email."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        payload = {"categories": categories}
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(f"{self.graph_endpoint}/me/messages/{message_id}", headers=headers, json=payload) as response:
+                    response.raise_for_status()
+                    return True
+        except Exception as e:
+            logger.error(f"Error categorizing email {message_id}: {e}", exc_info=True)
+            raise
+
+    async def move_email(self, message_id: str, destination_folder_id: str) -> bool:
+        """Moves an email to a different folder."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        payload = {"destinationId": destination_folder_id}
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{self.graph_endpoint}/me/messages/{message_id}/move", headers=headers, json=payload) as response:
+                    response.raise_for_status()
+                    return True
+        except Exception as e:
+            logger.error(f"Error moving email {message_id} to folder {destination_folder_id}: {e}", exc_info=True)
+            raise
+
+    async def search_emails(self, query: str, max_results: int = 10) -> List[Dict]:
+        """Searches the user's emails using a specific query string."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        params = {
+            "$search": f'"{query}"',
+            "$select": "id,subject,from,receivedDateTime,bodyPreview",
+            "$top": str(max_results)
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                encoded_params = urlencode(params, safe="=\"'+$()")
+                url = f"{self.graph_endpoint}/me/messages?{encoded_params}"
+                async with session.get(url, headers=headers) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+                    
+            messages = data.get('value', [])
+            return [{
+                "id": msg.get("id"),
+                "subject": msg.get("subject", "No Subject"),
+                "from": msg.get("from", {}).get("emailAddress", {}).get("address", "Unknown"),
+                "receivedDateTime": msg.get("receivedDateTime"),
+                "snippet": msg.get("bodyPreview", "")
+            } for msg in messages]
+        except Exception as e:
+            logger.error(f"Error searching emails for query '{query}': {e}", exc_info=True)
+            return []
+
+    async def list_mail_folders(self) -> List[Dict]:
+        """Lists all the mail folders in the user's mailbox (including custom ones)."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.graph_endpoint}/me/mailFolders", headers=headers) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+            return [{"id": f["id"], "name": f["displayName"]} for f in data.get('value', [])]
+        except Exception as e:
+            logger.error(f"Error fetching mail folders: {e}", exc_info=True)
+            return []
+
+    async def create_mail_folder(self, display_name: str) -> Dict[str, Any]:
+        """Creates a new mail folder in the user's mailbox."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        payload = {"displayName": display_name, "isHidden": False}
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{self.graph_endpoint}/me/mailFolders", headers=headers, json=payload) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+            return {"id": data.get("id"), "name": data.get("displayName")}
+        except Exception as e:
+            logger.error(f"Error creating mail folder '{display_name}': {e}", exc_info=True)
+            raise
+
+    async def create_outlook_rule(self, display_name: str, sequence: int, sender_contains: str, move_to_folder_id: str) -> Dict[str, Any]:
+        """Creates an Outlook rule to automatically move messages from a specific sender to a folder."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        payload = {
+            "displayName": display_name,
+            "sequence": sequence,
+            "isEnabled": True,
+            "conditions": {
+                "senderContains": [sender_contains]
+            },
+            "actions": {
+                "moveToFolder": move_to_folder_id,
+                "stopProcessingRules": True
+            }
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{self.graph_endpoint}/me/mailFolders/inbox/messageRules", headers=headers, json=payload) as response:
+                    response.raise_for_status()
+                    return await response.json()
+        except Exception as e:
+            logger.error(f"Error creating Outlook rule '{display_name}': {e}", exc_info=True)
+            raise
+
+    async def bulk_categorize_emails(self, message_ids: List[str], categories: List[str]) -> Dict[str, Any]:
+        """Adds or removes categories from multiple emails simultaneously using concurrency."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        payload = {"categories": categories}
+        
+        async def _categorize(session, msg_id):
+            try:
+                async with session.patch(f"{self.graph_endpoint}/me/messages/{msg_id}", headers=headers, json=payload) as resp:
+                    resp.raise_for_status()
+                    return {"id": msg_id, "status": "success"}
+            except Exception as ex:
+                return {"id": msg_id, "status": "failed", "error": str(ex)}
+
+        async with aiohttp.ClientSession() as session:
+            tasks = [_categorize(session, msg_id) for msg_id in message_ids]
+            results = await asyncio.gather(*tasks)
+            
+        success_count = sum(1 for r in results if r["status"] == "success")
+        return {"processed": len(message_ids), "successes": success_count, "failures": len(message_ids) - success_count, "results": results}
+
+    async def bulk_move_emails(self, message_ids: List[str], destination_folder_id: str) -> Dict[str, Any]:
+        """Moves multiple emails simultaneously using concurrency."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        payload = {"destinationId": destination_folder_id}
+        
+        async def _move(session, msg_id):
+            try:
+                async with session.post(f"{self.graph_endpoint}/me/messages/{msg_id}/move", headers=headers, json=payload) as resp:
+                    resp.raise_for_status()
+                    return {"id": msg_id, "status": "success"}
+            except Exception as ex:
+                return {"id": msg_id, "status": "failed", "error": str(ex)}
+
+        async with aiohttp.ClientSession() as session:
+            tasks = [_move(session, msg_id) for msg_id in message_ids]
+            results = await asyncio.gather(*tasks)
+            
+        success_count = sum(1 for r in results if r["status"] == "success")
+        return {"processed": len(message_ids), "successes": success_count, "failures": len(message_ids) - success_count, "results": results}
     async def _graph_get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         headers = {
             "Authorization": f"Bearer {self.access_token}",

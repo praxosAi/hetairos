@@ -19,7 +19,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
 
 
     @tool
-    async def send_email(
+    async def send_google_email(
         recipient: str, 
         subject: str, 
         body: str, 
@@ -50,7 +50,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             )
 
     @tool
-    async def reply_to_email(
+    async def reply_to_google_email(
         original_message_id: str,
         body: str,
         reply_all: bool = False,
@@ -82,7 +82,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
     # --- Information Retrieval Tools ---
 
     @tool
-    async def search_gmail(
+    async def search_google_email(
         query: str, 
         max_results: int = 10,
         account: Optional[str] = None
@@ -104,7 +104,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             )
 
     @tool
-    async def get_email_content(
+    async def get_google_email_content(
         message_id: str,
         account: Optional[str] = None
     ) -> ToolExecutionResponse:
@@ -120,14 +120,14 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             return ToolExecutionResponse(status="success", result=email_content)
         except Exception as e:
             return ErrorResponseBuilder.from_exception(
-                operation="get_email_content",
+                operation="get_google_email_content",
                 exception=e,
                 integration="Gmail",
                 context={"message_id": message_id, "resource_type": "email"}
             )
 
     @tool
-    async def retrieve_email_attachment(
+    async def retrieve_google_email_attachment(
         message_id: str,
         attachment_id: str,
         filename: str,
@@ -194,7 +194,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             )
 
     @tool
-    async def get_emails_from_sender(
+    async def get_google_emails_from_sender(
         sender_email: str, 
         max_results: int = 10,
         account: Optional[str] = None
@@ -212,7 +212,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             )
 
     @tool
-    async def find_contact_email(
+    async def find_google_contact_email(
         name: str,
         account: Optional[str] = None
     ) -> ToolExecutionResponse:
@@ -233,7 +233,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
     # --- Inbox Management Tools ---
     
     @tool
-    async def archive_email(
+    async def archive_google_email(
         message_id: str,
         account: Optional[str] = None
     ) -> ToolExecutionResponse:
@@ -251,7 +251,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             )
 
     @tool
-    async def mark_email_as_read(
+    async def mark_google_email_as_read(
         message_id: str,
         account: Optional[str] = None
     ) -> ToolExecutionResponse:
@@ -272,7 +272,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             )
 
     @tool
-    async def mark_email_as_unread(
+    async def mark_google_email_as_unread(
         message_id: str,
         account: Optional[str] = None
     ) -> ToolExecutionResponse:
@@ -289,7 +289,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             )
 
     @tool
-    async def star_email(
+    async def star_google_email(
         message_id: str,
         account: Optional[str] = None
     ) -> ToolExecutionResponse:
@@ -319,7 +319,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             )
 
     @tool
-    async def unstar_email(
+    async def unstar_google_email(
         message_id: str,
         account: Optional[str] = None
     ) -> ToolExecutionResponse:
@@ -336,7 +336,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             )
 
     @tool
-    async def move_email_to_spam(
+    async def move_google_email_to_spam(
         message_id: str,
         account: Optional[str] = None
     ) -> ToolExecutionResponse:
@@ -353,7 +353,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             )
 
     @tool
-    async def move_email_to_trash(
+    async def move_google_email_to_trash(
         message_id: str,
         account: Optional[str] = None
     ) -> ToolExecutionResponse:
@@ -370,7 +370,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             )
 
     @tool
-    async def create_email_draft(
+    async def create_google_email_draft(
         recipient: str,
         subject: str,
         body: str,
@@ -394,7 +394,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             )
 
     @tool
-    async def list_gmail_labels(
+    async def list_google_email_labels(
         account: Optional[str] = None
     ) -> ToolExecutionResponse:
         """Lists all labels (folders) in the user's Gmail account, including system and custom labels."""
@@ -410,7 +410,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             )
 
     @tool
-    async def add_label_to_email(
+    async def add_label_to_google_email(
         message_id: str,
         label_name: str,
         account: Optional[str] = None
@@ -432,7 +432,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             )
 
     @tool
-    async def remove_label_from_email(
+    async def remove_label_from_google_email(
         message_id: str,
         label_name: str,
         account: Optional[str] = None
@@ -460,17 +460,17 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
         return []
 
     all_tools = [
-        send_email, reply_to_email, search_gmail, get_email_content,
-        retrieve_email_attachment, get_emails_from_sender, find_contact_email, archive_email, mark_email_as_read,
-        mark_email_as_unread, star_email, unstar_email, move_email_to_spam,
-        move_email_to_trash, create_email_draft, list_gmail_labels,
-        add_label_to_email, remove_label_from_email
+        send_google_email, reply_to_google_email, search_google_email, get_google_email_content,
+        retrieve_google_email_attachment, get_google_emails_from_sender, find_google_contact_email, archive_google_email, mark_google_email_as_read,
+        mark_google_email_as_unread, star_google_email, unstar_google_email, move_google_email_to_spam,
+        move_google_email_to_trash, create_google_email_draft, list_google_email_labels,
+        add_label_to_google_email, remove_label_from_google_email
     ]
 
     # Apply descriptions from YAML database
-    # Note: send_email and reply_to_email use 'from_account', others use 'account'
+    # Note: send_google_email and reply_to_google_email use 'from_account', others use 'account'
     for t in all_tools:
-        param_name = 'from_account' if t.name in ["send_email", "reply_to_email"] else 'account'
+        param_name = 'from_account' if t.name in ["send_google_email", "reply_to_google_email"] else 'account'
         tool_registry.apply_descriptions_to_tools([t], accounts=accounts, account_param_name=param_name)
 
     return all_tools

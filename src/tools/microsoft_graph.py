@@ -221,6 +221,20 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration, tool_registr
             )
 
     @tool
+    async def get_frequent_outlook_senders(days_back: int = 30, max_senders: int = 15) -> ToolExecutionResponse:
+        """Analyzes the user's recent inbox and returns a list of the most frequent email senders."""
+        try:
+            senders = await outlook_client.get_frequent_senders(days_back=days_back, max_senders=max_senders)
+            return ToolExecutionResponse(status="success", result=senders)
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="get_frequent_outlook_senders",
+                exception=e,
+                integration="Microsoft Outlook",
+                context={"days_back": days_back}
+            )
+
+    @tool
     async def move_outlook_emails_by_sender(sender_email: str, destination_folder: str, max_results: int = 50) -> ToolExecutionResponse:
         """Finds all emails from a specific sender and moves them to a folder (can provide folder name or ID)."""
         try:

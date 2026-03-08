@@ -1,6 +1,6 @@
-tool_id: list_gmail_labels
+tool_id: list_google_email_labels
 category: gmail
-display_name: list_gmail_labels
+display_name: list_google_email_labels
 
 short_description: Lists all labels (folders) in Gmail account
 

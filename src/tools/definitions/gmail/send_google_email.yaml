@@ -1,6 +1,6 @@
-tool_id: send_email
+tool_id: send_google_email
 category: gmail
-display_name: send_email
+display_name: send_google_email
 
 short_description: Sends email via user's Gmail account
 

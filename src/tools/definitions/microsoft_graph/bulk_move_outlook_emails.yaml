@@ -1,0 +1,23 @@
+tool_id: bulk_move_outlook_emails
+category: microsoft_graph
+display_name: bulk_move_outlook_emails
+short_description: Moves multiple emails to a different folder simultaneously
+arguments:
+  - name: message_ids
+    type: list[str]
+    description: List of email IDs to move
+    required: true
+  - name: destination_folder_id
+    type: str
+    description: The ID of the folder to move the emails to (e.g., 'archive', 'deleteditems', or custom folder ID)
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Result showing processed count, successes, and failures
+use_cases:
+  - Quickly archive multiple emails returned from a search
+  - Move grouped emails to a specific folder
+requires_integration: microsoft
+requires_auth: true

@@ -300,7 +300,8 @@ class AgentToolsFactory:
             'mark_outlook_email_read', 'categorize_outlook_email', 
             'move_outlook_email', 'search_outlook_emails', 'get_outlook_email_content',
             'list_outlook_folders', 'create_outlook_folder', 'create_outlook_rule', 'bulk_categorize_outlook_emails', 
-            'bulk_move_outlook_emails', 'move_outlook_emails_by_sender', 'categorize_outlook_emails_by_sender'
+            'bulk_move_outlook_emails', 'move_outlook_emails_by_sender', 'categorize_outlook_emails_by_sender',
+            'get_frequent_outlook_senders'
         ])
         needs_notion = needs_category(['list_databases', 'list_notion_pages', 'query_notion_database', 'get_all_workspace_entries', 'search_notion_pages_by_keyword', 'create_notion_page', 'create_notion_database_entry', 'create_notion_database', 'append_to_notion_page', 'update_notion_page_properties', 'get_notion_page_content'])
         needs_dropbox = needs_category(['save_file_to_dropbox', 'read_file_from_dropbox','list_dropbox_files','search_dropbox_files'])

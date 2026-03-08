@@ -1,0 +1,24 @@
+tool_id: get_frequent_outlook_senders
+category: microsoft_graph
+display_name: get_frequent_outlook_senders
+short_description: Analyzes the inbox to find the most frequent email senders
+arguments:
+  - name: days_back
+    type: int
+    description: Number of days to look back in the inbox (default 30)
+    required: false
+    default: 30
+  - name: max_senders
+    type: int
+    description: Maximum number of frequent senders to return (default 15)
+    required: false
+    default: 15
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: List of sender email addresses and their email count
+use_cases:
+  - Identify who sends the most emails to help the user set up organization rules
+requires_integration: microsoft
+requires_auth: true

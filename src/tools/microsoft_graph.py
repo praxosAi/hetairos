@@ -299,6 +299,7 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration, tool_registr
         create_outlook_rule,
         bulk_categorize_outlook_emails,
         bulk_move_outlook_emails,
+        get_frequent_outlook_senders,
         move_outlook_emails_by_sender,
         categorize_outlook_emails_by_sender
     ]

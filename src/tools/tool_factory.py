@@ -287,7 +287,8 @@ class AgentToolsFactory:
             'star_google_email', 'unstar_google_email', 'move_google_email_to_spam',
             'move_google_email_to_trash', 'create_google_email_draft', 
             'list_google_email_labels', 'add_label_to_google_email', 
-            'remove_label_from_google_email', 'retrieve_google_email_attachment'
+            'remove_label_from_google_email', 'retrieve_google_email_attachment',
+            'get_frequent_google_senders', 'create_google_email_rule', 'move_google_emails_by_sender', 'categorize_google_emails_by_sender'
         ])
         needs_gcal = needs_category(['get_calendar_events', 'create_calendar_event'])
         needs_gdrive = needs_category(['search_google_drive_files', 'save_file_to_drive', 'create_text_file_in_drive', 'read_file_content_by_id', 'list_drive_files'])

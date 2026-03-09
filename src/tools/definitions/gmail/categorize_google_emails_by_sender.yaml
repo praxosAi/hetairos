@@ -1,15 +1,15 @@
-tool_id: categorize_outlook_emails_by_sender
-category: microsoft_graph
-display_name: categorize_outlook_emails_by_sender
+tool_id: categorize_google_emails_by_sender
+category: gmail
+display_name: categorize_google_emails_by_sender
 short_description: Finds all emails from a sender and categorizes them
 arguments:
   - name: sender_email
     type: str
     description: Email address of the sender to search for
     required: true
-  - name: categories
-    type: list[str]
-    description: List of category names to apply
+  - name: label_name
+    type: str
+    description: The name of the label to apply
     required: true
   - name: max_results
     type: int
@@ -23,5 +23,5 @@ arguments:
 returns: Result showing processed count, successes, and failures
 use_cases:
   - Label all incoming emails from a specific client
-requires_integration: microsoft
+requires_integration: gmail
 requires_auth: true

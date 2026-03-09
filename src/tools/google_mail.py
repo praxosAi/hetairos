@@ -459,12 +459,148 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
     if not accounts:
         return []
 
+    @tool
+    async def get_frequent_google_senders(days_back: int = 30, max_senders: int = 15, account: Optional[str] = None) -> ToolExecutionResponse:
+        """Analyzes the user's recent inbox and returns a list of the most frequent email senders."""
+        try:
+            senders = await gmail_integration.get_frequent_senders(days_back=days_back, max_senders=max_senders, account=account)
+            return ToolExecutionResponse(status="success", result=senders)
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="get_frequent_google_senders",
+                exception=e,
+                integration="Gmail",
+                context={"days_back": days_back}
+            )
+
+    @tool
+    async def create_google_email_rule(query: str, add_label_name: Optional[str] = None, archive: bool = False, trash: bool = False, account: Optional[str] = None) -> ToolExecutionResponse:
+        """Creates an automatic Gmail filter (rule) to route incoming emails matching a query."""
+        try:
+            criteria = {'query': query}
+            action = {}
+            
+            if add_label_name:
+                # Find or create label
+                labels = await gmail_integration.list_labels(account=account)
+                label_id = None
+                for label in labels:
+                    if label['name'].lower() == add_label_name.lower():
+                        label_id = label['id']
+                        break
+                if not label_id:
+                    new_label = await gmail_integration.create_label(add_label_name, account=account)
+                    label_id = new_label['id']
+                action['addLabelIds'] = [label_id]
+                
+            if archive:
+                action['removeLabelIds'] = ['INBOX']
+            if trash:
+                action['addLabelIds'] = action.get('addLabelIds', []) + ['TRASH']
+                
+            if not action:
+                return ToolExecutionResponse(status="error", result="You must specify an action: add_label_name, archive, or trash.")
+
+            rule = await gmail_integration.create_filter(criteria, action, account=account)
+            return ToolExecutionResponse(status="success", result=rule)
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="create_google_email_rule",
+                exception=e,
+                integration="Gmail",
+                context={"query": query}
+            )
+
+    @tool
+    async def move_google_emails_by_sender(sender_email: str, destination_folder: str, max_results: int = 1000, account: Optional[str] = None) -> ToolExecutionResponse:
+        """Finds all emails from a specific sender and moves them to a folder (can be 'trash', 'archive', or a custom label name)."""
+        try:
+            # 1. Resolve folder/label
+            add_label_ids = []
+            remove_label_ids = []
+            
+            dest_lower = destination_folder.lower()
+            if dest_lower in ['trash', 'deleteditems']:
+                add_label_ids = ['TRASH']
+            elif dest_lower == 'archive':
+                remove_label_ids = ['INBOX']
+            elif dest_lower == 'spam':
+                add_label_ids = ['SPAM']
+            else:
+                # Custom label - try to find it or create it
+                labels = await gmail_integration.list_labels(account=account)
+                label_id = None
+                for label in labels:
+                    if label['name'].lower() == dest_lower:
+                        label_id = label['id']
+                        break
+                
+                if not label_id:
+                    new_label = await gmail_integration.create_label(destination_folder, account=account)
+                    label_id = new_label['id']
+                
+                add_label_ids = [label_id]
+                remove_label_ids = ['INBOX'] # usually moving to a custom folder implies archiving from inbox
+
+            # 2. Fetch emails
+            emails = await gmail_integration.get_emails_from_sender(sender_email, account=account, max_results=max_results)
+            if not emails:
+                return ToolExecutionResponse(status="success", result=f"No emails found from {sender_email}.")
+
+            # 3. Bulk modify
+            message_ids = [email['id'] for email in emails]
+            result = await gmail_integration.bulk_modify_messages(message_ids, add_label_ids=add_label_ids, remove_label_ids=remove_label_ids, account=account)
+            
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="move_google_emails_by_sender",
+                exception=e,
+                integration="Gmail",
+                context={"sender_email": sender_email, "destination_folder": destination_folder}
+            )
+
+    @tool
+    async def categorize_google_emails_by_sender(sender_email: str, label_name: str, max_results: int = 1000, account: Optional[str] = None) -> ToolExecutionResponse:
+        """Finds all emails from a specific sender and applies a label to them without archiving them."""
+        try:
+            # 1. Find or create label
+            labels = await gmail_integration.list_labels(account=account)
+            label_id = None
+            for label in labels:
+                if label['name'].lower() == label_name.lower():
+                    label_id = label['id']
+                    break
+            
+            if not label_id:
+                new_label = await gmail_integration.create_label(label_name, account=account)
+                label_id = new_label['id']
+            
+            # 2. Fetch emails
+            emails = await gmail_integration.get_emails_from_sender(sender_email, account=account, max_results=max_results)
+            if not emails:
+                return ToolExecutionResponse(status="success", result=f"No emails found from {sender_email}.")
+
+            # 3. Bulk modify
+            message_ids = [email['id'] for email in emails]
+            result = await gmail_integration.bulk_modify_messages(message_ids, add_label_ids=[label_id], account=account)
+            
+            return ToolExecutionResponse(status="success", result=result)
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="categorize_google_emails_by_sender",
+                exception=e,
+                integration="Gmail",
+                context={"sender_email": sender_email, "label_name": label_name}
+            )
+
     all_tools = [
         send_google_email, reply_to_google_email, search_google_email, get_google_email_content,
         retrieve_google_email_attachment, get_google_emails_from_sender, find_google_contact_email, archive_google_email, mark_google_email_as_read,
         mark_google_email_as_unread, star_google_email, unstar_google_email, move_google_email_to_spam,
         move_google_email_to_trash, create_google_email_draft, list_google_email_labels,
-        add_label_to_google_email, remove_label_from_google_email
+        add_label_to_google_email, remove_label_from_google_email,
+        get_frequent_google_senders, create_google_email_rule, move_google_emails_by_sender, categorize_google_emails_by_sender
     ]
 
     # Apply descriptions from YAML database

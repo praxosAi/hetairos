@@ -235,7 +235,7 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration, tool_registr
             )
 
     @tool
-    async def move_outlook_emails_by_sender(sender_email: str, destination_folder: str, max_results: int = 50) -> ToolExecutionResponse:
+    async def move_outlook_emails_by_sender(sender_email: str, destination_folder: str, max_results: int = 1000) -> ToolExecutionResponse:
         """Finds all emails from a specific sender and moves them to a folder (can provide folder name or ID)."""
         try:
             folder_id = destination_folder
@@ -265,7 +265,7 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration, tool_registr
             )
 
     @tool
-    async def categorize_outlook_emails_by_sender(sender_email: str, categories: List[str], max_results: int = 50) -> ToolExecutionResponse:
+    async def categorize_outlook_emails_by_sender(sender_email: str, categories: List[str], max_results: int = 1000) -> ToolExecutionResponse:
         """Finds all emails from a specific sender and applies categories to them."""
         try:
             emails = await outlook_client.get_emails_from_sender(sender_email, max_results=max_results)

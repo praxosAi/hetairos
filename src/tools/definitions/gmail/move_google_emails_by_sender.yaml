@@ -1,6 +1,6 @@
-tool_id: move_outlook_emails_by_sender
-category: microsoft_graph
-display_name: move_outlook_emails_by_sender
+tool_id: move_google_emails_by_sender
+category: gmail
+display_name: move_google_emails_by_sender
 short_description: Finds all emails from a sender and moves them to a folder
 arguments:
   - name: sender_email
@@ -9,7 +9,7 @@ arguments:
     required: true
   - name: destination_folder
     type: str
-    description: The name or ID of the destination folder (e.g., 'Archive', 'Work')
+    description: The name of the destination folder (e.g., 'Archive', 'Trash', or custom label name)
     required: true
   - name: max_results
     type: int
@@ -23,5 +23,5 @@ arguments:
 returns: Result showing processed count, successes, and failures
 use_cases:
   - Clean up inbox by moving all emails from a specific person to a folder
-requires_integration: microsoft
+requires_integration: gmail
 requires_auth: true

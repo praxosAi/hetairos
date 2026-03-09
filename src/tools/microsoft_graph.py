@@ -255,6 +255,12 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration, tool_registr
                 
             message_ids = [email['id'] for email in emails]
             result = await outlook_client.bulk_move_emails(message_ids, folder_id)
+            
+            # Remove full response bodies from the result to save LLM context
+            if "results" in result:
+                for r in result["results"]:
+                    r.pop("body", None)
+            
             return ToolExecutionResponse(status="success", result=result)
         except Exception as e:
             return ErrorResponseBuilder.from_exception(
@@ -274,6 +280,12 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration, tool_registr
                 
             message_ids = [email['id'] for email in emails]
             result = await outlook_client.bulk_categorize_emails(message_ids, categories)
+            
+            # Remove full response bodies from the result to save LLM context
+            if "results" in result:
+                for r in result["results"]:
+                    r.pop("body", None)
+                    
             return ToolExecutionResponse(status="success", result=result)
         except Exception as e:
             return ErrorResponseBuilder.from_exception(

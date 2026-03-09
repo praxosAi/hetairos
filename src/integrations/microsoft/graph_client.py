@@ -19,6 +19,127 @@ import re
 logger = setup_logger(__name__)
 PREFER_IMMUTABLE_ID = {'Prefer': 'IdType="ImmutableId"'}
 
+class GraphBatchQueue:
+    """
+    Singleton queue manager to handle Microsoft Graph API rate limits.
+    Graph API supports $batch with max 20 requests per batch.
+    To stay under typical limits, we throttle to 1 batch every 0.2s (~100 req/sec).
+    """
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(GraphBatchQueue, cls).__new__(cls)
+            cls._instance.queue = asyncio.Queue()
+            cls._instance._worker_task = None
+            cls._instance._session = None # Used to reuse connection pool for batch worker
+        return cls._instance
+
+    async def enqueue_request(self, access_token: str, method: str, url: str, headers: Dict[str, str] = None, body: Dict = None) -> Any:
+        future = asyncio.Future()
+        
+        # Strip the base graph endpoint if present, $batch requires relative paths
+        if url.startswith("https://graph.microsoft.com/v1.0"):
+            url = url.replace("https://graph.microsoft.com/v1.0", "")
+            
+        req_obj = {
+            "method": method,
+            "url": url,
+            "headers": headers or {"Content-Type": "application/json"},
+            "access_token": access_token,
+            "future": future
+        }
+        if body is not None:
+            req_obj["body"] = body
+            
+        await self.queue.put(req_obj)
+        
+        if self._worker_task is None or self._worker_task.done():
+            self._worker_task = asyncio.create_task(self._process_queue())
+            
+        return await future
+
+    async def _process_queue(self):
+        self._session = aiohttp.ClientSession()
+        try:
+            while True:
+                # Group by access token (different users can't share a $batch payload)
+                batch_by_token = {}
+                queued_items = []
+                
+                # Try to pull up to 20 items off the queue
+                for _ in range(20):
+                    if self.queue.empty(): break
+                    item = await self.queue.get()
+                    queued_items.append(item)
+                    
+                if not queued_items:
+                    # Queue is empty, sleep briefly then check again
+                    await asyncio.sleep(0.1)
+                    continue
+                    
+                # Organize by token
+                for item in queued_items:
+                    token = item["access_token"]
+                    if token not in batch_by_token:
+                        batch_by_token[token] = []
+                    batch_by_token[token].append(item)
+
+                # Process batches
+                for token, items in batch_by_token.items():
+                    # If somehow a single token has > 20, split it (shouldn't happen given the loop above, but safe)
+                    for i in range(0, len(items), 20):
+                        chunk = items[i:i+20]
+                        batch_requests = []
+                        for idx, req in enumerate(chunk):
+                            batch_req = {
+                                "id": str(idx),
+                                "method": req["method"],
+                                "url": req["url"],
+                                "headers": req["headers"]
+                            }
+                            if "body" in req:
+                                batch_req["body"] = req["body"]
+                            batch_requests.append(batch_req)
+                            
+                        batch_body = {"requests": batch_requests}
+                        batch_headers = {
+                            "Authorization": f"Bearer {token}",
+                            "Content-Type": "application/json"
+                        }
+                        
+                        try:
+                            async with self._session.post(
+                                "https://graph.microsoft.com/v1.0/$batch",
+                                headers=batch_headers, json=batch_body
+                            ) as resp:
+                                resp.raise_for_status()
+                                data = await resp.json()
+                                
+                                # Map responses back to futures
+                                response_map = {r["id"]: r for r in data.get("responses", [])}
+                                for idx, req in enumerate(chunk):
+                                    resp_data = response_map.get(str(idx))
+                                    if resp_data:
+                                        # Resolve the future with the inner response
+                                        if not req["future"].done():
+                                            req["future"].set_result(resp_data)
+                                    else:
+                                        if not req["future"].done():
+                                            req["future"].set_exception(Exception("No response in batch"))
+                        except Exception as e:
+                            logger.error(f"Error processing Graph batch: {e}")
+                            for req in chunk:
+                                if not req["future"].done():
+                                    req["future"].set_exception(e)
+                                    
+                # Global throttle: max 1 batch request loop per 0.2s
+                await asyncio.sleep(0.2)
+        finally:
+            if self._session:
+                await self._session.close()
+                self._session = None
+
 class MicrosoftGraphIntegration(BaseIntegration):
     def __init__(self, user_id: str):
         super().__init__(user_id)
@@ -59,7 +180,7 @@ class MicrosoftGraphIntegration(BaseIntegration):
         token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
         payload = {
             'client_id': settings.MICROSOFT_CLIENT_ID,
-            'scope': 'offline_access user.read mail.readwrite mail.send calendars.readwrite MailboxSettings.ReadWrite',
+            # 'scope': 'offline_access user.read mail.readwrite mail.send calendars.readwrite MailboxSettings.ReadWrite',
             'refresh_token': refresh_token,
             'grant_type': 'refresh_token',
             'client_secret': settings.MICROSOFT_CLIENT_SECRET,
@@ -368,9 +489,8 @@ class MicrosoftGraphIntegration(BaseIntegration):
         
         params = {
             "$search": f'"from:{sender_email}"',
+            "$select": "id,subject,from,receivedDateTime,bodyPreview",
             "$top": str(page_size),
-            # "$orderby": "receivedDateTime desc",
-            # "$count": "true",   # ← required alongside ConsistencyLevel
         }
         
         all_formatted_messages = []
@@ -389,7 +509,21 @@ class MicrosoftGraphIntegration(BaseIntegration):
                         break
                         
                     for msg in messages:
-                        all_formatted_messages.append(await self._format_message(msg))
+                        def _clean_snippet(snippet: str) -> str:
+                            if not snippet:
+                                return ""
+                            import re
+                            cleaned = re.sub(r'[\u200b\u200c\u200d\u200e\u200f\ufeff]', '', snippet)
+                            cleaned = re.sub(r'[\xa0\u2007\u202f]', ' ', cleaned)
+                            return re.sub(r'\s+', ' ', cleaned).strip()
+
+                        all_formatted_messages.append({
+                            "id": msg.get("id"),
+                            "subject": msg.get("subject", "No Subject"),
+                            "from": msg.get("from", {}).get("emailAddress", {}).get("address", "Unknown"),
+                            "receivedDateTime": msg.get("receivedDateTime"),
+                            "snippet": _clean_snippet(msg.get("bodyPreview", ""))
+                        })
                         if len(all_formatted_messages) >= max_results:
                             break
                             
@@ -438,14 +572,19 @@ class MicrosoftGraphIntegration(BaseIntegration):
         if not self.access_token:
             raise Exception("Not authenticated")
 
-        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        queue = GraphBatchQueue()
         payload = {"isRead": is_read}
         
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.patch(f"{self.graph_endpoint}/me/messages/{message_id}", headers=headers, json=payload) as response:
-                    response.raise_for_status()
-                    return True
+            resp = await queue.enqueue_request(
+                access_token=self.access_token,
+                method="PATCH",
+                url=f"/me/messages/{message_id}",
+                body=payload
+            )
+            if not (200 <= resp.get("status", 500) < 300):
+                raise Exception(f"Failed to mark read: {resp.get('status')}")
+            return True
         except Exception as e:
             logger.error(f"Error marking email {message_id} as read={is_read}: {e}", exc_info=True)
             raise
@@ -455,14 +594,19 @@ class MicrosoftGraphIntegration(BaseIntegration):
         if not self.access_token:
             raise Exception("Not authenticated")
 
-        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        queue = GraphBatchQueue()
         payload = {"categories": categories}
         
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.patch(f"{self.graph_endpoint}/me/messages/{message_id}", headers=headers, json=payload) as response:
-                    response.raise_for_status()
-                    return True
+            resp = await queue.enqueue_request(
+                access_token=self.access_token,
+                method="PATCH",
+                url=f"/me/messages/{message_id}",
+                body=payload
+            )
+            if not (200 <= resp.get("status", 500) < 300):
+                raise Exception(f"Failed to categorize: {resp.get('status')}")
+            return True
         except Exception as e:
             logger.error(f"Error categorizing email {message_id}: {e}", exc_info=True)
             raise
@@ -472,14 +616,19 @@ class MicrosoftGraphIntegration(BaseIntegration):
         if not self.access_token:
             raise Exception("Not authenticated")
 
-        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        queue = GraphBatchQueue()
         payload = {"destinationId": destination_folder_id}
         
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self.graph_endpoint}/me/messages/{message_id}/move", headers=headers, json=payload) as response:
-                    response.raise_for_status()
-                    return True
+            resp = await queue.enqueue_request(
+                access_token=self.access_token,
+                method="POST",
+                url=f"/me/messages/{message_id}/move",
+                body=payload
+            )
+            if not (200 <= resp.get("status", 500) < 300):
+                raise Exception(f"Failed to move: {resp.get('status')}")
+            return True
         except Exception as e:
             logger.error(f"Error moving email {message_id} to folder {destination_folder_id}: {e}", exc_info=True)
             raise
@@ -505,12 +654,22 @@ class MicrosoftGraphIntegration(BaseIntegration):
                     data = await response.json()
                     
             messages = data.get('value', [])
+            
+            def _clean_snippet(snippet: str) -> str:
+                if not snippet:
+                    return ""
+                # Replace unicode zero-width spaces, non-breaking spaces, and normalize whitespace
+                import re
+                cleaned = re.sub(r'[\u200b\u200c\u200d\u200e\u200f\ufeff]', '', snippet)
+                cleaned = re.sub(r'[\xa0\u2007\u202f]', ' ', cleaned)
+                return re.sub(r'\s+', ' ', cleaned).strip()
+
             return [{
                 "id": msg.get("id"),
                 "subject": msg.get("subject", "No Subject"),
                 "from": msg.get("from", {}).get("emailAddress", {}).get("address", "Unknown"),
                 "receivedDateTime": msg.get("receivedDateTime"),
-                "snippet": msg.get("bodyPreview", "")
+                "snippet": _clean_snippet(msg.get("bodyPreview", ""))
             } for msg in messages]
         except Exception as e:
             logger.error(f"Error searching emails for query '{query}': {e}", exc_info=True)
@@ -580,67 +739,59 @@ class MicrosoftGraphIntegration(BaseIntegration):
             raise
 
     async def bulk_categorize_emails(self, message_ids: List[str], categories: List[str]) -> Dict[str, Any]:
-        """Adds or removes categories from multiple emails simultaneously using concurrency."""
+        """Adds or removes categories from multiple emails simultaneously using the global GraphBatchQueue."""
         if not self.access_token:
             raise Exception("Not authenticated")
 
-        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        queue = GraphBatchQueue()
         payload = {"categories": categories}
         
-        async def _categorize(session, msg_id):
+        async def _categorize(msg_id):
             try:
-                async with session.patch(f"{self.graph_endpoint}/me/messages/{msg_id}", headers=headers, json=payload) as resp:
-                    resp.raise_for_status()
-                    return {"id": msg_id, "status": "success"}
+                resp = await queue.enqueue_request(
+                    access_token=self.access_token,
+                    method="PATCH",
+                    url=f"/me/messages/{msg_id}",
+                    body=payload
+                )
+                status = "success" if 200 <= resp.get("status", 500) < 300 else "failed"
+                return {"id": msg_id, "status": status, "body": resp.get("body")}
             except Exception as ex:
                 return {"id": msg_id, "status": "failed", "error": str(ex)}
 
-        async with aiohttp.ClientSession() as session:
-            tasks = [_categorize(session, msg_id) for msg_id in message_ids]
-            results = await asyncio.gather(*tasks)
+        tasks = [_categorize(msg_id) for msg_id in message_ids]
+        results = await asyncio.gather(*tasks)
             
         success_count = sum(1 for r in results if r["status"] == "success")
         return {"processed": len(message_ids), "successes": success_count, "failures": len(message_ids) - success_count, "results": results}
 
     async def bulk_move_emails(self, message_ids: List[str], destination_folder_id: str) -> Dict[str, Any]:
+        """Moves multiple emails simultaneously using the global GraphBatchQueue to avoid rate limits."""
         if not self.access_token:
             raise Exception("Not authenticated")
         
-        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        queue = GraphBatchQueue()
         payload = {"destinationId": destination_folder_id}
-        all_results = []
+        
+        async def _move(msg_id):
+            try:
+                resp = await queue.enqueue_request(
+                    access_token=self.access_token,
+                    method="POST",
+                    url=f"/me/messages/{msg_id}/move",
+                    body=payload
+                )
+                # The batch response inner status is an int
+                status = "success" if 200 <= resp.get("status", 500) < 300 else "failed"
+                return {"id": msg_id, "status": status, "body": resp.get("body")}
+            except Exception as ex:
+                return {"id": msg_id, "status": "failed", "error": str(ex)}
 
-        # Graph $batch supports up to 20 requests per call
-        for chunk in [message_ids[i:i+20] for i in range(0, len(message_ids), 20)]:
-            batch_body = {
-                "requests": [
-                    {
-                        "id": str(idx),
-                        "method": "POST",
-                        "url": f"/me/messages/{msg_id}/move",
-                        "headers": {"Content-Type": "application/json"},
-                        "body": payload,
-                    }
-                    for idx, msg_id in enumerate(chunk)
-                ]
-            }
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    "https://graph.microsoft.com/v1.0/$batch",
-                    headers=headers, json=batch_body
-                ) as resp:
-                    resp.raise_for_status()
-                    data = await resp.json()
-                    for r in data.get("responses", []):
-                        msg_id = chunk[int(r["id"])]
-                        status = "success" if 200 <= r["status"] < 300 else "failed"
-                        all_results.append({"id": msg_id, "status": status})
-            
-            await asyncio.sleep(1)  # breathing room between batches
-
-        success_count = sum(1 for r in all_results if r["status"] == "success")
-        return {"processed": len(message_ids), "successes": success_count,
-                "failures": len(message_ids) - success_count, "results": all_results}
+        tasks = [_move(msg_id) for msg_id in message_ids]
+        results = await asyncio.gather(*tasks)
+        
+        success_count = sum(1 for r in results if r["status"] == "success")
+        return {"processed": len(message_ids), "successes": success_count, "failures": len(message_ids) - success_count, "results": results}
     async def _graph_get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         headers = {
             "Authorization": f"Bearer {self.access_token}",

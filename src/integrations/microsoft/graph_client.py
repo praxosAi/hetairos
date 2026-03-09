@@ -362,25 +362,42 @@ class MicrosoftGraphIntegration(BaseIntegration):
             raise Exception("Not authenticated")
         
         headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        
+        # Cap page size to 500 for Graph API limits, but we can fetch multiple pages
+        page_size = min(max_results, 500)
+        
         params = {
             "$search": f'"from:{sender_email}"',
-            "$top": str(max_results),
+            "$top": str(page_size),
             # "$orderby": "receivedDateTime desc",
             # "$count": "true",   # ← required alongside ConsistencyLevel
         }
         
+        all_formatted_messages = []
+        
         try:
             async with aiohttp.ClientSession() as session:
-                # Use URL encoded string for params to prevent issue with quoting
-                # Ensure we only encode it once
-                # encoded_params = urlencode(params, safe="$\"'()", quote_via=quote)
                 url = f"{self.graph_endpoint}/me/messages"
-                async with session.get(url, headers=headers, params=params) as response:
-                    response.raise_for_status()
-                    data = await response.json()
-            
-            messages = data.get('value', [])
-            return [await self._format_message(msg) for msg in messages]
+                
+                while url and len(all_formatted_messages) < max_results:
+                    async with session.get(url, headers=headers, params=params) as response:
+                        response.raise_for_status()
+                        data = await response.json()
+                        
+                    messages = data.get('value', [])
+                    if not messages:
+                        break
+                        
+                    for msg in messages:
+                        all_formatted_messages.append(await self._format_message(msg))
+                        if len(all_formatted_messages) >= max_results:
+                            break
+                            
+                    # Clear params for next page because the nextLink already contains the $top and $search logic
+                    params = None 
+                    url = data.get('@odata.nextLink')
+                    
+            return all_formatted_messages
         except Exception as e:
             logger.error(f"Error fetching emails from sender {sender_email}: {e}", exc_info=True)
             return []

@@ -221,35 +221,58 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration, tool_registr
             )
 
     @tool
-    async def get_frequent_outlook_senders(days_back: int = 30, max_senders: int = 15) -> ToolExecutionResponse:
-        """Analyzes the user's recent inbox and returns a list of the most frequent email senders."""
+    async def get_frequent_outlook_senders(days_back: int = 30, max_senders: int = 15, source_folder: str = "inbox") -> ToolExecutionResponse:
+        """Analyzes a specific folder (defaults to 'inbox') to find the most frequent email senders."""
         try:
-            senders = await outlook_client.get_frequent_senders(days_back=days_back, max_senders=max_senders)
+            folder_id = source_folder
+            well_known = ["inbox", "archive", "deleteditems", "junkemail", "drafts", "sentitems"]
+
+            # Resolve folder ID if a friendly name was provided
+            if source_folder.lower() not in well_known and not source_folder.startswith("AAMk"):
+                folders = await outlook_client.list_mail_folders()
+                for f in folders:
+                    if f["name"].lower() == source_folder.lower():
+                        folder_id = f["id"]
+                        break
+
+            senders = await outlook_client.get_frequent_senders(days_back=days_back, max_senders=max_senders, folder_id=folder_id)
             return ToolExecutionResponse(status="success", result=senders)
         except Exception as e:
             return ErrorResponseBuilder.from_exception(
                 operation="get_frequent_outlook_senders",
                 exception=e,
                 integration="Microsoft Outlook",
-                context={"days_back": days_back}
+                context={"days_back": days_back, "source_folder": source_folder}
             )
 
     @tool
-    async def move_outlook_emails_by_sender(sender_email: str, destination_folder: str, max_results: int = 1000) -> ToolExecutionResponse:
-        """Finds all emails from a specific sender and moves them to a folder (can provide folder name or ID)."""
+    async def move_outlook_emails_by_sender(sender_email: str, destination_folder: str, source_folder: str = "inbox", max_results: int = 1000) -> ToolExecutionResponse:
+        """Finds all emails from a specific sender in a source folder and moves them to a destination folder."""
         try:
             folder_id = destination_folder
+            source_folder_id = source_folder
             well_known = ["inbox", "archive", "deleteditems", "junkemail", "drafts", "sentitems"]
             
-            # Resolve folder ID if a friendly name was provided
+            folders = None
+            
+            # Resolve destination folder ID
             if destination_folder.lower() not in well_known and not destination_folder.startswith("AAMk"):
                 folders = await outlook_client.list_mail_folders()
                 for f in folders:
                     if f["name"].lower() == destination_folder.lower():
                         folder_id = f["id"]
                         break
+                        
+            # Resolve source folder ID
+            if source_folder.lower() not in well_known and not source_folder.startswith("AAMk"):
+                if not folders:
+                    folders = await outlook_client.list_mail_folders()
+                for f in folders:
+                    if f["name"].lower() == source_folder.lower():
+                        source_folder_id = f["id"]
+                        break
             
-            emails = await outlook_client.get_emails_from_sender(sender_email, max_results=max_results)
+            emails = await outlook_client.get_emails_from_sender(sender_email, max_results=max_results, folder_id=source_folder_id)
             if not emails:
                 return ToolExecutionResponse(status="success", result=f"No emails found from {sender_email}.")
                 
@@ -258,8 +281,11 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration, tool_registr
             
             # Remove full response bodies from the result to save LLM context
             if "results" in result:
-                for r in result["results"]:
-                    r.pop("body", None)
+                # We only really care about passing successes/failures to LLM, not the giant list of 1000 individual JSON results
+                # But if we must include them, keep them minimal. Let's just summarize the failures if there are any.
+                failed_items = [r for r in result["results"] if r.get("status") != "success"]
+                result["failed_samples"] = failed_items[:5] # Only show up to 5 failed items to the LLM to prevent context bloat
+                result.pop("results", None)
             
             return ToolExecutionResponse(status="success", result=result)
         except Exception as e:
@@ -271,20 +297,30 @@ def create_outlook_tools(outlook_client: MicrosoftGraphIntegration, tool_registr
             )
 
     @tool
-    async def categorize_outlook_emails_by_sender(sender_email: str, categories: List[str], max_results: int = 1000) -> ToolExecutionResponse:
-        """Finds all emails from a specific sender and applies categories to them."""
+    async def categorize_outlook_emails_by_sender(sender_email: str, categories: List[str], source_folder: str = "inbox", max_results: int = 1000) -> ToolExecutionResponse:
+        """Finds all emails from a specific sender in a source folder and applies categories to them."""
         try:
-            emails = await outlook_client.get_emails_from_sender(sender_email, max_results=max_results)
+            source_folder_id = source_folder
+            well_known = ["inbox", "archive", "deleteditems", "junkemail", "drafts", "sentitems"]
+            
+            if source_folder.lower() not in well_known and not source_folder.startswith("AAMk"):
+                folders = await outlook_client.list_mail_folders()
+                for f in folders:
+                    if f["name"].lower() == source_folder.lower():
+                        source_folder_id = f["id"]
+                        break
+                        
+            emails = await outlook_client.get_emails_from_sender(sender_email, max_results=max_results, folder_id=source_folder_id)
             if not emails:
                 return ToolExecutionResponse(status="success", result=f"No emails found from {sender_email}.")
                 
             message_ids = [email['id'] for email in emails]
             result = await outlook_client.bulk_categorize_emails(message_ids, categories)
             
-            # Remove full response bodies from the result to save LLM context
             if "results" in result:
-                for r in result["results"]:
-                    r.pop("body", None)
+                failed_items = [r for r in result["results"] if r.get("status") != "success"]
+                result["failed_samples"] = failed_items[:5]
+                result.pop("results", None)
                     
             return ToolExecutionResponse(status="success", result=result)
         except Exception as e:

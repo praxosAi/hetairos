@@ -460,17 +460,27 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
         return []
 
     @tool
-    async def get_frequent_google_senders(days_back: int = 30, max_senders: int = 15, account: Optional[str] = None) -> ToolExecutionResponse:
-        """Analyzes the user's recent inbox and returns a list of the most frequent email senders."""
+    async def get_frequent_google_senders(days_back: int = 30, max_senders: int = 15, source_folder: str = "INBOX", account: Optional[str] = None) -> ToolExecutionResponse:
+        """Analyzes a specific folder (defaults to 'INBOX') to find the most frequent email senders."""
         try:
-            senders = await gmail_integration.get_frequent_senders(days_back=days_back, max_senders=max_senders, account=account)
+            label_id = source_folder
+            if source_folder.upper() not in ['INBOX', 'SPAM', 'TRASH', 'SENT', 'DRAFT']:
+                labels = await gmail_integration.list_labels(account=account)
+                for label in labels:
+                    if label['name'].lower() == source_folder.lower():
+                        label_id = label['id']
+                        break
+            else:
+                label_id = source_folder.upper()
+
+            senders = await gmail_integration.get_frequent_senders(days_back=days_back, max_senders=max_senders, source_folder=label_id, account=account)
             return ToolExecutionResponse(status="success", result=senders)
         except Exception as e:
             return ErrorResponseBuilder.from_exception(
                 operation="get_frequent_google_senders",
                 exception=e,
                 integration="Gmail",
-                context={"days_back": days_back}
+                context={"days_back": days_back, "source_folder": source_folder}
             )
 
     @tool
@@ -512,10 +522,10 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             )
 
     @tool
-    async def move_google_emails_by_sender(sender_email: str, destination_folder: str, max_results: int = 1000, account: Optional[str] = None) -> ToolExecutionResponse:
-        """Finds all emails from a specific sender and moves them to a folder (can be 'trash', 'archive', or a custom label name)."""
+    async def move_google_emails_by_sender(sender_email: str, destination_folder: str, source_folder: str = "INBOX", max_results: int = 1000, account: Optional[str] = None) -> ToolExecutionResponse:
+        """Finds all emails from a specific sender in a source folder and moves them to a destination folder."""
         try:
-            # 1. Resolve folder/label
+            # 1. Resolve destination folder/label
             add_label_ids = []
             remove_label_ids = []
             
@@ -541,13 +551,24 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
                 
                 add_label_ids = [label_id]
                 remove_label_ids = ['INBOX'] # usually moving to a custom folder implies archiving from inbox
+                
+            # 2. Resolve source folder/label
+            source_label_id = source_folder
+            if source_folder.upper() not in ['INBOX', 'SPAM', 'TRASH', 'SENT', 'DRAFT']:
+                labels = await gmail_integration.list_labels(account=account)
+                for label in labels:
+                    if label['name'].lower() == source_folder.lower():
+                        source_label_id = label['id']
+                        break
+            else:
+                source_label_id = source_folder.upper()
 
-            # 2. Fetch emails
-            emails = await gmail_integration.get_emails_from_sender(sender_email, account=account, max_results=max_results)
+            # 3. Fetch emails
+            emails = await gmail_integration.get_emails_from_sender(sender_email, account=account, max_results=max_results, source_folder=source_label_id)
             if not emails:
-                return ToolExecutionResponse(status="success", result=f"No emails found from {sender_email}.")
+                return ToolExecutionResponse(status="success", result=f"No emails found from {sender_email} in {source_folder}.")
 
-            # 3. Bulk modify
+            # 4. Bulk modify
             message_ids = [email['id'] for email in emails]
             result = await gmail_integration.bulk_modify_messages(message_ids, add_label_ids=add_label_ids, remove_label_ids=remove_label_ids, account=account)
             
@@ -557,14 +578,14 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
                 operation="move_google_emails_by_sender",
                 exception=e,
                 integration="Gmail",
-                context={"sender_email": sender_email, "destination_folder": destination_folder}
+                context={"sender_email": sender_email, "destination_folder": destination_folder, "source_folder": source_folder}
             )
 
     @tool
-    async def categorize_google_emails_by_sender(sender_email: str, label_name: str, max_results: int = 1000, account: Optional[str] = None) -> ToolExecutionResponse:
-        """Finds all emails from a specific sender and applies a label to them without archiving them."""
+    async def categorize_google_emails_by_sender(sender_email: str, label_name: str, source_folder: str = "INBOX", max_results: int = 1000, account: Optional[str] = None) -> ToolExecutionResponse:
+        """Finds all emails from a specific sender in a source folder and applies a label to them without archiving them."""
         try:
-            # 1. Find or create label
+            # 1. Find or create destination label
             labels = await gmail_integration.list_labels(account=account)
             label_id = None
             for label in labels:
@@ -575,13 +596,23 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
             if not label_id:
                 new_label = await gmail_integration.create_label(label_name, account=account)
                 label_id = new_label['id']
+                
+            # 2. Resolve source folder/label
+            source_label_id = source_folder
+            if source_folder.upper() not in ['INBOX', 'SPAM', 'TRASH', 'SENT', 'DRAFT']:
+                for label in labels:
+                    if label['name'].lower() == source_folder.lower():
+                        source_label_id = label['id']
+                        break
+            else:
+                source_label_id = source_folder.upper()
             
-            # 2. Fetch emails
-            emails = await gmail_integration.get_emails_from_sender(sender_email, account=account, max_results=max_results)
+            # 3. Fetch emails
+            emails = await gmail_integration.get_emails_from_sender(sender_email, account=account, max_results=max_results, source_folder=source_label_id)
             if not emails:
-                return ToolExecutionResponse(status="success", result=f"No emails found from {sender_email}.")
+                return ToolExecutionResponse(status="success", result=f"No emails found from {sender_email} in {source_folder}.")
 
-            # 3. Bulk modify
+            # 4. Bulk modify
             message_ids = [email['id'] for email in emails]
             result = await gmail_integration.bulk_modify_messages(message_ids, add_label_ids=[label_id], account=account)
             
@@ -591,7 +622,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
                 operation="categorize_google_emails_by_sender",
                 exception=e,
                 integration="Gmail",
-                context={"sender_email": sender_email, "label_name": label_name}
+                context={"sender_email": sender_email, "label_name": label_name, "source_folder": source_folder}
             )
 
     all_tools = [

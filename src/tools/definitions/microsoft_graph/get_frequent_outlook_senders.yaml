@@ -13,6 +13,11 @@ arguments:
     description: Maximum number of frequent senders to return (default 15)
     required: false
     default: 15
+  - name: source_folder
+    type: str
+    description: The name or ID of the folder to analyze (default 'inbox')
+    required: false
+    default: "inbox"
   - name: account
     type: str
     description: Account identifier (when multiple accounts connected)

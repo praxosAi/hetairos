@@ -109,32 +109,47 @@ class GraphBatchQueue:
                         }
                         
                         try:
-                            async with self._session.post(
-                                "https://graph.microsoft.com/v1.0/$batch",
-                                headers=batch_headers, json=batch_body
-                            ) as resp:
-                                resp.raise_for_status()
-                                data = await resp.json()
-                                
-                                # Map responses back to futures
-                                response_map = {r["id"]: r for r in data.get("responses", [])}
-                                for idx, req in enumerate(chunk):
-                                    resp_data = response_map.get(str(idx))
-                                    if resp_data:
-                                        # Resolve the future with the inner response
-                                        if not req["future"].done():
-                                            req["future"].set_result(resp_data)
-                                    else:
-                                        if not req["future"].done():
-                                            req["future"].set_exception(Exception("No response in batch"))
+                            # 429 Retry loop for the $batch request
+                            for attempt in range(3):
+                                async with self._session.post(
+                                    "https://graph.microsoft.com/v1.0/$batch",
+                                    headers=batch_headers, json=batch_body
+                                ) as resp:
+                                    if resp.status == 429:
+                                        retry_after = int(resp.headers.get("Retry-After", 1))
+                                        logger.warning(f"Graph $batch rate limited. Worker sleeping for {retry_after}s...")
+                                        await asyncio.sleep(retry_after)
+                                        continue
+                                        
+                                    resp.raise_for_status()
+                                    data = await resp.json()
+                                    break
+                            else:
+                                raise Exception("Exceeded max retries for 429 on $batch request")
+
+                            # Map responses back to futures
+                            response_map = {r["id"]: r for r in data.get("responses", [])}
+                            for idx, req in enumerate(chunk):
+                                resp_data = response_map.get(str(idx))
+                                if resp_data:
+                                    # If an individual item in the batch got a 429, we should technically retry it, 
+                                    # but the Graph API usually rate limits at the batch level. 
+                                    if resp_data.get("status") == 429:
+                                        logger.warning(f"Individual request {idx} in batch hit 429.")
+                                        
+                                    if not req["future"].done():
+                                        req["future"].set_result(resp_data)
+                                else:
+                                    if not req["future"].done():
+                                        req["future"].set_exception(Exception("No response in batch"))
                         except Exception as e:
                             logger.error(f"Error processing Graph batch: {e}")
                             for req in chunk:
                                 if not req["future"].done():
                                     req["future"].set_exception(e)
                                     
-                # Global throttle: max 1 batch request loop per 0.2s
-                await asyncio.sleep(0.2)
+                # Global throttle: max 1 batch request loop per 1s
+                await asyncio.sleep(1)
         finally:
             if self._session:
                 await self._session.close()
@@ -180,7 +195,7 @@ class MicrosoftGraphIntegration(BaseIntegration):
         token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
         payload = {
             'client_id': settings.MICROSOFT_CLIENT_ID,
-            # 'scope': 'offline_access user.read mail.readwrite mail.send calendars.readwrite MailboxSettings.ReadWrite',
+            'scope': 'offline_access user.read mail.readwrite mail.send calendars.readwrite MailboxSettings.ReadWrite',
             'refresh_token': refresh_token,
             'grant_type': 'refresh_token',
             'client_secret': settings.MICROSOFT_CLIENT_SECRET,
@@ -252,7 +267,7 @@ class MicrosoftGraphIntegration(BaseIntegration):
             logger.error(f"Error fetching Outlook messages: {e}")
             return []
 
-    async def get_frequent_senders(self, days_back: int = 30, max_senders: int = 15,max_messages: int = 1000) -> List[Dict[str, Any]]:
+    async def get_frequent_senders(self, days_back: int = 30, max_senders: int = 15,max_messages: int = 3000, folder_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Fetches a summary of the most frequent email senders over the specified time period.
         It pulls only the 'from' metadata from recent emails to quickly aggregate counts.
@@ -276,32 +291,38 @@ class MicrosoftGraphIntegration(BaseIntegration):
         
         try:
             async with aiohttp.ClientSession() as session:
-                # encoded_params = urlencode(params, safe="$\"'()", quote_via=quote)
-                url = f"{self.graph_endpoint}/me/messages"
+                url = f"{self.graph_endpoint}/me/mailFolders/{folder_id}/messages" if folder_id else f"{self.graph_endpoint}/me/messages"
                 
-                # We'll follow pagination up to a reasonable limit (e.g. 1000 messages) to build the frequency map
+                # We'll follow pagination up to a reasonable limit to build the frequency map
                 messages_processed = 0
                 max_messages_to_process = max_messages
                 
                 while url and messages_processed < max_messages_to_process:
-                    async with session.get(url, headers=headers, params=params) as response:
-                        response.raise_for_status()
-                        data = await response.json()
+                    for attempt in range(3):
+                        async with session.get(url, headers=headers, params=params) as response:
+                            if response.status == 429:
+                                retry_after = int(response.headers.get("Retry-After", 1))
+                                logger.warning(f"Rate limited fetching frequent senders. Retrying after {retry_after}s...")
+                                await asyncio.sleep(retry_after)
+                                continue
+                            response.raise_for_status()
+                            data = await response.json()
+                            break
+                    else:
+                        raise Exception("Exceeded max retries for 429 Too Many Requests")
                         
                     messages = data.get('value', [])
                     for msg in messages:
                         from_data = msg.get("from", {}).get("emailAddress", {})
                         email = from_data.get("address")
                         name = from_data.get("name")
-                        
                         if email:
                             if email not in sender_counts:
                                 sender_counts[email] = {"name": name, "email": email, "count": 0}
                             sender_counts[email]["count"] += 1
-                            
                     messages_processed += len(messages)
-                    # Get the next page URL if it exists
                     url = data.get('@odata.nextLink')
+                    params = None  # ← nextLink already contains all query params
                     
             # Sort by count descending and return the top N
             sorted_senders = sorted(sender_counts.values(), key=lambda x: x["count"], reverse=True)
@@ -477,7 +498,7 @@ class MicrosoftGraphIntegration(BaseIntegration):
             logger.error(f"Error creating Outlook Calendar event: {e}")
             raise
 
-    async def get_emails_from_sender(self, sender_email: str, max_results: int = 10) -> List[Dict]:
+    async def get_emails_from_sender(self, sender_email: str, max_results: int = 10, folder_id: Optional[str] = None) -> List[Dict]:
         """Fetches the most recent emails from a specific sender."""
         if not self.access_token:
             raise Exception("Not authenticated")
@@ -497,12 +518,21 @@ class MicrosoftGraphIntegration(BaseIntegration):
         
         try:
             async with aiohttp.ClientSession() as session:
-                url = f"{self.graph_endpoint}/me/messages"
+                url = f"{self.graph_endpoint}/me/mailFolders/{folder_id}/messages" if folder_id else f"{self.graph_endpoint}/me/messages"
                 
                 while url and len(all_formatted_messages) < max_results:
-                    async with session.get(url, headers=headers, params=params) as response:
-                        response.raise_for_status()
-                        data = await response.json()
+                    for attempt in range(3):
+                        async with session.get(url, headers=headers, params=params) as response:
+                            if response.status == 429:
+                                retry_after = int(response.headers.get("Retry-After", 1))
+                                logger.warning(f"Rate limited fetching emails from {sender_email}. Retrying after {retry_after}s...")
+                                await asyncio.sleep(retry_after)
+                                continue
+                            response.raise_for_status()
+                            data = await response.json()
+                            break
+                    else:
+                        raise Exception("Exceeded max retries for 429 Too Many Requests")
                         
                     messages = data.get('value', [])
                     if not messages:
@@ -575,19 +605,29 @@ class MicrosoftGraphIntegration(BaseIntegration):
         queue = GraphBatchQueue()
         payload = {"isRead": is_read}
         
-        try:
-            resp = await queue.enqueue_request(
-                access_token=self.access_token,
-                method="PATCH",
-                url=f"/me/messages/{message_id}",
-                body=payload
-            )
-            if not (200 <= resp.get("status", 500) < 300):
-                raise Exception(f"Failed to mark read: {resp.get('status')}")
-            return True
-        except Exception as e:
-            logger.error(f"Error marking email {message_id} as read={is_read}: {e}", exc_info=True)
-            raise
+        for attempt in range(3):
+            try:
+                resp = await queue.enqueue_request(
+                    access_token=self.access_token,
+                    method="PATCH",
+                    url=f"/me/messages/{message_id}",
+                    body=payload
+                )
+                inner_status = resp.get("status", 500)
+                if inner_status == 429:
+                    headers = resp.get("headers", {})
+                    retry_after = int(headers.get("Retry-After", 2))
+                    logger.warning(f"Batch item {message_id} rate limited (429). Retrying after {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                if not (200 <= inner_status < 300):
+                    raise Exception(f"Failed to mark read: {inner_status}")
+                return True
+            except Exception as e:
+                if attempt == 2:
+                    logger.error(f"Error marking email {message_id} as read={is_read}: {e}", exc_info=True)
+                    raise
+                await asyncio.sleep(1)
 
     async def categorize_email(self, message_id: str, categories: List[str]) -> bool:
         """Adds or removes categories from a specific email."""
@@ -597,19 +637,29 @@ class MicrosoftGraphIntegration(BaseIntegration):
         queue = GraphBatchQueue()
         payload = {"categories": categories}
         
-        try:
-            resp = await queue.enqueue_request(
-                access_token=self.access_token,
-                method="PATCH",
-                url=f"/me/messages/{message_id}",
-                body=payload
-            )
-            if not (200 <= resp.get("status", 500) < 300):
-                raise Exception(f"Failed to categorize: {resp.get('status')}")
-            return True
-        except Exception as e:
-            logger.error(f"Error categorizing email {message_id}: {e}", exc_info=True)
-            raise
+        for attempt in range(3):
+            try:
+                resp = await queue.enqueue_request(
+                    access_token=self.access_token,
+                    method="PATCH",
+                    url=f"/me/messages/{message_id}",
+                    body=payload
+                )
+                inner_status = resp.get("status", 500)
+                if inner_status == 429:
+                    headers = resp.get("headers", {})
+                    retry_after = int(headers.get("Retry-After", 2))
+                    logger.warning(f"Batch item {message_id} rate limited (429). Retrying after {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                if not (200 <= inner_status < 300):
+                    raise Exception(f"Failed to categorize: {inner_status}")
+                return True
+            except Exception as e:
+                if attempt == 2:
+                    logger.error(f"Error categorizing email {message_id}: {e}", exc_info=True)
+                    raise
+                await asyncio.sleep(1)
 
     async def move_email(self, message_id: str, destination_folder_id: str) -> bool:
         """Moves an email to a different folder."""
@@ -619,19 +669,29 @@ class MicrosoftGraphIntegration(BaseIntegration):
         queue = GraphBatchQueue()
         payload = {"destinationId": destination_folder_id}
         
-        try:
-            resp = await queue.enqueue_request(
-                access_token=self.access_token,
-                method="POST",
-                url=f"/me/messages/{message_id}/move",
-                body=payload
-            )
-            if not (200 <= resp.get("status", 500) < 300):
-                raise Exception(f"Failed to move: {resp.get('status')}")
-            return True
-        except Exception as e:
-            logger.error(f"Error moving email {message_id} to folder {destination_folder_id}: {e}", exc_info=True)
-            raise
+        for attempt in range(3):
+            try:
+                resp = await queue.enqueue_request(
+                    access_token=self.access_token,
+                    method="POST",
+                    url=f"/me/messages/{message_id}/move",
+                    body=payload
+                )
+                inner_status = resp.get("status", 500)
+                if inner_status == 429:
+                    headers = resp.get("headers", {})
+                    retry_after = int(headers.get("Retry-After", 2))
+                    logger.warning(f"Batch item {message_id} rate limited (429). Retrying after {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                if not (200 <= inner_status < 300):
+                    raise Exception(f"Failed to move: {inner_status}")
+                return True
+            except Exception as e:
+                if attempt == 2:
+                    logger.error(f"Error moving email {message_id} to folder {destination_folder_id}: {e}", exc_info=True)
+                    raise
+                await asyncio.sleep(1)
 
     async def search_emails(self, query: str, max_results: int = 10) -> List[Dict]:
         """Searches the user's emails using a specific query string."""
@@ -647,11 +707,19 @@ class MicrosoftGraphIntegration(BaseIntegration):
         
         try:
             async with aiohttp.ClientSession() as session:
-                # encoded_params = urlencode(params, safe="$\"'", quote_via=quote)
                 url = f"{self.graph_endpoint}/me/messages"
-                async with session.get(url, headers=headers, params=params) as response:
-                    response.raise_for_status()
-                    data = await response.json()
+                for attempt in range(3):
+                    async with session.get(url, headers=headers, params=params) as response:
+                        if response.status == 429:
+                            retry_after = int(response.headers.get("Retry-After", 1))
+                            logger.warning(f"Rate limited searching emails. Retrying after {retry_after}s...")
+                            await asyncio.sleep(retry_after)
+                            continue
+                        response.raise_for_status()
+                        data = await response.json()
+                        break
+                else:
+                    raise Exception("Exceeded max retries for 429 Too Many Requests")
                     
             messages = data.get('value', [])
             
@@ -731,9 +799,16 @@ class MicrosoftGraphIntegration(BaseIntegration):
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self.graph_endpoint}/me/mailFolders/inbox/messageRules", headers=headers, json=payload) as response:
-                    response.raise_for_status()
-                    return await response.json()
+                for attempt in range(3):
+                    async with session.post(f"{self.graph_endpoint}/me/mailFolders/inbox/messageRules", headers=headers, json=payload) as response:
+                        if response.status == 429:
+                            retry_after = int(response.headers.get("Retry-After", 1))
+                            logger.warning(f"Rate limited creating rule '{display_name}'. Retrying after {retry_after}s...")
+                            await asyncio.sleep(retry_after)
+                            continue
+                        response.raise_for_status()
+                        return await response.json()
+                raise Exception("Exceeded max retries for 429 Too Many Requests")
         except Exception as e:
             logger.error(f"Error creating Outlook rule '{display_name}': {e}", exc_info=True)
             raise
@@ -747,17 +822,30 @@ class MicrosoftGraphIntegration(BaseIntegration):
         payload = {"categories": categories}
         
         async def _categorize(msg_id):
-            try:
-                resp = await queue.enqueue_request(
-                    access_token=self.access_token,
-                    method="PATCH",
-                    url=f"/me/messages/{msg_id}",
-                    body=payload
-                )
-                status = "success" if 200 <= resp.get("status", 500) < 300 else "failed"
-                return {"id": msg_id, "status": status, "body": resp.get("body")}
-            except Exception as ex:
-                return {"id": msg_id, "status": "failed", "error": str(ex)}
+            for attempt in range(3):
+                try:
+                    resp = await queue.enqueue_request(
+                        access_token=self.access_token,
+                        method="PATCH",
+                        url=f"/me/messages/{msg_id}",
+                        body=payload
+                    )
+                    inner_status = resp.get("status", 500)
+                    
+                    if inner_status == 429:
+                        headers = resp.get("headers", {})
+                        retry_after = int(headers.get("Retry-After", 2))
+                        logger.warning(f"Batch item {msg_id} rate limited (429). Retrying after {retry_after}s...")
+                        await asyncio.sleep(retry_after)
+                        continue
+                        
+                    status = "success" if 200 <= inner_status < 300 else "failed"
+                    return {"id": msg_id, "status": status, "error_code": inner_status if status == "failed" else None}
+                except Exception as ex:
+                    if attempt == 2:
+                        return {"id": msg_id, "status": "failed", "error": str(ex)}
+                    await asyncio.sleep(1)
+            return {"id": msg_id, "status": "failed", "error": "Exceeded max retries for item"}
 
         tasks = [_categorize(msg_id) for msg_id in message_ids]
         results = await asyncio.gather(*tasks)
@@ -774,18 +862,32 @@ class MicrosoftGraphIntegration(BaseIntegration):
         payload = {"destinationId": destination_folder_id}
         
         async def _move(msg_id):
-            try:
-                resp = await queue.enqueue_request(
-                    access_token=self.access_token,
-                    method="POST",
-                    url=f"/me/messages/{msg_id}/move",
-                    body=payload
-                )
-                # The batch response inner status is an int
-                status = "success" if 200 <= resp.get("status", 500) < 300 else "failed"
-                return {"id": msg_id, "status": status, "body": resp.get("body")}
-            except Exception as ex:
-                return {"id": msg_id, "status": "failed", "error": str(ex)}
+            for attempt in range(3):
+                try:
+                    resp = await queue.enqueue_request(
+                        access_token=self.access_token,
+                        method="POST",
+                        url=f"/me/messages/{msg_id}/move",
+                        body=payload
+                    )
+                    # The batch response inner status is an int
+                    inner_status = resp.get("status", 500)
+                    
+                    if inner_status == 429:
+                        # Grab Retry-After if provided in the body headers, else default to 2s backoff
+                        headers = resp.get("headers", {})
+                        retry_after = int(headers.get("Retry-After", 2))
+                        logger.warning(f"Batch item {msg_id} rate limited (429). Retrying after {retry_after}s...")
+                        await asyncio.sleep(retry_after)
+                        continue
+                        
+                    status = "success" if 200 <= inner_status < 300 else "failed"
+                    return {"id": msg_id, "status": status, "error_code": inner_status if status == "failed" else None}
+                except Exception as ex:
+                    if attempt == 2:
+                        return {"id": msg_id, "status": "failed", "error": str(ex)}
+                    await asyncio.sleep(1)
+            return {"id": msg_id, "status": "failed", "error": "Exceeded max retries for item"}
 
         tasks = [_move(msg_id) for msg_id in message_ids]
         results = await asyncio.gather(*tasks)

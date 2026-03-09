@@ -11,6 +11,11 @@ arguments:
     type: str
     description: The name or ID of the destination folder (e.g., 'Archive', 'Work')
     required: true
+  - name: source_folder
+    type: str
+    description: The name or ID of the folder to search in (e.g., 'inbox')
+    required: false
+    default: "inbox"
   - name: max_results
     type: int
     description: Maximum number of emails to retrieve and move

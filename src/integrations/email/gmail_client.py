@@ -190,12 +190,22 @@ class GmailIntegration(BaseIntegration):
         
         return {"email_id": sent_message['id']}
 
-    async def get_emails_from_sender(self, sender_email: str, *, account: Optional[str] = None, max_results: int = 10) -> List[Dict]:
+    async def get_emails_from_sender(self, sender_email: str, *, account: Optional[str] = None, max_results: int = 10, source_folder: str = None) -> List[Dict]:
         """Fetches emails from a sender, defaulting to the single account if available."""
         gmail_service, people_service, resolved_account = self._get_services_for_account(account)
 
         query = f"from:{sender_email}"
-        results = gmail_service.users().messages().list(userId='me', q=query, maxResults=max_results).execute()
+        
+        kwargs = {
+            'userId': 'me',
+            'q': query,
+            'maxResults': max_results
+        }
+        
+        if source_folder:
+            kwargs['labelIds'] = [source_folder]
+
+        results = gmail_service.users().messages().list(**kwargs).execute()
         messages = results.get('messages', [])
         
         if not messages:
@@ -215,7 +225,7 @@ class GmailIntegration(BaseIntegration):
                 continue
         return email_list
 
-    async def get_frequent_senders(self, days_back: int = 30, max_senders: int = 15, *, account: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_frequent_senders(self, days_back: int = 30, max_senders: int = 15, *, account: Optional[str] = None, source_folder: str = None) -> List[Dict[str, Any]]:
         """
         Fetches a summary of the most frequent email senders over the specified time period.
         It pulls only the metadata from recent emails to quickly aggregate counts.
@@ -227,14 +237,24 @@ class GmailIntegration(BaseIntegration):
         
         sender_counts = {}
         
+        kwargs = {
+            'userId': 'me',
+            'q': query,
+            'maxResults': 500
+        }
+        
+        if source_folder:
+            kwargs['labelIds'] = [source_folder]
+        
         try:
             # We fetch up to 1000 messages maximum for the audit to keep it fast
-            results = gmail_service.users().messages().list(userId='me', q=query, maxResults=500).execute()
+            results = gmail_service.users().messages().list(**kwargs).execute()
             messages = results.get('messages', [])
             
             next_page_token = results.get('nextPageToken')
             if next_page_token and len(messages) < 1000:
-                results = gmail_service.users().messages().list(userId='me', q=query, maxResults=500, pageToken=next_page_token).execute()
+                kwargs['pageToken'] = next_page_token
+                results = gmail_service.users().messages().list(**kwargs).execute()
                 messages.extend(results.get('messages', []))
             
             if not messages:

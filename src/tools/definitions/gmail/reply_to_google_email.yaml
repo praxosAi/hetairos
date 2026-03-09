@@ -1,8 +1,8 @@
-tool_id: reply_to_email
+tool_id: reply_to_google_email
 category: gmail
-display_name: reply_to_email
+display_name: reply_to_google_email
 
-short_description: Replies to an existing email thread
+short_description: Replies to an existing email thread on Gmail
 
 arguments:
   - name: original_message_id
@@ -26,7 +26,7 @@ arguments:
 returns: Confirmation of reply sent
 
 use_cases:
-  - User wants to reply to a specific email
+  - User wants to reply to a specific email on Gmail
   - Reply to everyone on a thread
 
 notes:

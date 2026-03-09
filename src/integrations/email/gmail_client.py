@@ -190,12 +190,22 @@ class GmailIntegration(BaseIntegration):
         
         return {"email_id": sent_message['id']}
 
-    async def get_emails_from_sender(self, sender_email: str, *, account: Optional[str] = None, max_results: int = 10) -> List[Dict]:
+    async def get_emails_from_sender(self, sender_email: str, *, account: Optional[str] = None, max_results: int = 10, source_folder: str = None) -> List[Dict]:
         """Fetches emails from a sender, defaulting to the single account if available."""
         gmail_service, people_service, resolved_account = self._get_services_for_account(account)
 
         query = f"from:{sender_email}"
-        results = gmail_service.users().messages().list(userId='me', q=query, maxResults=max_results).execute()
+        
+        kwargs = {
+            'userId': 'me',
+            'q': query,
+            'maxResults': max_results
+        }
+        
+        if source_folder:
+            kwargs['labelIds'] = [source_folder]
+
+        results = gmail_service.users().messages().list(**kwargs).execute()
         messages = results.get('messages', [])
         
         if not messages:
@@ -214,6 +224,101 @@ class GmailIntegration(BaseIntegration):
                 logger.error(f"Error fetching message {msg['id']} for account {resolved_account}: {e}")
                 continue
         return email_list
+
+    async def get_frequent_senders(self, days_back: int = 30, max_senders: int = 15, *, account: Optional[str] = None, source_folder: str = None) -> List[Dict[str, Any]]:
+        """
+        Fetches a summary of the most frequent email senders over the specified time period.
+        It pulls only the metadata from recent emails to quickly aggregate counts.
+        """
+        gmail_service, _, resolved_account = self._get_services_for_account(account)
+
+        date_limit = (datetime.utcnow() - timedelta(days=days_back)).strftime('%Y/%m/%d')
+        query = f"after:{date_limit}"
+        
+        sender_counts = {}
+        
+        kwargs = {
+            'userId': 'me',
+            'q': query,
+            'maxResults': 500
+        }
+        
+        if source_folder:
+            kwargs['labelIds'] = [source_folder]
+        
+        try:
+            # We fetch up to 1000 messages maximum for the audit to keep it fast
+            results = gmail_service.users().messages().list(**kwargs).execute()
+            messages = results.get('messages', [])
+            
+            next_page_token = results.get('nextPageToken')
+            if next_page_token and len(messages) < 1000:
+                kwargs['pageToken'] = next_page_token
+                results = gmail_service.users().messages().list(**kwargs).execute()
+                messages.extend(results.get('messages', []))
+            
+            if not messages:
+                return []
+                
+            # To avoid getting rate limited, we only want the 'from' header.
+            # Gmail API allows batch requests, which is much faster than individual gets.
+            batch = gmail_service.new_batch_http_request()
+            
+            def callback(request_id, response, exception):
+                if exception is None:
+                    headers = response['payload'].get('headers', [])
+                    for h in headers:
+                        if h['name'].lower() == 'from':
+                            sender = h['value']
+                            import re
+                            # Extract just the email if it's in the format "Name <email>"
+                            email_match = re.search(r'<([^>]+)>', sender)
+                            email = email_match.group(1) if email_match else sender
+                            name = sender.replace(f"<{email}>", "").strip() if email_match else email
+                            
+                            if email not in sender_counts:
+                                sender_counts[email] = {"name": name, "email": email, "count": 0}
+                            sender_counts[email]["count"] += 1
+                            break
+
+            for msg in messages:
+                batch.add(gmail_service.users().messages().get(userId='me', id=msg['id'], format='metadata', metadataHeaders=['From']), callback=callback)
+                
+            batch.execute()
+            
+            sorted_senders = sorted(sender_counts.values(), key=lambda x: x["count"], reverse=True)
+            return sorted_senders[:max_senders]
+            
+        except HttpError as e:
+            logger.error(f"Error fetching frequent senders for account {resolved_account}: {e}")
+            return []
+
+    async def bulk_modify_messages(self, message_ids: List[str], add_label_ids: List[str] = None, remove_label_ids: List[str] = None, *, account: Optional[str] = None) -> Dict[str, Any]:
+        """Bulk applies or removes labels from multiple messages simultaneously."""
+        gmail_service, _, resolved_account = self._get_services_for_account(account)
+        self._require_scopes(resolved_account, 'modify_message_labels')
+
+        body = {}
+        if add_label_ids:
+            body['addLabelIds'] = add_label_ids
+        if remove_label_ids:
+            body['removeLabelIds'] = remove_label_ids
+
+        # Gmail API restricts batchModify to 1000 messages at a time
+        successes = 0
+        failures = 0
+        
+        for i in range(0, len(message_ids), 1000):
+            chunk = message_ids[i:i+1000]
+            body['ids'] = chunk
+            try:
+                gmail_service.users().messages().batchModify(userId='me', body=body).execute()
+                successes += len(chunk)
+            except HttpError as e:
+                logger.error(f"Error bulk modifying messages: {e}")
+                failures += len(chunk)
+                
+        return {"processed": len(message_ids), "successes": successes, "failures": failures}
 
     async def _format_message(self, message: Dict) -> Dict:
         """Format Gmail message into standardized format"""
@@ -900,6 +1005,40 @@ class GmailIntegration(BaseIntegration):
         except HttpError as e:
             logger.error(f"Error listing labels for {resolved_account}: {e}")
             raise Exception("Failed to list labels.") from e
+
+    async def create_label(self, label_name: str, *, account: Optional[str] = None) -> Dict[str, Any]:
+        """Creates a new label in the user's Gmail account."""
+        service, _, resolved_account = self._get_services_for_account(account)
+        self._require_scopes(resolved_account, 'modify_message_labels')
+        
+        label_object = {
+            'labelListVisibility': 'labelShow',
+            'messageListVisibility': 'show',
+            'name': label_name
+        }
+        
+        try:
+            created_label = service.users().labels().create(userId='me', body=label_object).execute()
+            return {"id": created_label['id'], "name": created_label['name']}
+        except HttpError as e:
+            logger.error(f"Error creating label '{label_name}' for account {resolved_account}: {e}")
+            raise
+
+    async def create_filter(self, criteria: Dict[str, str], action: Dict[str, Any], *, account: Optional[str] = None) -> Dict[str, Any]:
+        """Creates a Gmail filter (rule) to automate email handling."""
+        service, _, resolved_account = self._get_services_for_account(account)
+        
+        filter_req = {
+            'criteria': criteria,
+            'action': action
+        }
+        
+        try:
+            created_filter = service.users().settings().filters().create(userId='me', body=filter_req).execute()
+            return created_filter
+        except HttpError as e:
+            logger.error(f"Error creating filter for account {resolved_account}: {e}")
+            raise
 
     async def add_label_to_message(self, message_id: str, label_name: str, *, account: Optional[str] = None) -> Dict:
         """

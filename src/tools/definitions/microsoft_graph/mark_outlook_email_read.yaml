@@ -1,0 +1,24 @@
+tool_id: mark_outlook_email_read
+category: microsoft_graph
+display_name: mark_outlook_email_read
+short_description: Marks a specific email as read or unread
+arguments:
+  - name: message_id
+    type: str
+    description: The ID of the email message to mark
+    required: true
+  - name: is_read
+    type: bool
+    description: True to mark as read, False to mark as unread. Default is True.
+    required: false
+    default: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Success confirmation message
+use_cases:
+  - Mark an email as read after processing it
+  - Mark an email as unread to be reviewed later
+requires_integration: microsoft
+requires_auth: true

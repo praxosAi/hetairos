@@ -1,6 +1,6 @@
-tool_id: create_email_draft
+tool_id: create_google_email_draft
 category: gmail
-display_name: create_email_draft
+display_name: create_google_email_draft
 
 short_description: Creates a draft email in Gmail without sending it
 

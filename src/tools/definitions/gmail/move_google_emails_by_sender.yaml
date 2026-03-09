@@ -1,0 +1,27 @@
+tool_id: move_google_emails_by_sender
+category: gmail
+display_name: move_google_emails_by_sender
+short_description: Finds all emails from a sender and moves them to a folder
+arguments:
+  - name: sender_email
+    type: str
+    description: Email address of the sender to search for
+    required: true
+  - name: destination_folder
+    type: str
+    description: The name of the destination folder (e.g., 'Archive', 'Trash', or custom label name)
+    required: true
+  - name: max_results
+    type: int
+    description: Maximum number of emails to retrieve and move
+    required: false
+    default: 1000
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Result showing processed count, successes, and failures
+use_cases:
+  - Clean up inbox by moving all emails from a specific person to a folder
+requires_integration: gmail
+requires_auth: true

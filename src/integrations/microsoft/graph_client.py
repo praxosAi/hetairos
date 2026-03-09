@@ -19,6 +19,142 @@ import re
 logger = setup_logger(__name__)
 PREFER_IMMUTABLE_ID = {'Prefer': 'IdType="ImmutableId"'}
 
+class GraphBatchQueue:
+    """
+    Singleton queue manager to handle Microsoft Graph API rate limits.
+    Graph API supports $batch with max 20 requests per batch.
+    To stay under typical limits, we throttle to 1 batch every 0.2s (~100 req/sec).
+    """
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(GraphBatchQueue, cls).__new__(cls)
+            cls._instance.queue = asyncio.Queue()
+            cls._instance._worker_task = None
+            cls._instance._session = None # Used to reuse connection pool for batch worker
+        return cls._instance
+
+    async def enqueue_request(self, access_token: str, method: str, url: str, headers: Dict[str, str] = None, body: Dict = None) -> Any:
+        future = asyncio.Future()
+        
+        # Strip the base graph endpoint if present, $batch requires relative paths
+        if url.startswith("https://graph.microsoft.com/v1.0"):
+            url = url.replace("https://graph.microsoft.com/v1.0", "")
+            
+        req_obj = {
+            "method": method,
+            "url": url,
+            "headers": headers or {"Content-Type": "application/json"},
+            "access_token": access_token,
+            "future": future
+        }
+        if body is not None:
+            req_obj["body"] = body
+            
+        await self.queue.put(req_obj)
+        
+        if self._worker_task is None or self._worker_task.done():
+            self._worker_task = asyncio.create_task(self._process_queue())
+            
+        return await future
+
+    async def _process_queue(self):
+        self._session = aiohttp.ClientSession()
+        try:
+            while True:
+                # Group by access token (different users can't share a $batch payload)
+                batch_by_token = {}
+                queued_items = []
+                
+                # Try to pull up to 20 items off the queue
+                for _ in range(20):
+                    if self.queue.empty(): break
+                    item = await self.queue.get()
+                    queued_items.append(item)
+                    
+                if not queued_items:
+                    # Queue is empty, sleep briefly then check again
+                    await asyncio.sleep(0.1)
+                    continue
+                    
+                # Organize by token
+                for item in queued_items:
+                    token = item["access_token"]
+                    if token not in batch_by_token:
+                        batch_by_token[token] = []
+                    batch_by_token[token].append(item)
+
+                # Process batches
+                for token, items in batch_by_token.items():
+                    # If somehow a single token has > 20, split it (shouldn't happen given the loop above, but safe)
+                    for i in range(0, len(items), 20):
+                        chunk = items[i:i+20]
+                        batch_requests = []
+                        for idx, req in enumerate(chunk):
+                            batch_req = {
+                                "id": str(idx),
+                                "method": req["method"],
+                                "url": req["url"],
+                                "headers": req["headers"]
+                            }
+                            if "body" in req:
+                                batch_req["body"] = req["body"]
+                            batch_requests.append(batch_req)
+                            
+                        batch_body = {"requests": batch_requests}
+                        batch_headers = {
+                            "Authorization": f"Bearer {token}",
+                            "Content-Type": "application/json"
+                        }
+                        
+                        try:
+                            # 429 Retry loop for the $batch request
+                            for attempt in range(3):
+                                async with self._session.post(
+                                    "https://graph.microsoft.com/v1.0/$batch",
+                                    headers=batch_headers, json=batch_body
+                                ) as resp:
+                                    if resp.status == 429:
+                                        retry_after = int(resp.headers.get("Retry-After", 1))
+                                        logger.warning(f"Graph $batch rate limited. Worker sleeping for {retry_after}s...")
+                                        await asyncio.sleep(retry_after)
+                                        continue
+                                        
+                                    resp.raise_for_status()
+                                    data = await resp.json()
+                                    break
+                            else:
+                                raise Exception("Exceeded max retries for 429 on $batch request")
+
+                            # Map responses back to futures
+                            response_map = {r["id"]: r for r in data.get("responses", [])}
+                            for idx, req in enumerate(chunk):
+                                resp_data = response_map.get(str(idx))
+                                if resp_data:
+                                    # If an individual item in the batch got a 429, we should technically retry it, 
+                                    # but the Graph API usually rate limits at the batch level. 
+                                    if resp_data.get("status") == 429:
+                                        logger.warning(f"Individual request {idx} in batch hit 429.")
+                                        
+                                    if not req["future"].done():
+                                        req["future"].set_result(resp_data)
+                                else:
+                                    if not req["future"].done():
+                                        req["future"].set_exception(Exception("No response in batch"))
+                        except Exception as e:
+                            logger.error(f"Error processing Graph batch: {e}")
+                            for req in chunk:
+                                if not req["future"].done():
+                                    req["future"].set_exception(e)
+                                    
+                # Global throttle: max 1 batch request loop per 1s
+                await asyncio.sleep(1)
+        finally:
+            if self._session:
+                await self._session.close()
+                self._session = None
+
 class MicrosoftGraphIntegration(BaseIntegration):
     def __init__(self, user_id: str):
         super().__init__(user_id)
@@ -59,7 +195,7 @@ class MicrosoftGraphIntegration(BaseIntegration):
         token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
         payload = {
             'client_id': settings.MICROSOFT_CLIENT_ID,
-            'scope': 'offline_access user.read mail.readwrite mail.send calendars.readwrite',
+            'scope': 'offline_access user.read mail.readwrite mail.send calendars.readwrite MailboxSettings.ReadWrite',
             'refresh_token': refresh_token,
             'grant_type': 'refresh_token',
             'client_secret': settings.MICROSOFT_CLIENT_SECRET,
@@ -129,6 +265,71 @@ class MicrosoftGraphIntegration(BaseIntegration):
             return formatted_messages
         except Exception as e:
             logger.error(f"Error fetching Outlook messages: {e}")
+            return []
+
+    async def get_frequent_senders(self, days_back: int = 30, max_senders: int = 15,max_messages: int = 3000, folder_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Fetches a summary of the most frequent email senders over the specified time period.
+        It pulls only the 'from' metadata from recent emails to quickly aggregate counts.
+        """
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        since = datetime.utcnow() - timedelta(days=days_back)
+        since_str = since.strftime('%Y-%m-%dT%H:%M:%SZ')
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        
+        # We only need the 'from' field to aggregate counts. Requesting up to 500 max per page to get a good sample size.
+        params = {
+            "$filter": f"receivedDateTime ge {since_str}",
+            "$select": "from",
+            "$top": "500",
+            "$orderby": "receivedDateTime desc"
+        }
+        
+        sender_counts = {}
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"{self.graph_endpoint}/me/mailFolders/{folder_id}/messages" if folder_id else f"{self.graph_endpoint}/me/messages"
+                
+                # We'll follow pagination up to a reasonable limit to build the frequency map
+                messages_processed = 0
+                max_messages_to_process = max_messages
+                
+                while url and messages_processed < max_messages_to_process:
+                    for attempt in range(3):
+                        async with session.get(url, headers=headers, params=params) as response:
+                            if response.status == 429:
+                                retry_after = int(response.headers.get("Retry-After", 1))
+                                logger.warning(f"Rate limited fetching frequent senders. Retrying after {retry_after}s...")
+                                await asyncio.sleep(retry_after)
+                                continue
+                            response.raise_for_status()
+                            data = await response.json()
+                            break
+                    else:
+                        raise Exception("Exceeded max retries for 429 Too Many Requests")
+                        
+                    messages = data.get('value', [])
+                    for msg in messages:
+                        from_data = msg.get("from", {}).get("emailAddress", {})
+                        email = from_data.get("address")
+                        name = from_data.get("name")
+                        if email:
+                            if email not in sender_counts:
+                                sender_counts[email] = {"name": name, "email": email, "count": 0}
+                            sender_counts[email]["count"] += 1
+                    messages_processed += len(messages)
+                    url = data.get('@odata.nextLink')
+                    params = None  # ← nextLink already contains all query params
+                    
+            # Sort by count descending and return the top N
+            sorted_senders = sorted(sender_counts.values(), key=lambda x: x["count"], reverse=True)
+            return sorted_senders[:max_senders]
+            
+        except Exception as e:
+            logger.error(f"Error aggregating frequent senders: {e}", exc_info=True)
             return []
 
     async def _fetch_calendar_events(self, since: datetime) -> List[Dict]:
@@ -297,26 +498,70 @@ class MicrosoftGraphIntegration(BaseIntegration):
             logger.error(f"Error creating Outlook Calendar event: {e}")
             raise
 
-    async def get_emails_from_sender(self, sender_email: str, max_results: int = 10) -> List[Dict]:
+    async def get_emails_from_sender(self, sender_email: str, max_results: int = 10, folder_id: Optional[str] = None) -> List[Dict]:
         """Fetches the most recent emails from a specific sender."""
         if not self.access_token:
             raise Exception("Not authenticated")
         
         headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        
+        # Cap page size to 500 for Graph API limits, but we can fetch multiple pages
+        page_size = min(max_results, 500)
+        
         params = {
-            "$filter": f"from/emailAddress/address eq '{sender_email}'",
-            "$top": max_results,
-            "$orderby": "receivedDateTime desc"
+            "$search": f'"from:{sender_email}"',
+            "$select": "id,subject,from,receivedDateTime,bodyPreview",
+            "$top": str(page_size),
         }
+        
+        all_formatted_messages = []
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.graph_endpoint}/me/messages", headers=headers, params=params) as response:
-                    response.raise_for_status()
-                    data = await response.json()
-            
-            messages = data.get('value', [])
-            return [await self._format_message(msg) for msg in messages]
+                url = f"{self.graph_endpoint}/me/mailFolders/{folder_id}/messages" if folder_id else f"{self.graph_endpoint}/me/messages"
+                
+                while url and len(all_formatted_messages) < max_results:
+                    for attempt in range(3):
+                        async with session.get(url, headers=headers, params=params) as response:
+                            if response.status == 429:
+                                retry_after = int(response.headers.get("Retry-After", 1))
+                                logger.warning(f"Rate limited fetching emails from {sender_email}. Retrying after {retry_after}s...")
+                                await asyncio.sleep(retry_after)
+                                continue
+                            response.raise_for_status()
+                            data = await response.json()
+                            break
+                    else:
+                        raise Exception("Exceeded max retries for 429 Too Many Requests")
+                        
+                    messages = data.get('value', [])
+                    if not messages:
+                        break
+                        
+                    for msg in messages:
+                        def _clean_snippet(snippet: str) -> str:
+                            if not snippet:
+                                return ""
+                            import re
+                            cleaned = re.sub(r'[\u200b\u200c\u200d\u200e\u200f\ufeff]', '', snippet)
+                            cleaned = re.sub(r'[\xa0\u2007\u202f]', ' ', cleaned)
+                            return re.sub(r'\s+', ' ', cleaned).strip()
+
+                        all_formatted_messages.append({
+                            "id": msg.get("id"),
+                            "subject": msg.get("subject", "No Subject"),
+                            "from": msg.get("from", {}).get("emailAddress", {}).get("address", "Unknown"),
+                            "receivedDateTime": msg.get("receivedDateTime"),
+                            "snippet": _clean_snippet(msg.get("bodyPreview", ""))
+                        })
+                        if len(all_formatted_messages) >= max_results:
+                            break
+                            
+                    # Clear params for next page because the nextLink already contains the $top and $search logic
+                    params = None 
+                    url = data.get('@odata.nextLink')
+                    
+            return all_formatted_messages
         except Exception as e:
             logger.error(f"Error fetching emails from sender {sender_email}: {e}", exc_info=True)
             return []
@@ -351,6 +596,304 @@ class MicrosoftGraphIntegration(BaseIntegration):
         except Exception as e:
             logger.error(f"Error searching for contact '{name}': {e}", exc_info=True)
             return []
+
+    async def mark_email_read(self, message_id: str, is_read: bool = True) -> bool:
+        """Marks a specific email as read or unread."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        queue = GraphBatchQueue()
+        payload = {"isRead": is_read}
+        
+        for attempt in range(3):
+            try:
+                resp = await queue.enqueue_request(
+                    access_token=self.access_token,
+                    method="PATCH",
+                    url=f"/me/messages/{message_id}",
+                    body=payload
+                )
+                inner_status = resp.get("status", 500)
+                if inner_status == 429:
+                    headers = resp.get("headers", {})
+                    retry_after = int(headers.get("Retry-After", 2))
+                    logger.warning(f"Batch item {message_id} rate limited (429). Retrying after {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                if not (200 <= inner_status < 300):
+                    raise Exception(f"Failed to mark read: {inner_status}")
+                return True
+            except Exception as e:
+                if attempt == 2:
+                    logger.error(f"Error marking email {message_id} as read={is_read}: {e}", exc_info=True)
+                    raise
+                await asyncio.sleep(1)
+
+    async def categorize_email(self, message_id: str, categories: List[str]) -> bool:
+        """Adds or removes categories from a specific email."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        queue = GraphBatchQueue()
+        payload = {"categories": categories}
+        
+        for attempt in range(3):
+            try:
+                resp = await queue.enqueue_request(
+                    access_token=self.access_token,
+                    method="PATCH",
+                    url=f"/me/messages/{message_id}",
+                    body=payload
+                )
+                inner_status = resp.get("status", 500)
+                if inner_status == 429:
+                    headers = resp.get("headers", {})
+                    retry_after = int(headers.get("Retry-After", 2))
+                    logger.warning(f"Batch item {message_id} rate limited (429). Retrying after {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                if not (200 <= inner_status < 300):
+                    raise Exception(f"Failed to categorize: {inner_status}")
+                return True
+            except Exception as e:
+                if attempt == 2:
+                    logger.error(f"Error categorizing email {message_id}: {e}", exc_info=True)
+                    raise
+                await asyncio.sleep(1)
+
+    async def move_email(self, message_id: str, destination_folder_id: str) -> bool:
+        """Moves an email to a different folder."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        queue = GraphBatchQueue()
+        payload = {"destinationId": destination_folder_id}
+        
+        for attempt in range(3):
+            try:
+                resp = await queue.enqueue_request(
+                    access_token=self.access_token,
+                    method="POST",
+                    url=f"/me/messages/{message_id}/move",
+                    body=payload
+                )
+                inner_status = resp.get("status", 500)
+                if inner_status == 429:
+                    headers = resp.get("headers", {})
+                    retry_after = int(headers.get("Retry-After", 2))
+                    logger.warning(f"Batch item {message_id} rate limited (429). Retrying after {retry_after}s...")
+                    await asyncio.sleep(retry_after)
+                    continue
+                if not (200 <= inner_status < 300):
+                    raise Exception(f"Failed to move: {inner_status}")
+                return True
+            except Exception as e:
+                if attempt == 2:
+                    logger.error(f"Error moving email {message_id} to folder {destination_folder_id}: {e}", exc_info=True)
+                    raise
+                await asyncio.sleep(1)
+
+    async def search_emails(self, query: str, max_results: int = 10) -> List[Dict]:
+        """Searches the user's emails using a specific query string."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        params = {
+            "$search": f'"{query}"',
+            "$select": "id,subject,from,receivedDateTime,bodyPreview",
+            "$top": str(max_results)
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"{self.graph_endpoint}/me/messages"
+                for attempt in range(3):
+                    async with session.get(url, headers=headers, params=params) as response:
+                        if response.status == 429:
+                            retry_after = int(response.headers.get("Retry-After", 1))
+                            logger.warning(f"Rate limited searching emails. Retrying after {retry_after}s...")
+                            await asyncio.sleep(retry_after)
+                            continue
+                        response.raise_for_status()
+                        data = await response.json()
+                        break
+                else:
+                    raise Exception("Exceeded max retries for 429 Too Many Requests")
+                    
+            messages = data.get('value', [])
+            
+            def _clean_snippet(snippet: str) -> str:
+                if not snippet:
+                    return ""
+                # Replace unicode zero-width spaces, non-breaking spaces, and normalize whitespace
+                import re
+                cleaned = re.sub(r'[\u200b\u200c\u200d\u200e\u200f\ufeff]', '', snippet)
+                cleaned = re.sub(r'[\xa0\u2007\u202f]', ' ', cleaned)
+                return re.sub(r'\s+', ' ', cleaned).strip()
+
+            return [{
+                "id": msg.get("id"),
+                "subject": msg.get("subject", "No Subject"),
+                "from": msg.get("from", {}).get("emailAddress", {}).get("address", "Unknown"),
+                "receivedDateTime": msg.get("receivedDateTime"),
+                "snippet": _clean_snippet(msg.get("bodyPreview", ""))
+            } for msg in messages]
+        except Exception as e:
+            logger.error(f"Error searching emails for query '{query}': {e}", exc_info=True)
+            return []
+
+    async def list_mail_folders(self) -> List[Dict]:
+        """Lists all the mail folders in the user's mailbox (including custom ones)."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.graph_endpoint}/me/mailFolders", headers=headers) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+            return [{"id": f["id"], "name": f["displayName"]} for f in data.get('value', [])]
+        except Exception as e:
+            logger.error(f"Error fetching mail folders: {e}", exc_info=True)
+            return []
+
+    async def create_mail_folder(self, display_name: str) -> Dict[str, Any]:
+        """Creates a new mail folder in the user's mailbox."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        payload = {"displayName": display_name, "isHidden": False}
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{self.graph_endpoint}/me/mailFolders", headers=headers, json=payload) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+            return {"id": data.get("id"), "name": data.get("displayName")}
+        except Exception as e:
+            logger.error(f"Error creating mail folder '{display_name}': {e}", exc_info=True)
+            raise
+
+    async def create_outlook_rule(self, display_name: str, sequence: int, sender_contains: str, move_to_folder_id: str) -> Dict[str, Any]:
+        """Creates an Outlook rule to automatically move messages from a specific sender to a folder."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
+        payload = {
+            "displayName": display_name,
+            "sequence": sequence,
+            "isEnabled": True,
+            "conditions": {
+                "senderContains": [sender_contains]
+            },
+            "actions": {
+                "moveToFolder": move_to_folder_id,
+                "stopProcessingRules": True
+            }
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                for attempt in range(3):
+                    async with session.post(f"{self.graph_endpoint}/me/mailFolders/inbox/messageRules", headers=headers, json=payload) as response:
+                        if response.status == 429:
+                            retry_after = int(response.headers.get("Retry-After", 1))
+                            logger.warning(f"Rate limited creating rule '{display_name}'. Retrying after {retry_after}s...")
+                            await asyncio.sleep(retry_after)
+                            continue
+                        response.raise_for_status()
+                        return await response.json()
+                raise Exception("Exceeded max retries for 429 Too Many Requests")
+        except Exception as e:
+            logger.error(f"Error creating Outlook rule '{display_name}': {e}", exc_info=True)
+            raise
+
+    async def bulk_categorize_emails(self, message_ids: List[str], categories: List[str]) -> Dict[str, Any]:
+        """Adds or removes categories from multiple emails simultaneously using the global GraphBatchQueue."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+
+        queue = GraphBatchQueue()
+        payload = {"categories": categories}
+        
+        async def _categorize(msg_id):
+            for attempt in range(3):
+                try:
+                    resp = await queue.enqueue_request(
+                        access_token=self.access_token,
+                        method="PATCH",
+                        url=f"/me/messages/{msg_id}",
+                        body=payload
+                    )
+                    inner_status = resp.get("status", 500)
+                    
+                    if inner_status == 429:
+                        headers = resp.get("headers", {})
+                        retry_after = int(headers.get("Retry-After", 2))
+                        logger.warning(f"Batch item {msg_id} rate limited (429). Retrying after {retry_after}s...")
+                        await asyncio.sleep(retry_after)
+                        continue
+                        
+                    status = "success" if 200 <= inner_status < 300 else "failed"
+                    return {"id": msg_id, "status": status, "error_code": inner_status if status == "failed" else None}
+                except Exception as ex:
+                    if attempt == 2:
+                        return {"id": msg_id, "status": "failed", "error": str(ex)}
+                    await asyncio.sleep(1)
+            return {"id": msg_id, "status": "failed", "error": "Exceeded max retries for item"}
+
+        tasks = [_categorize(msg_id) for msg_id in message_ids]
+        results = await asyncio.gather(*tasks)
+            
+        success_count = sum(1 for r in results if r["status"] == "success")
+        return {"processed": len(message_ids), "successes": success_count, "failures": len(message_ids) - success_count, "results": results}
+
+    async def bulk_move_emails(self, message_ids: List[str], destination_folder_id: str) -> Dict[str, Any]:
+        """Moves multiple emails simultaneously using the global GraphBatchQueue to avoid rate limits."""
+        if not self.access_token:
+            raise Exception("Not authenticated")
+        
+        queue = GraphBatchQueue()
+        payload = {"destinationId": destination_folder_id}
+        
+        async def _move(msg_id):
+            for attempt in range(3):
+                try:
+                    resp = await queue.enqueue_request(
+                        access_token=self.access_token,
+                        method="POST",
+                        url=f"/me/messages/{msg_id}/move",
+                        body=payload
+                    )
+                    # The batch response inner status is an int
+                    inner_status = resp.get("status", 500)
+                    
+                    if inner_status == 429:
+                        # Grab Retry-After if provided in the body headers, else default to 2s backoff
+                        headers = resp.get("headers", {})
+                        retry_after = int(headers.get("Retry-After", 2))
+                        logger.warning(f"Batch item {msg_id} rate limited (429). Retrying after {retry_after}s...")
+                        await asyncio.sleep(retry_after)
+                        continue
+                        
+                    status = "success" if 200 <= inner_status < 300 else "failed"
+                    return {"id": msg_id, "status": status, "error_code": inner_status if status == "failed" else None}
+                except Exception as ex:
+                    if attempt == 2:
+                        return {"id": msg_id, "status": "failed", "error": str(ex)}
+                    await asyncio.sleep(1)
+            return {"id": msg_id, "status": "failed", "error": "Exceeded max retries for item"}
+
+        tasks = [_move(msg_id) for msg_id in message_ids]
+        results = await asyncio.gather(*tasks)
+        
+        success_count = sum(1 for r in results if r["status"] == "success")
+        return {"processed": len(message_ids), "successes": success_count, "failures": len(message_ids) - success_count, "results": results}
     async def _graph_get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         headers = {
             "Authorization": f"Bearer {self.access_token}",

@@ -1,0 +1,32 @@
+tool_id: create_google_email_rule
+category: gmail
+display_name: create_google_email_rule
+short_description: Creates an automatic Gmail filter (rule) to route incoming emails
+arguments:
+  - name: query
+    type: str
+    description: The Gmail search query to match (e.g., 'from:boss@company.com')
+    required: true
+  - name: add_label_name
+    type: str
+    description: The name of a label to apply to matching emails
+    required: false
+  - name: archive
+    type: bool
+    description: Whether to archive (skip inbox) matching emails
+    required: false
+    default: false
+  - name: trash
+    type: bool
+    description: Whether to send matching emails to trash
+    required: false
+    default: false
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: The created filter object
+use_cases:
+  - Automatically route all future emails from a client to a specific folder
+requires_integration: gmail
+requires_auth: true

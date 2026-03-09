@@ -198,7 +198,8 @@ class LangGraphAgentRunner:
                         conversation_id=conversation_id,
                         message_prefix=message_prefix,
                         prefix_metadata=file_storage_metadata,
-                        message_category=msg_category
+                        message_category=msg_category,
+                        user_id=user_context.user_id
                     )
             else:
                 return AgentFinalResponse(response="Invalid input format.", delivery_platform=source, execution_notes="Input must be a dict or list of dicts.", output_modality="text", file_links=[], generation_instructions=None)            

@@ -1,23 +1,23 @@
-tool_id: archive_email
+tool_id: unstar_google_email
 category: gmail
-display_name: archive_email
+display_name: unstar_google_email
 
-short_description: Archives an email (removes from inbox, keeps in All Mail)
+short_description: Removes the star from a Google email
 
 arguments:
   - name: message_id
     type: str
-    description: ID of the email to archive
+    description: ID of the email to unstar
     required: true
   - name: account
     type: str
     description: Account identifier (when multiple accounts connected)
     required: false
 
-returns: Confirmation of archive
+returns: Confirmation of unstarred email
 
 use_cases:
-  - User wants to archive an email to clean up inbox
+  - User wants to remove star from a Google email
 
 requires_integration: gmail
 requires_auth: true

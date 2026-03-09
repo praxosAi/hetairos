@@ -1,0 +1,14 @@
+tool_id: list_outlook_folders
+category: microsoft_graph
+display_name: list_outlook_folders
+short_description: Lists all the mail folders in the user's Outlook mailbox.
+arguments:
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: List of mail folders containing 'id' and 'name'
+use_cases:
+  - Find the ID of a specific custom folder to move an email to
+requires_integration: microsoft
+requires_auth: true

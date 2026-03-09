@@ -1,0 +1,23 @@
+tool_id: categorize_outlook_email
+category: microsoft_graph
+display_name: categorize_outlook_email
+short_description: Adds or removes categories from a specific email
+arguments:
+  - name: message_id
+    type: str
+    description: The ID of the email message to categorize
+    required: true
+  - name: categories
+    type: list[str]
+    description: List of category names to apply (e.g. ['Red category', 'Important'])
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: Success confirmation message
+use_cases:
+  - Categorize an email based on its content
+  - Add labels to track email status
+requires_integration: microsoft
+requires_auth: true

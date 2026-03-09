@@ -1,0 +1,23 @@
+tool_id: move_google_email_to_trash
+category: gmail
+display_name: move_google_email_to_trash
+
+short_description: Moves a Google email to trash
+
+arguments:
+  - name: message_id
+    type: str
+    description: ID of the Google email to move to trash
+    required: true
+  - name: account
+    type: str
+    description: Account identifier (when multiple Google accounts connected)
+    required: false
+
+returns: Confirmation of trash move
+
+use_cases:
+  - User wants to delete/trash Google email
+
+requires_integration: gmail
+requires_auth: true

@@ -1,0 +1,23 @@
+tool_id: search_outlook_emails
+category: microsoft_graph
+display_name: search_outlook_emails
+short_description: Searches Outlook emails with a query
+arguments:
+  - name: query
+    type: str
+    description: Outlook search query
+    required: true
+  - name: max_results
+    type: int
+    description: Maximum number of results to return
+    required: false
+    default: 10
+  - name: account
+    type: str
+    description: Account identifier (when multiple accounts connected)
+    required: false
+returns: List of matching emails
+use_cases:
+  - Find specific emails by keywords
+requires_integration: microsoft
+requires_auth: true

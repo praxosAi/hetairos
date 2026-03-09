@@ -42,7 +42,7 @@ def create_integration_tools(user_id: str, tool_registry) -> list:
         Returns:
             A dictionary containing the 'oauth_url' if successful, otherwise None.
         """
-        provider = INTEGRATION_NAME_TO_PROVIDER_MAP.get(integration_name)
+        provider = INTEGRATION_NAME_TO_PROVIDER_MAP.get(integration_name.lower())
         if not provider:
             logger.error(f"Invalid or unsupported integration_name: {integration_name}")
             return ErrorResponseBuilder.invalid_parameter(

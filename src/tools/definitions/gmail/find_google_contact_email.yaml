@@ -1,6 +1,6 @@
-tool_id: find_contact_email
+tool_id: find_google_contact_email
 category: gmail
-display_name: find_contact_email
+display_name: find_google_contact_email
 
 short_description: Searches Google Contacts for a person's email by name
 

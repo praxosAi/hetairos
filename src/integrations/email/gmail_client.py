@@ -17,6 +17,9 @@ from src.config.settings import settings
 from src.services.integration_service import integration_service
 from bson import ObjectId
 import quopri
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import threading
 from html import unescape
 import re
 from src.services.integration_service import integration_service
@@ -226,69 +229,78 @@ class GmailIntegration(BaseIntegration):
         return email_list
 
     async def get_frequent_senders(self, days_back: int = 30, max_senders: int = 15, *, account: Optional[str] = None, source_folder: str = None) -> List[Dict[str, Any]]:
-        """
-        Fetches a summary of the most frequent email senders over the specified time period.
-        It pulls only the metadata from recent emails to quickly aggregate counts.
-        """
         gmail_service, _, resolved_account = self._get_services_for_account(account)
 
         date_limit = (datetime.utcnow() - timedelta(days=days_back)).strftime('%Y/%m/%d')
         query = f"after:{date_limit}"
-        
+
         sender_counts = {}
-        
-        kwargs = {
-            'userId': 'me',
-            'q': query,
-            'maxResults': 500
-        }
-        
+        lock = threading.Lock()
+
+        kwargs = {'userId': 'me', 'q': query, 'maxResults': 500}
         if source_folder:
             kwargs['labelIds'] = [source_folder]
-        
+
         try:
-            # We fetch up to 1000 messages maximum for the audit to keep it fast
             results = gmail_service.users().messages().list(**kwargs).execute()
             messages = results.get('messages', [])
-            
+
             next_page_token = results.get('nextPageToken')
             if next_page_token and len(messages) < 1000:
                 kwargs['pageToken'] = next_page_token
                 results = gmail_service.users().messages().list(**kwargs).execute()
                 messages.extend(results.get('messages', []))
-            
+
             if not messages:
                 return []
-                
-            # To avoid getting rate limited, we only want the 'from' header.
-            # Gmail API allows batch requests, which is much faster than individual gets.
-            batch = gmail_service.new_batch_http_request()
-            
-            def callback(request_id, response, exception):
-                if exception is None:
-                    headers = response['payload'].get('headers', [])
-                    for h in headers:
-                        if h['name'].lower() == 'from':
-                            sender = h['value']
-                            import re
-                            # Extract just the email if it's in the format "Name <email>"
-                            email_match = re.search(r'<([^>]+)>', sender)
-                            email = email_match.group(1) if email_match else sender
-                            name = sender.replace(f"<{email}>", "").strip() if email_match else email
-                            
-                            if email not in sender_counts:
-                                sender_counts[email] = {"name": name, "email": email, "count": 0}
-                            sender_counts[email]["count"] += 1
-                            break
 
-            for msg in messages:
-                batch.add(gmail_service.users().messages().get(userId='me', id=msg['id'], format='metadata', metadataHeaders=['From']), callback=callback)
-                
-            batch.execute()
-            
+            email_pattern = re.compile(r'<([^>]+)>')
+
+            def callback(request_id, response, exception):
+                if exception is not None:
+                    return
+                headers = response['payload'].get('headers', [])
+                for h in headers:
+                    if h['name'].lower() == 'from':
+                        sender = h['value']
+                        match = email_pattern.search(sender)
+                        email = match.group(1) if match else sender
+                        name = sender.replace(f"<{email}>", "").strip() if match else email
+
+                        with lock:
+                            if email in sender_counts:
+                                sender_counts[email]["count"] += 1
+                            else:
+                                sender_counts[email] = {"name": name, "email": email, "count": 1}
+                        break
+
+            def execute_batch(chunk):
+                # Each thread gets its own service + SSL connection
+                thread_service = build('gmail', 'v1', credentials=self.credentials[resolved_account])
+                batch = thread_service.new_batch_http_request()
+                for msg in chunk:
+                    batch.add(
+                        thread_service.users().messages().get(
+                            userId='me', id=msg['id'],
+                            format='metadata', metadataHeaders=['From'],
+                            fields='payload/headers'
+                        ),
+                        callback=callback
+                    )
+                batch.execute()
+
+            chunks = [messages[i:i+100] for i in range(0, len(messages), 100)]
+
+            loop = asyncio.get_event_loop()
+            with ThreadPoolExecutor(max_workers=min(len(chunks), 5)) as executor:
+                await asyncio.gather(*(
+                    loop.run_in_executor(executor, execute_batch, chunk)
+                    for chunk in chunks
+                ))
+
             sorted_senders = sorted(sender_counts.values(), key=lambda x: x["count"], reverse=True)
             return sorted_senders[:max_senders]
-            
+
         except HttpError as e:
             logger.error(f"Error fetching frequent senders for account {resolved_account}: {e}")
             return []

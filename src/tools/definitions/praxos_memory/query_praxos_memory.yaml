@@ -35,4 +35,5 @@ notes:
   - Uses node_vec search modality for fast vector-based retrieval
   - Can use intelligent search modality for more advanced retrieval, for example, if you don't actually know how to phrase the query well, or if you think the user might have relevant information that isn't captured well by a simple vector search.
   - Generally, if you think the user's query requires extracting all info meeting a certain criteria, use intelligent. the search system will map the query to a more complex search strategy that may involve multiple steps and filtering. If you think the query is straightforward and can be captured well by vector similarity, node_vec is likely sufficient and faster.
+  - If you are using intelligent search, make sure to set a higher top_k (e.g. 100) and then filter results yourself, as intelligent search may return some less relevant results that require further filtering.
 requires_auth: true

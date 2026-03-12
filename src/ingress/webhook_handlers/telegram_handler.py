@@ -94,9 +94,33 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
         user_id = str(integration_record["user_id"])
 
         ### for telegram, on the first message, we must store the chat id in the user record.
+        needs_update = False
         if not integration_record.get("telegram_chat_id"):
             integration_record["telegram_chat_id"] = chat_id
+            needs_update = True
+            
+        # Track active output channels (group chats vs DMs)
+        active_channels = integration_record.get("active_output_channels", [])
+        
+        # Determine chat name (group title or "Direct Message")
+        chat_info = message.get("chat", {})
+        chat_type = chat_info.get("type", "private")
+        chat_name = chat_info.get("title", "Direct Message") if chat_type != "private" else "Direct Message"
+        
+        # Check if this chat_id is already in the active channels
+        channel_exists = any(str(ch.get("reference")) == str(chat_id) for ch in active_channels)
+        
+        if not channel_exists:
+            active_channels.append({
+                "reference": str(chat_id),
+                "name": chat_name
+            })
+            integration_record["active_output_channels"] = active_channels
+            needs_update = True
+            
+        if needs_update:
             await integration_service.update_integration(integration_record["_id"], integration_record)
+            
         text = message.get("text")
         logger.info(f"Received message from Telegram: {message}")
         #### handling forwarded messages
@@ -119,6 +143,9 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                     sender_user_full_identifier += ' Username:' +  sender_user["username"]
                 forward_origin = {"type":"user",'original_sender_identifier': sender_user_full_identifier,'forward_date': forward_origin_raw.get("date")}
         if text:
+            # Build context string to help LLM understand where the message came from
+            chat_context = f"Message received in {'Direct Message' if chat_type == 'private' else f'Group Chat: {chat_name}'} (ID: {chat_id})."
+            
             event = {
                 "user_id": user_id,
                 'output_type': 'telegram',
@@ -126,7 +153,16 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                 "source": "telegram",
                 'logging_context': {'user_id': user_id, 'request_id': str(request_id_var.get()), 'modality': modality_var.get() },
                 "payload": {"text": text},
-                "metadata": {'message_id': message["message_id"],'chat_id': chat_id, 'source':'telegram','forwarded':forwarded,'forward_origin':forward_origin,'timestamp': message.get("date")}
+                "metadata": {
+                    'message_id': message["message_id"],
+                    'chat_id': chat_id, 
+                    'source':'telegram',
+                    'forwarded':forwarded,
+                    'forward_origin':forward_origin,
+                    'timestamp': message.get("date"),
+                    'active_output_channels': active_channels,
+                    'chat_context': chat_context
+                }
             }
             await event_queue.publish(event)
 
@@ -242,7 +278,9 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                             'source': 'telegram',
                             'forwarded': forwarded,
                             'forward_origin': forward_origin,
-                            'timestamp': message.get("date")
+                            'timestamp': message.get("date"),
+                            'active_output_channels': active_channels,
+                            'chat_context': chat_context
                         }
                     }
                     await event_queue.publish(event)

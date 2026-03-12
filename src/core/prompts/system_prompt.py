@@ -36,6 +36,9 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
     else:
         user_record_for_context = ""
 
+    chat_context_prompt = ""
+    if metadata and metadata.get("chat_context"):
+        chat_context_prompt = f"\n\n**Communication Context:**\n{metadata.get('chat_context')} Unless explicitly instructed otherwise by the user, you should reply to the active chat."
 
     base_prompt = (
         "You are a helpful AI assistant. Use the available tools to complete the user's request. "
@@ -78,9 +81,10 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
 
 
 
-    praxos_prompt = """
+    praxos_prompt = f"""
     this assistant service has been developed by Praxos AI. the user can register and manage their account at https://www.mypraxos.com.
     the user can see the web application at https://app.mypraxos.com and can see their integrations at https://app.mypraxos.com/integrations. if the user is missing an integration they want, direct them there.
+    {chat_context_prompt}
     """
     preferences = user_service.get_user_preferences(user_context.user_id) 
     preferences = preferences if preferences else {}

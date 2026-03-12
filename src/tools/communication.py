@@ -55,17 +55,27 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
 
     platform_lower = platform.lower()
 
+    # Extract active channels if available (mostly for Telegram group chats)
+    active_channels = metadata.get("active_output_channels", []) if metadata else []
+    channels_str = ""
+    if active_channels:
+        channels_str = "\n    Available target_chat_id options based on active channels:\n"
+        for ch in active_channels:
+            channels_str += f"      - '{ch.get('reference')}': {ch.get('name')}\n"
+
     # Build description outside function to avoid f-string docstring issues
     tool_description = f"""Send a {platform} message to the user.
 
     This tool sends messages directly to the user's {platform} account. Use this to communicate
     ALL responses to the user. You can send multiple messages during a conversation.
+    {channels_str}
 
     Args:
         message: The text message to send to the user
         media_urls: Optional list of media URLs to attach (from generate_image/generate_audio/generate_video)
         media_types: Optional list of media types corresponding to URLs (image, audio, video, document)
         final_message: Whether this is the final message in the conversation (default True). if you think you will send more messages later, set to False.
+        target_chat_id: Optional specific chat ID to send the message to (e.g., to reply in a specific group chat or DM). If not provided, it defaults to the chat the user just messaged you from.
         request_location: Whether to request the user's location (default False). When True, sends a location request appropriate for the platform.
         send_location_latitude: Latitude coordinate to send a location to the user (requires send_location_longitude)
         send_location_longitude: Longitude coordinate to send a location to the user (requires send_location_latitude)
@@ -84,7 +94,14 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
         - Location sending works on all platforms (Telegram/WhatsApp native, iMessage as Apple Maps URL)
 
     Examples:
+        # Standard reply
         reply_to_user_on_{platform_lower}(message="Hello! How can I help you?")
+
+        # Reply to a specific group chat
+        reply_to_user_on_{platform_lower}(
+            message="Here is the info you requested.",
+            target_chat_id="-5159316035"
+        )
 
         # With media:
         result = generate_image("sunset over mountains")
@@ -115,6 +132,7 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
         media_urls: Optional[List[str]] = None,
         media_types: Optional[List[str]] = None,
         final_message: bool = True,
+        target_chat_id: Optional[str] = None,
         request_location: bool = False,
         send_location_latitude: Optional[float] = None,
         send_location_longitude: Optional[float] = None,
@@ -160,6 +178,7 @@ def _create_reply_tool(platform: str, user_id: str, metadata: Optional[Dict] = N
                 "source": metadata.get("source") if metadata else platform_lower,
                 "output_type": platform_lower,
                 "user_id": str(user_id),
+                "output_chat_id": target_chat_id or (metadata.get("chat_id") if metadata else None),
                 "metadata": metadata or {}
             }
 

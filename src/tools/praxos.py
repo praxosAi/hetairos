@@ -12,7 +12,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
     """Create Praxos memory tool"""
     
     @tool
-    async def query_praxos_memory(query: str, top_k: int = 4, exclude_seen_node_ids: List[str] = None) -> ToolExecutionResponse:
+    async def query_praxos_memory(query: str, top_k: int = 4, exclude_seen_node_ids: List[str] = None, search_modality: str = 'node_vec') -> ToolExecutionResponse:
         """
         Queries the Praxos knowledge base to retrieve context and information. This will have past converesations and information about the user and their preferences.
         Use this for questions about past interactions, user preferences, or stored knowledge. this is often a good first step. you may use it to obtain information about the user and their preferences. However, do not blindly use it if you do not feel that more info is necessary.
@@ -26,7 +26,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
         """
         try:
             logger.info(f"Querying Praxos memory: '{query}'")
-            contexts = await praxos_client.search_memory(query, search_modality='node_vec', top_k=top_k, exclude_seen=exclude_seen_node_ids)
+            contexts = await praxos_client.search_memory(query, search_modality=search_modality, top_k=top_k, exclude_seen=exclude_seen_node_ids)
             
             if not contexts:
                 return ToolExecutionResponse(status="success", result=[])

@@ -1,7 +1,7 @@
 from src.utils.logging.base_logger import setup_logger
 from src.core.event_queue import event_queue
 logger = setup_logger(__name__)
-async def research_user_and_engage(user_record, source, messaging_user_id,timestamp,request_id_var):
+async def research_user_and_engage(user_record, source, messaging_user_id,timestamp,request_id_var,integration_id=None):
     if not user_record.get('needs_first_interaction'):
         logger.info(f"User {str(user_record['_id'])} does not need first interaction. Skipping research and engagement.")
         return
@@ -45,7 +45,7 @@ async def research_user_and_engage(user_record, source, messaging_user_id,timest
         "source": source,
         "payload": {"text": text},
         "logging_context": {'user_id': str(user_record["_id"]), 'request_id': request_id_var, 'modality': source },
-        "metadata": {'source':source,'forwarded':False, 'timestamp': timestamp}
+        "metadata": {'source':source,'forwarded':False, 'timestamp': timestamp, 'integration_id': integration_id}
         }
     if source == 'telegram':
         event['output_chat_id'] = messaging_user_id

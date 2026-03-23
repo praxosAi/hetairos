@@ -170,6 +170,15 @@ class IntegrationService:
             return integration
         else:
             return False
+
+    async def get_whatsapp_business_by_phone_id(self, phone_number_id: str) -> Optional[dict]:
+        """Look up a WhatsApp Business integration by the receiving phone_number_id"""
+        integration = await self.db_manager.db["integrations"].find_one({
+            "name": "whatsapp_business",
+            "status": "active",
+            "metadata.provider_user_info.phone_numbers.id": phone_number_id
+        })
+        return integration
         
     async def is_authorized_user_telegram_chat_id(self, telegram_chat_id) -> bool:
         """Check if a telegram chat ID belongs to an authorized user"""

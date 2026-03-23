@@ -78,14 +78,17 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                     if bot_username in mention_text.lower():
                         is_mentioned = True
                         break
-
+                elif '@praxos_bot' in text.lower():
+                    is_mentioned = True
+                    break
+        
         is_reply_to_bot = False
         if "reply_to_message" in message:
             reply_from = message["reply_to_message"].get("from", {})
             if reply_from.get("username", "").lower() == bot_username:
                 is_reply_to_bot = True
 
-        should_trigger = not is_group or is_mentioned or is_reply_to_bot
+        should_trigger = (not is_group) or is_mentioned or is_reply_to_bot
         trigger_agent = should_trigger
 
         if username:

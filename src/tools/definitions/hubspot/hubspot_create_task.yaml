@@ -1,0 +1,23 @@
+tool_id: hubspot_create_task
+category: hubspot
+display_name: hubspot_create_task
+short_description: Create a task in HubSpot CRM to remind you to follow up with a contact
+arguments:
+  - name: subject
+    type: string
+    description: Subject line of the task
+    required: true
+  - name: body
+    type: string
+    description: Detailed description of the task
+    required: false
+  - name: contact_id
+    type: string
+    description: HubSpot contact ID to associate this task with. Find this ID using hubspot_search_contacts.
+    required: false
+returns: Success message with new task ID
+use_cases:
+  - Setting a reminder to follow up with a prospect
+  - Creating a to-do item linked to a customer
+notes:
+  - Highly recommended to provide contact_id to link the task to the right person.

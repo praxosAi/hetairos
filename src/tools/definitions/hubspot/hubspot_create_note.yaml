@@ -1,0 +1,19 @@
+tool_id: hubspot_create_note
+category: hubspot
+display_name: hubspot_create_note
+short_description: Create a note in HubSpot CRM to record summaries or details about a contact
+arguments:
+  - name: body
+    type: string
+    description: Text content of the note
+    required: true
+  - name: contact_id
+    type: string
+    description: HubSpot contact ID to associate this note with. Find this ID using hubspot_search_contacts.
+    required: false
+returns: Success message with new note ID
+use_cases:
+  - Logging notes from a meeting onto a contact's profile
+  - Storing background information about a contact
+notes:
+  - Highly recommended to provide contact_id to link the note to the right person.

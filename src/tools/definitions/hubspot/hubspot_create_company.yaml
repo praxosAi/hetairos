@@ -1,0 +1,31 @@
+tool_id: hubspot_create_company
+category: hubspot
+display_name: hubspot_create_company
+short_description: Create a new company in HubSpot CRM
+arguments:
+  - name: name
+    type: string
+    description: Name of the company
+    required: true
+  - name: domain
+    type: string
+    description: Company's website domain
+    required: false
+  - name: industry
+    type: string
+    description: Industry the company operates in
+    required: false
+  - name: phone
+    type: string
+    description: Company phone number
+    required: false
+  - name: city
+    type: string
+    description: City where the company is located
+    required: false
+returns: Success message with new company ID
+use_cases:
+  - Adding a new organization to the CRM
+notes:
+  - Name is required.
+  - Returns the generated company ID upon success.

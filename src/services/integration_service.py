@@ -179,6 +179,15 @@ class IntegrationService:
         else:
             return False
 
+    async def get_integration_by_active_channel(self, platform: str, chat_id: str) -> Optional[dict]:
+        """Find any active integration that has this chat_id in its active_output_channels."""
+        integration = await self.db_manager.db["integrations"].find_one({
+            "name": platform,
+            "status": "active",
+            "active_output_channels.reference": str(chat_id)
+        })
+        return integration
+
     async def is_authorizable_user(self, integration_name: str, connected_account: str, message_text: str=None, telegram_chat_id = None) -> bool:
 
         if not message_text:

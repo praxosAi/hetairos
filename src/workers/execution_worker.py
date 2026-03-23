@@ -287,14 +287,20 @@ class ExecutionWorker:
                     logger.info(f"Using NoOpStreamBuffer for {source}")
 
                 self.langgraph_agent_runner = LangGraphAgentRunner(trace_id=f"exec-{str(event['user_id'])}-{datetime.utcnow().isoformat()}", has_media=has_media)
+                trigger_agent = event.get("metadata", {}).get("trigger_agent", True)
                 result = await self.langgraph_agent_runner.run(
                     user_context=user_context,
                     input=event["payload"],
                     source=source,
                     metadata=event.get("metadata", {}),
-                    stream_buffer=stream_buffer  # NEW parameter
+                    stream_buffer=stream_buffer,  # NEW parameter
+                    trigger_agent=trigger_agent
                 )
-                await self.post_process_langgraph_response(result, event, typing_task_id)
+                if trigger_agent:
+                    await self.post_process_langgraph_response(result, event, typing_task_id)
+                else:
+                    if typing_task_id:
+                        await egress_service.stop_typing_indicator(typing_task_id)
             
             else:
                 logger.warning(f"Unknown event source: {source}. Skipping event.")

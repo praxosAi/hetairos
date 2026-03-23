@@ -1,0 +1,20 @@
+tool_id: hubspot_search_contacts
+category: hubspot
+display_name: hubspot_search_contacts
+short_description: Search for contacts in HubSpot CRM
+arguments:
+  - name: query
+    type: string
+    description: Email query to search for. If empty, returns recent contacts.
+    required: false
+  - name: limit
+    type: integer
+    description: Max number of results. Default is 10.
+    required: false
+returns: JSON string of matching contacts
+use_cases:
+  - Find a contact by email address
+  - Get a list of recently updated contacts
+  - Verify if a contact already exists
+notes:
+  - Returns contact ID, firstname, lastname, email, company, and lifecyclestage.

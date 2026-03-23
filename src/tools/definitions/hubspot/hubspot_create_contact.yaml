@@ -1,0 +1,32 @@
+tool_id: hubspot_create_contact
+category: hubspot
+display_name: hubspot_create_contact
+short_description: Create a new contact in HubSpot CRM
+arguments:
+  - name: email
+    type: string
+    description: Email address of the contact
+    required: true
+  - name: firstname
+    type: string
+    description: First name of the contact
+    required: false
+  - name: lastname
+    type: string
+    description: Last name of the contact
+    required: false
+  - name: phone
+    type: string
+    description: Phone number of the contact
+    required: false
+  - name: company
+    type: string
+    description: Company name the contact is associated with
+    required: false
+returns: Success message with new contact ID
+use_cases:
+  - Adding a new lead to the CRM
+  - Saving contact details from a conversation
+notes:
+  - Email is required.
+  - Returns the generated contact ID upon success.

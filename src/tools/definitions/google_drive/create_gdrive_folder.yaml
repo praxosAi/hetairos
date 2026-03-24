@@ -1,0 +1,31 @@
+tool_id: create_gdrive_folder
+category: google_drive
+display_name: create_gdrive_folder
+short_description: Creates a new folder in the user's Google Drive.
+
+detailed_description: |
+  Creates a new folder with the specified name in the user's Google Drive.
+  If a parent folder ID is provided, the folder is created inside that parent folder.
+  Returns the ID and link to the newly created folder.
+  {account_info}
+
+arguments:
+  - name: folder_name
+    type: str
+    description: The name of the new folder to create.
+    required: true
+
+  - name: parent_folder_id
+    type: str
+    description: Optional ID of the parent folder to create this folder inside.
+    required: false
+
+  - name: account
+    type: str
+    description: The specific account to use if the user has multiple connected Google Drive accounts.
+    required: false
+
+returns: The ID and web view link of the created folder.
+
+supports_multi_account: true
+description_template: "Creates a new folder in the user's Google Drive. {account_info}"

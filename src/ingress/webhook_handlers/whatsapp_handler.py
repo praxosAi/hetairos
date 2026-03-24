@@ -77,6 +77,9 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                         message_text = message.get("text", {}).get("body", "")
                         integration_record = await integration_service.is_authorized_user('whatsapp',phone_number)
                         if not integration_record:
+                            webhook_logger.warning(f"check if there is a business whatsapp account with phone number {phone_number}")
+                            integration_record = await integration_service.is_authorized_user('whatsapp_business',phone_number)
+                        if not integration_record:
                             ## try to authorize with code:
                             try:
                                 integration_record_new,user_record = await integration_service.is_authorizable_user('whatsapp',phone_number,message_text)

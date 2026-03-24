@@ -51,7 +51,9 @@ def create_integration_tools(user_id: str, tool_registry) -> list:
                 param_value=integration_name,
                 expected_format=f"One of: {', '.join(INTEGRATION_NAME_TO_PROVIDER_MAP.keys())}"
             )
-
+        elif provider in ['whatsapp', 'telegram','imessage']:
+            # For messaging platforms, we have a different flow that requires a login token.
+            ToolExecutionResponse(status="success", result={"oauth_url": f"https://app.mypraxos.com/?overlay=connectors&provider={provider}"})
         try:
             # Generate a secure, random token that is safe to include in a URL.
             login_token = secrets.token_urlsafe(32)

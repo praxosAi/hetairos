@@ -246,6 +246,51 @@ class EgressService:
                 await self.whatsapp_client.send_media_from_link(phone_number, file_obj)
         logger.info(f"Successfully sent response to WhatsApp user {phone_number}")
 
+
+
+    async def _send_whatsapp_business_response(self, event: dict, response_text, response_files):
+        phone_number = event.get("output_phone_number")
+        integration_id = event.get("metadata", {}).get("integration_id")
+        user_id = event.get("user_id")
+
+        if not phone_number or not integration_id or not user_id:
+            logger.error(f"Missing required fields for WhatsApp Business response. Event: {event}")
+            return
+            
+        token_doc = await integration_service.get_integration_token(user_id, 'whatsapp_business', integration_id=integration_id)
+        if not token_doc:
+            logger.error(f"No token found for WhatsApp Business integration {integration_id}")
+            return
+            
+        # Get integration to fetch phone_number_id
+        integration_record = await integration_service.db_manager.db["integrations"].find_one({"_id": __import__('bson').ObjectId(integration_id)})
+        if not integration_record:
+            logger.error("Integration record not found")
+            return
+        
+        phone_number_id = None
+        try:
+            phone_number_id = integration_record['metadata']['provider_user_info']['phone_numbers'][0]['id']
+        except Exception:
+            pass
+            
+        if not phone_number_id:
+            logger.error("Could not determine phone_number_id from integration record")
+            return
+            
+        from src.integrations.whatsapp_business.client import WhatsAppBusinessClient
+        client = WhatsAppBusinessClient(
+            access_token=token_doc.get("access_token"),
+            phone_number_id=phone_number_id
+        )
+        
+        if response_text:
+            await client.send_message(phone_number, response_text)
+        if response_files:
+            for file_obj in response_files:
+                await client.send_media_from_link(phone_number, file_obj)
+        logger.info(f"Successfully sent WhatsApp Business response to {phone_number}")
+
     async def _send_imessage_response(self, event:dict, response_text, response_files):
         phone_number = event.get("output_phone_number")
         if not phone_number and event.get("user_id"):
@@ -482,7 +527,7 @@ class EgressService:
             return
 
         logger.info(f"Routing response for source: {source}, output_type: {event.get('output_type')}")
-        if event.get('output_type') not in ['email','websocket','telegram','whatsapp','imessage','slack','discord','mcp'] and event.get('source') in ['scheduled','recurring']:
+        if event.get('output_type') not in ['email','websocket','telegram','whatsapp','whatsapp_business','imessage','slack','discord','mcp'] and event.get('source') in ['scheduled','recurring']:
             logger.info('incorrect output type for scheduled or recurring event')
             if event.get('metadata',{}).get('original_source', None):
                 logger.info(f"Overriding event source from {event['output_type']} to {event['metadata']['original_source']}")
@@ -587,8 +632,10 @@ class EgressService:
             if final_output_type == "email":
                 await self._send_email_response(event, response_text)
 
-            elif final_output_type == "whatsapp":
+elif final_output_type == "whatsapp":
                 await self._send_whatsapp_reponse(event, response_text, response_files)
+            elif final_output_type == "whatsapp_business":
+                await self._send_whatsapp_business_response(event, response_text, response_files)
 
             elif final_output_type == "imessage":
                 await self._send_imessage_response(event, response_text, response_files)

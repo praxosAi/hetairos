@@ -88,6 +88,29 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration, tool_registry
             )
 
     @tool
+    async def create_gdrive_folder(
+        folder_name: str, 
+        parent_folder_id: Optional[str] = None,
+        account: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """Creates a new folder in the user's Google Drive."""
+        try:
+            result = await gdrive_integration.create_folder(
+                folder_name, parent_folder_id=parent_folder_id, account=account
+            )
+            folder_id = result.get('id')
+            folder_link = result.get('webViewLink')
+            return ToolExecutionResponse(status="success", result=f"Folder '{folder_name}' created. ID: {folder_id}, Link: {folder_link}")
+        except Exception as e:
+            logger.error(f"Error creating Google Drive folder: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="create_gdrive_folder",
+                exception=e,
+                integration="Google Drive",
+                context={"folder_name": folder_name}
+            )
+
+    @tool
     async def read_file_content_by_id(
         file_id: str,
         account: Optional[str] = None  # 1. Add optional 'account' parameter
@@ -137,6 +160,7 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration, tool_registry
         search_google_drive_files,
         save_file_to_drive,
         create_text_file_in_drive,
+        create_gdrive_folder,
         read_file_content_by_id,
         list_drive_files
     ]

@@ -162,6 +162,25 @@ class GoogleDriveIntegration(BaseIntegration):
         except Exception as e:
             raise Exception(f"Error uploading file to {resolved_account}: {e}")
 
+    async def create_folder(self, folder_name: str, *, parent_folder_id: Optional[str] = None, account: Optional[str] = None) -> Dict:
+        """Creates a new folder in a specific Google Drive account."""
+        service, resolved_account = self._get_service_for_account(account)
+        
+        file_metadata = {
+            'name': folder_name,
+            'mimeType': 'application/vnd.google-apps.folder'
+        }
+        if parent_folder_id:
+            file_metadata['parents'] = [parent_folder_id]
+        
+        try:
+            folder = service.files().create(body=file_metadata, fields='id, webViewLink').execute()
+            logger.info(f"Created folder '{folder_name}' in {resolved_account}")
+            return folder
+        except Exception as e:
+            logger.error(f"Error creating folder in {resolved_account}: {e}")
+            raise Exception(f"Failed to create folder in {resolved_account}: {e}")
+
     async def create_text_file(self, filename: str, content: str, *, drive_folder_id: Optional[str] = None, account: Optional[str] = None) -> Dict:
         """Creates a new text file in a specific Google Drive account."""
         service, resolved_account = self._get_service_for_account(account)

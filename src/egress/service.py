@@ -228,6 +228,12 @@ class EgressService:
                     user_id=event.get("user_id"),
                     name="whatsapp"
                 )
+                if not integration_record:
+                    ## try waba
+                    integration_record = await integration_service.get_integration_record_for_user_and_name(
+                        user_id=event.get("user_id"),
+                        name='whatsapp_business'
+                    )
                 if integration_record:
                     phone_number = integration_record.get("connected_account")
                 else:

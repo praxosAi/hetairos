@@ -632,7 +632,7 @@ class EgressService:
             if final_output_type == "email":
                 await self._send_email_response(event, response_text)
 
-elif final_output_type == "whatsapp":
+            elif final_output_type == "whatsapp":
                 await self._send_whatsapp_reponse(event, response_text, response_files)
             elif final_output_type == "whatsapp_business":
                 await self._send_whatsapp_business_response(event, response_text, response_files)

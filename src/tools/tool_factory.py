@@ -367,7 +367,10 @@ class AgentToolsFactory:
             trello_integration = TrelloIntegration(user_id)
             auth_tasks.append(trello_integration.authenticate())
             integration_map['trello'] = (len(auth_tasks) - 1, trello_integration)
-
+        if needs_hubspot:
+            hubspot_integration = HubSpotIntegration(user_id)
+            auth_tasks.append(hubspot_integration.authenticate())
+            integration_map['hubspot'] = (len(auth_tasks) - 1, hubspot_integration)
         logger.info(f"Authenticating {len(auth_tasks)} integrations based on required tools")
 
         # Authenticate only the needed integrations

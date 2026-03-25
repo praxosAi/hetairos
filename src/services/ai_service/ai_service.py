@@ -156,7 +156,8 @@ class AIService:
             if planning.plan:
                 plan_str += f"the plan is as follows: {planning.plan}. \n"
             if planning.steps:
-                plan_str += f"the steps are as follows: {'\n'.join(planning.steps)}. "
+                planning_lines = '\n'.join(planning.steps)
+                plan_str += f"the steps are as follows: {planning_lines}. "
             if plan_str:
                 plan_str = """the following initial plan has been suggested by the system. take the plan into account when generating the response, but do not feel bound by it. you can deviate from the plan if you think it's necessary.
                     In either case, make sure to use the appropriate tools that are provided to you for performing this task. Do not respond that you are doing a task, without actually doing it. instead, do the task, then send the user indication that you have done it, with any necessary result data.  \n\n""" + plan_str

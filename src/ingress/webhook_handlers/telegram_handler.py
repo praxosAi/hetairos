@@ -55,7 +55,41 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
         message = data["message"]
         chat_id = message["chat"]["id"]
         username = message["from"].get("username", "").lower()
+        first_name = message["from"].get("first_name", "")
+        last_name = message["from"].get("last_name", "")
+        speaker_name = f"{first_name} {last_name}".strip() or username
         modality_var.set("telegram")
+
+        chat_info = message.get("chat", {})
+        chat_type = chat_info.get("type", "private")
+        is_group = chat_type != "private"
+        chat_name = chat_info.get("title", "Direct Message") if is_group else "Direct Message"
+
+        text = message.get("text", "")
+
+        bot_username = "praxos_bot" # Should be from config ideally
+        is_mentioned = False
+        if "entities" in message:
+            for entity in message["entities"]:
+                if entity["type"] == "mention":
+                    offset = entity["offset"]
+                    length = entity["length"]
+                    mention_text = text[offset:offset+length]
+                    if bot_username in mention_text.lower():
+                        is_mentioned = True
+                        break
+                elif '@praxos_bot' in text.lower():
+                    is_mentioned = True
+                    break
+        
+        is_reply_to_bot = False
+        if "reply_to_message" in message:
+            reply_from = message["reply_to_message"].get("from", {})
+            if reply_from.get("username", "").lower() == bot_username:
+                is_reply_to_bot = True
+
+        should_trigger = (not is_group) or is_mentioned or is_reply_to_bot
+        trigger_agent = should_trigger
 
         if username:
             integration_record = await integration_service.is_authorized_user("telegram", username)
@@ -64,63 +98,68 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
             integration_record = await integration_service.is_authorized_user_telegram_chat_id(chat_id)
 
         if not integration_record:
-            logger.info(f"User {username} not authorized, attempting to authorize.")
-            try:
-                message_text = message.get("text","")
-                integration_record_new, user_record = await integration_service.is_authorizable_user('telegram',username, message_text, chat_id)
-                if integration_record_new and user_record:
-                    user_id_var.set(str(user_record["_id"]))
-                    try:
-                        welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n\nTelegram communication initialized. \n\nWelcome to Praxos, {user_record.get('first_name')}.\nUser name @{username} has been saved. You can now issue orders and communicate with Praxos over Telegram."
-                        await telegram_client.send_message(message["chat"]["id"], welcome_message)
+            if not is_group:
+                logger.info(f"User {username} not authorized in DM, attempting to authorize.")
+                try:
+                    message_text = message.get("text","")
+                    integration_record_new, user_record = await integration_service.is_authorizable_user('telegram',username, message_text, chat_id)
+                    if integration_record_new and user_record:
+                        user_id_var.set(str(user_record["_id"]))
                         try:
-                            await research_user_and_engage(user_record,'telegram', chat_id,timestamp = message.get('date'),request_id_var=str(request_id_var.get()))
-                        except:
-                            logger.error(f"Failed to create research order for new telegram user {user_record['_id']}")
+                            welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n\nTelegram communication initialized. \n\nWelcome to Praxos, {user_record.get('first_name')}.\nUser name @{username} has been saved. You can now issue orders and communicate with Praxos over Telegram."
+                            await telegram_client.send_message(message["chat"]["id"], welcome_message)
+                            try:
+                                await research_user_and_engage(user_record,'telegram', chat_id,timestamp = message.get('date'),request_id_var=str(request_id_var.get()))
+                            except:
+                                logger.error(f"Failed to create research order for new telegram user {user_record['_id']}")
+                            return {"status": "ok"}
+                        except Exception as e:
+                            logger.error(f"Failed to send welcome message to {username}: {e}")
+                        integration_record = integration_record_new
+                        return
+                    else:
+                        logger.warning(f"User {message['from']['id']} is not authorized, showing account selection")
+                        first_name = message["from"].get("first_name", "")
+                        await telegram_client.send_account_connection_prompt(chat_id, username, first_name)
                         return {"status": "ok"}
-                    except Exception as e:
-                        logger.error(f"Failed to send welcome message to {username}: {e}")
-                    integration_record = integration_record_new
-                    return
-                else:
-                    logger.warning(f"User {message['from']['id']} is not authorized, showing account selection")
-                    first_name = message["from"].get("first_name", "")
-                    await telegram_client.send_account_connection_prompt(chat_id, username, first_name)
+                except Exception as e:
+                    logger.error(f"Error during authorization attempt for {username}: {e}")
+                    await telegram_client.send_message(message["chat"]["id"], "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com, and add your telegram username to your account. if this message seems to be an error, please contact support on discord.")
                     return {"status": "ok"}
-            except Exception as e:
-                logger.error(f"Error during authorization attempt for {username}: {e}")
-                await telegram_client.send_message(message["chat"]["id"], "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com, and add your telegram username to your account. if this message seems to be an error, please contact support on discord.")
-                return {"status": "ok"}
-        user_id = str(integration_record["user_id"])
+            else:
+                # Group chat unauthorized flow
+                group_integration = await integration_service.get_integration_by_active_channel("telegram", str(chat_id))
+                if group_integration:
+                    # Passively ingest using the group owner's ID
+                    user_id = str(group_integration["user_id"])
+                    trigger_agent = False
+                    active_channels = group_integration.get("active_output_channels", [])
+                else:
+                    logger.info(f"Group {chat_id} is not tracked by any active Praxos member. Dropping message.")
+                    return {"status": "ok"}
+        else:
+            user_id = str(integration_record["user_id"])
+            
+            # Update active channels for the authorized user
+            needs_update = False
+            if not integration_record.get("telegram_chat_id"):
+                integration_record["telegram_chat_id"] = chat_id
+                needs_update = True
+                
+            active_channels = integration_record.get("active_output_channels", [])
+            channel_exists = any(str(ch.get("reference")) == str(chat_id) for ch in active_channels)
+            
+            if not channel_exists:
+                active_channels.append({
+                    "reference": str(chat_id),
+                    "name": chat_name
+                })
+                integration_record["active_output_channels"] = active_channels
+                needs_update = True
+                
+            if needs_update:
+                await integration_service.update_integration(integration_record["_id"], integration_record)
 
-        ### for telegram, on the first message, we must store the chat id in the user record.
-        needs_update = False
-        if not integration_record.get("telegram_chat_id"):
-            integration_record["telegram_chat_id"] = chat_id
-            needs_update = True
-            
-        # Track active output channels (group chats vs DMs)
-        active_channels = integration_record.get("active_output_channels", [])
-        
-        # Determine chat name (group title or "Direct Message")
-        chat_info = message.get("chat", {})
-        chat_type = chat_info.get("type", "private")
-        chat_name = chat_info.get("title", "Direct Message") if chat_type != "private" else "Direct Message"
-        
-        # Check if this chat_id is already in the active channels
-        channel_exists = any(str(ch.get("reference")) == str(chat_id) for ch in active_channels)
-        
-        if not channel_exists:
-            active_channels.append({
-                "reference": str(chat_id),
-                "name": chat_name
-            })
-            integration_record["active_output_channels"] = active_channels
-            needs_update = True
-            
-        if needs_update:
-            await integration_service.update_integration(integration_record["_id"], integration_record)
-            
         text = message.get("text")
         logger.info(f"Received message from Telegram: {message}")
         #### handling forwarded messages
@@ -161,7 +200,10 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                     'forward_origin':forward_origin,
                     'timestamp': message.get("date"),
                     'active_output_channels': active_channels,
-                    'chat_context': chat_context
+                    'chat_context': chat_context,
+                    'context_boundary_id': f"telegram_{chat_id}" if is_group else None,
+                    'speaker_name': speaker_name,
+                    'trigger_agent': trigger_agent
                 }
             }
             await event_queue.publish(event)

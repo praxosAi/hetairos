@@ -23,7 +23,7 @@ class TierLimits:
         SubscriptionTier.PERSONAL: {
             "messaging_platforms_total": -1,
             "messaging_platforms_allowed": ["telegram", "whatsapp", "imessage"],
-            "email_workspaces_total": 1,
+            "email_workspaces_total": -1,
             "email_workspaces_allowed": ["gmail", "outlook"],
             "video_generation_enabled": True,
             "calendar_integrations_total": -1,

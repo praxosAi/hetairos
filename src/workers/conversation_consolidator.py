@@ -23,15 +23,22 @@ class ConversationConsolidator:
                 logger.warning(f"Conversation {conversation_id} not found")
                 return False
             logger.info(f"Found conversation {conversation_id}")
-            # Get all messages and search attempts
+            # Get only unconsolidated messages
             message_dict = {} 
-            messages = await self.db.get_conversation_messages(conversation_id)
+            messages = await self.db.get_unconsolidated_messages(conversation_id, limit=100)
+            
+            if not messages:
+                logger.info(f"No new messages to consolidate for conversation {conversation_id}")
+                return True
+
             try:
                 file_message_idx = []
                 tasks = []
                 document_files_to_ingest = []  # Track documents that need to be sent to Praxos
+                messages_to_mark = []
 
                 for idx, message in enumerate(messages):
+                    messages_to_mark.append(str(message['_id']))
                     inserted_id = message.get('metadata', {}).get('inserted_id')
                     if inserted_id:
                         # Get file info from database to check type
@@ -156,16 +163,7 @@ class ConversationConsolidator:
 
             search_attempts = await self.db.get_recent_search_attempts(conversation_id, limit=100)
             logger.info(f"Found {len(search_attempts)} search attempts")
-            if not messages:
-                logger.warning(f"No messages found for conversation {conversation_id}")
-                await self.db.mark_conversation_consolidated(conversation_id)
-                return True
-            # summary = self.create_conversation_summary(conversation, messages, search_attempts)
             
-            new_consolidation = await self.db.mark_conversation_consolidated(conversation_id)
-            if not new_consolidation:
-                logger.info(f"Conversation {conversation_id} already consolidated")
-                return True
             # Send to Praxos
             conversation_user_id = conversation['user_id']
             user_record = user_service.get_user_by_id(conversation_user_id)
@@ -192,17 +190,20 @@ class ConversationConsolidator:
                         'search_attempts': len(search_attempts),
                         'platform': conversation['platform'],
                         'start_time': conversation['start_time'],
-                        'end_time': conversation['last_activity']
+                        'end_time': conversation['last_activity'],
+                        'origin': 'conversation'
                     },
                     user_record=user_record,
                     conversation_id=conversation_id
                 )
+            
+            # Mark these specific messages as consolidated
+            await self.db.mark_messages_consolidated(messages_to_mark)
+            
             source_id = source_data.get('id', '')
             await self.db.update_conversation_praxos_source_id(conversation_id, source_id)
-            # Mark as consolidated
 
-
-            logger.info(f"Successfully consolidated conversation {conversation_id} with {len(messages)} messages")
+            logger.info(f"Successfully consolidated {len(messages)} messages for conversation {conversation_id}")
             return True
             
         except Exception as e:

@@ -71,9 +71,9 @@ class ConversationDatabase:
         }).sort("timestamp", -1)
         return await cursor.to_list(length=100)
 
-    async def create_conversation(self, user_id: str, platform: str) -> str:
+    async def create_conversation(self, user_id: str, platform: str, context_boundary_id: Optional[str] = None) -> str:
         """Create a new conversation and return its ID."""
-        result = await self.conversations.insert_one({
+        doc = {
             "user_id": ObjectId(user_id),
             "platform": platform,
             "start_time": datetime.utcnow(),
@@ -81,13 +81,25 @@ class ConversationDatabase:
             "status": "active",
             "metadata": {},
             "name": None  # Will be populated by auto-namer
-        })
+        }
+        if context_boundary_id:
+            doc["context_boundary_id"] = context_boundary_id
+            
+        result = await self.conversations.insert_one(doc)
         return str(result.inserted_id)
 
-    async def get_active_conversation(self, user_id: str) -> Optional[str]:
-        """Get the active conversation ID for a user."""
+    async def get_active_conversation(self, user_id: str, context_boundary_id: Optional[str] = None) -> Optional[str]:
+        """Get the active conversation ID for a user or a specific context boundary."""
+        query = {"status": "active"}
+        
+        if context_boundary_id:
+            query["context_boundary_id"] = context_boundary_id
+        else:
+            query["user_id"] = ObjectId(user_id)
+            query["context_boundary_id"] = {"$exists": False} # Explicitly avoid returning group chats for DM queries
+            
         convo = await self.conversations.find_one(
-            {"user_id": ObjectId(user_id), "status": "active"},
+            query,
             sort=[("last_activity", -1)]
         )
         return str(convo["_id"]) if convo else None
@@ -130,7 +142,8 @@ class ConversationDatabase:
             "message_type": message_type,
             "message_category": message_category,
             "metadata": metadata,
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.utcnow(),
+            "is_consolidated": False
         }
         result = await self.messages.insert_one(message_doc)
         
@@ -139,6 +152,36 @@ class ConversationDatabase:
             {"$set": {"last_activity": datetime.utcnow()}}
         )
         return str(result.inserted_id)
+
+    async def get_unconsolidated_messages(
+        self,
+        conversation_id: str,
+        limit: int = 50,
+        categories: Optional[List[str]] = None
+    ) -> List[Dict]:
+        """Get messages that haven't been consolidated yet."""
+        query = {
+            "conversation_id": ObjectId(conversation_id),
+            "is_consolidated": {"$ne": True}
+        }
+
+        if categories is not None and len(categories) > 0:
+            query["message_category"] = {"$in": categories}
+
+        cursor = self.messages.find(query).sort("timestamp", 1).limit(limit)
+        return await cursor.to_list(length=limit)
+
+    async def mark_messages_consolidated(self, message_ids: List[str]):
+        """Mark multiple messages as consolidated."""
+        if not message_ids:
+            return
+        
+        obj_ids = [ObjectId(mid) for mid in message_ids]
+        await self.messages.update_many(
+            {"_id": {"$in": obj_ids}},
+            {"$set": {"is_consolidated": True}}
+        )
+
     async def get_conversation_messages(
         self,
         conversation_id: str,
@@ -814,5 +857,18 @@ class DatabaseManager:
         })
         if count:
             return True
+
+    async def mark_message_consolidated(self, message_id: str):
+        """Mark a message as consolidated in the messages collection."""
+        if not message_id:
+            return
+        try:
+            await self.db["messages"].update_one(
+                {"_id": ObjectId(message_id)},
+                {"$set": {"is_consolidated": True}}
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to mark message {message_id} as consolidated: {e}")
+
 # Global database instance
 db_manager = DatabaseManager()

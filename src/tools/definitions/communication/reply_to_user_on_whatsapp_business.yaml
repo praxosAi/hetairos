@@ -1,0 +1,46 @@
+tool_id: reply_to_user_on_whatsapp_business
+category: communication
+display_name: reply_to_user_on_whatsapp_business
+short_description: Sends a WhatsApp Business message directly to the customer
+arguments:
+  - name: message
+    type: str
+    description: The text message to send to the user
+    required: true
+  - name: media_urls
+    type: list[str]
+    description: Optional list of media URLs to attach (from generate_image/generate_audio/generate_video)
+    required: false
+  - name: media_types
+    type: list[str]
+    description: Optional list of media types corresponding to URLs (image, audio, video, document)
+    required: false
+  - name: final_message
+    type: bool
+    description: Whether this is the final message in the conversation. If you think you will send more messages later, set to False.
+    required: false
+    default: true
+  - name: request_location
+    type: bool
+    description: Whether to request the user's location using a native WhatsApp location request button.
+    required: false
+    default: false
+  - name: send_location_latitude
+    type: float
+    description: Latitude coordinate to send a location to the user (requires send_location_longitude)
+    required: false
+  - name: send_location_longitude
+    type: float
+    description: Longitude coordinate to send a location to the user (requires send_location_latitude)
+    required: false
+  - name: send_location_name
+    type: str
+    description: Optional name/label for the location being sent (e.g., "Office", "Meeting Point")
+    required: false
+returns: Success confirmation
+use_cases:
+  - Answer the user's question via WhatsApp
+  - Send generated images to the user on WhatsApp
+  - Send the user a specific location coordinate
+requires_integration: null
+requires_auth: false

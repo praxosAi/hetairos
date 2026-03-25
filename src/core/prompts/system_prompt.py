@@ -39,6 +39,8 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
     chat_context_prompt = ""
     if metadata and metadata.get("chat_context"):
         chat_context_prompt = f"\n\n**Communication Context:**\n{metadata.get('chat_context')} Unless explicitly instructed otherwise by the user, you should reply to the active chat."
+        if metadata.get("active_speaker"):
+            chat_context_prompt += f" \nIMPORTANT: You are in a shared environment but currently acting under the authority of '{metadata.get('active_speaker')}'. Any actions you take (reading emails, searching files, adding calendar events) will use their connected accounts. Do not attempt to access data belonging to other participants."
 
     base_prompt = (
         "You are a helpful AI assistant. Use the available tools to complete the user's request. "

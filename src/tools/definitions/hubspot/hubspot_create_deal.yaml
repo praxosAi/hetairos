@@ -1,0 +1,27 @@
+tool_id: hubspot_create_deal
+category: hubspot
+display_name: hubspot_create_deal
+short_description: Create a new deal in HubSpot CRM
+arguments:
+  - name: dealname
+    type: string
+    description: Name of the deal
+    required: true
+  - name: pipeline
+    type: string
+    description: The pipeline to place the deal in. Defaults to 'default'.
+    required: false
+  - name: dealstage
+    type: string
+    description: The stage of the deal in the pipeline
+    required: false
+  - name: amount
+    type: string
+    description: Numeric amount string representing the value of the deal
+    required: false
+returns: Success message with new deal ID
+use_cases:
+  - Adding a new sales opportunity to the CRM
+notes:
+  - Deal name is required.
+  - Returns the generated deal ID upon success.

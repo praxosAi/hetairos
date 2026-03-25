@@ -87,7 +87,7 @@ class LangGraphAgentRunner:
 
 
     
-    async def run(self, user_context: UserContext, input: Dict, source: str, metadata: Optional[Dict] = None, stream_buffer: Optional['StreamBuffer'] = None) -> AgentFinalResponse:
+    async def run(self, user_context: UserContext, input: Dict, source: str, metadata: Optional[Dict] = None, stream_buffer: Optional['StreamBuffer'] = None, trigger_agent: bool = True) -> AgentFinalResponse:
         # Default to no-op buffer if not provided
         if stream_buffer is None:
             from src.core.stream_buffer import NoOpStreamBuffer
@@ -100,7 +100,7 @@ class LangGraphAgentRunner:
         start_time = datetime.utcnow()
         execution_record = {
             "execution_id": execution_id,
-            "user_id": ObjectId(user_context.user_id),
+            "user_id": ObjectId(user_context.user_id) if user_context and user_context.user_id else None,
             "trigger_type": source,
             "trigger_data": {"input": input, "metadata": metadata},
             "status": "running",
@@ -141,7 +141,15 @@ class LangGraphAgentRunner:
             current_time_user = datetime.now(user_tz).isoformat()
 
             from_message_prefix = "from " + source if source not in ["scheduled", "recurring", "triggered"] else ""
-            message_prefix = f'message sent on date {current_time_user} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")} {from_message_prefix}: '
+            
+            # Check if this is a group chat context to format appropriately
+            if metadata and metadata.get("context_boundary_id"):
+                speaker_name = metadata.get("speaker_name", "Unknown User")
+                message_prefix = f'[Group Message at {current_time_user}] {speaker_name} says: '
+                # Let the system prompt know who the active commanding user is
+                metadata['active_speaker'] = speaker_name
+            else:
+                message_prefix = f'message sent on date {current_time_user} by {user_context.user_record.get("first_name", "")} {user_context.user_record.get("last_name", "")} {from_message_prefix}: '
 
             # Prepare prefix metadata for storage
             prefix_metadata = {
@@ -204,6 +212,13 @@ class LangGraphAgentRunner:
             else:
                 return AgentFinalResponse(response="Invalid input format.", delivery_platform=source, execution_notes="Input must be a dict or list of dicts.", output_modality="text", file_links=[], generation_instructions=None)            
 
+            if not trigger_agent:
+                logger.info(f"Passive ingestion complete for conversation {conversation_id}. trigger_agent=False. Skipping LangGraph execution.")
+                await db_manager.db["execution_history"].update_one(
+                    {"execution_id": execution_id},
+                    {"$set": {"status": "completed_passive", "completed_at": datetime.utcnow()}}
+                )
+                return AgentFinalResponse(response="", delivery_platform=source, execution_notes="Passive ingestion only.", output_modality="text", file_links=[], generation_instructions=None)
 
             if has_media:
                 logger.info(f"Conversation {conversation_id} has media; switching to media-capable LLM")

@@ -1,0 +1,19 @@
+tool_id: hubspot_search_companies
+category: hubspot
+display_name: hubspot_search_companies
+short_description: Search for companies in HubSpot CRM
+arguments:
+  - name: query
+    type: string
+    description: Company name query to search for. If empty, returns recent companies.
+    required: false
+  - name: limit
+    type: integer
+    description: Max number of results. Default is 10.
+    required: false
+returns: JSON string of matching companies
+use_cases:
+  - Find a company by name
+  - Verify if a company exists in the CRM
+notes:
+  - Returns company ID, name, domain, industry, and city.

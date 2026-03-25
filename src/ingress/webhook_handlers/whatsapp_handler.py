@@ -72,41 +72,57 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                 value = change.get("value", {})
                 if "messages" in value:
                     for message in value["messages"]:
-                        whatsapp_client = WhatsAppClient()
+                        receiving_phone_id = value.get("metadata", {}).get("phone_number_id")
                         phone_number = message["from"]
                         message_text = message.get("text", {}).get("body", "")
-                        integration_record = await integration_service.is_authorized_user('whatsapp',phone_number)
-                        if not integration_record:
-                            webhook_logger.warning(f"check if there is a business whatsapp account with phone number {phone_number}")
-                            integration_record = await integration_service.is_authorized_user('whatsapp_business',phone_number)
-                        if not integration_record:
-                            ## try to authorize with code:
-                            try:
-                                integration_record_new,user_record = await integration_service.is_authorizable_user('whatsapp',phone_number,message_text)
-                                if integration_record_new and user_record:
-                                    user_id_var.set(str(user_record["_id"]))
-                                    webhook_logger.info(f"Authorized new user for whatsapp with phone number {phone_number}")
-                                    welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n\nWhatsapp Connection Initialized. \n\nWelcome to Praxos, {user_record.get('first_name')}.\n\nPhone number {phone_number} has been saved. You can now issue orders and communicate with Praxos over WhatsApp. \n\nRecommended action: Save the following contact card:"
-                                    await whatsapp_client.send_message(phone_number, welcome_message)
-                                    try:
-                                        await whatsapp_client.send_praxos_contact_card(phone_number)
-                                    except Exception as e:
-                                        webhook_logger.error(f"Failed to send contact card to {phone_number}: {e}")
-                                    
-                                    integration_record = integration_record_new
-                                    try:
-                                        await research_user_and_engage(user_record,'whatsapp', phone_number,timestamp = message.get('timestamp'),request_id_var=str(request_id_var.get()))
-                                    except:
-                                        webhook_logger.error(f"Failed to create research order for new whatsapp user {user_record['_id']}")
+
+                        if str(receiving_phone_id) == str(settings.WHATSAPP_PHONE_NUMBER_ID):
+                            modality = 'whatsapp'
+                            whatsapp_client = WhatsAppClient()
+                            integration_record = await integration_service.is_authorized_user('whatsapp',phone_number)
+                            if not integration_record:
+                                try:
+                                    integration_record_new,user_record = await integration_service.is_authorizable_user('whatsapp',phone_number,message_text)
+                                    if integration_record_new and user_record:
+                                        user_id_var.set(str(user_record["_id"]))
+                                        webhook_logger.info(f"Authorized new user for whatsapp with phone number {phone_number}")
+                                        welcome_message = f"HANDSHAKE ACKNOWLEDGED. \n\nWhatsapp Connection Initialized. \n\nWelcome to Praxos, {user_record.get('first_name')}.\n\nPhone number {phone_number} has been saved. You can now issue orders and communicate with Praxos over WhatsApp. \n\nRecommended action: Save the following contact card:"
+                                        await whatsapp_client.send_message(phone_number, welcome_message)
+                                        try:
+                                            await whatsapp_client.send_praxos_contact_card(phone_number)
+                                        except Exception as e:
+                                            webhook_logger.error(f"Failed to send contact card to {phone_number}: {e}")
+                                        
+                                        integration_record = integration_record_new
+                                        try:
+                                            await research_user_and_engage(user_record,'whatsapp', phone_number,timestamp = message.get('timestamp'),request_id_var=str(request_id_var.get()))
+                                        except:
+                                            webhook_logger.error(f"Failed to create research order for new whatsapp user {user_record['_id']}")
+                                        return
+                                    else:
+                                        webhook_logger.warning(f"Unauthorized user: {phone_number}")
+                                        await whatsapp_client.send_message(phone_number, f"This number is not authorized to use this bot. Please register with myPraxos on https://app.mypraxos.com?overlay=connectors&auto-connect=true&provider=whatsapp&phone_number=%2B{phone_number}")
+                                        return
+                                except Exception as e:
+                                    webhook_logger.error(f"Error during authorization attempt for {phone_number}: {e}")
+                                    await whatsapp_client.send_message(phone_number, "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com. if this message seems to be an error, please contact support on discord.")
                                     return
-                                else:
-                                    webhook_logger.warning(f"Unauthorized user: {phone_number}")
-                                    await whatsapp_client.send_message(phone_number, f"This number is not authorized to use this bot. Please register with myPraxos on https://app.mypraxos.com?overlay=connectors&auto-connect=true&provider=whatsapp&phone_number=%2B{phone_number}")
-                                    return
-                            except Exception as e:
-                                webhook_logger.error(f"Error during authorization attempt for {phone_number}: {e}")
-                                await whatsapp_client.send_message(phone_number, "You are not authorized to use this bot. Please register with Praxos on www.mypraxos.com. if this message seems to be an error, please contact support on discord.")
-                                return
+                        else:
+                            modality = 'whatsapp_business'
+                            integration_record = await integration_service.get_whatsapp_business_by_phone_id(receiving_phone_id)
+                            if not integration_record:
+                                webhook_logger.warning(f"Unauthorized/Unknown WABA: {receiving_phone_id}")
+                                continue
+                            user_id = str(integration_record["user_id"])
+                            from src.integrations.whatsapp_business.client import WhatsAppBusinessClient
+                            token_doc = await integration_service.get_integration_token(user_id, 'whatsapp_business', integration_id=str(integration_record['_id']))
+                            if not token_doc:
+                                webhook_logger.error("No token for WA Business")
+                                continue
+                            whatsapp_client = WhatsAppBusinessClient(
+                                access_token=token_doc.get("access_token"),
+                                phone_number_id=receiving_phone_id
+                            )
 
                         webhook_logger.info(f"Marking message as read on webhook with base url {whatsapp_client.base_url}")
                         await whatsapp_client.mark_as_read(message["id"])
@@ -124,12 +140,12 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                             message_text = message.get("text", {}).get("body", "")
                             event = {
                                 "user_id": str(user_record["_id"]),
-                                'output_type': 'whatsapp',
+                                'output_type': modality,
                                 'output_phone_number': phone_number,
-                                "source": "whatsapp",
+                                "source": modality,
                                 "payload": {"text": message_text},
                                 "logging_context": {'user_id': str(user_record["_id"]), 'request_id': str(request_id_var.get()), 'modality': modality_var.get() },
-                                "metadata": {"message_id": message["id"],'source':'whatsapp','forwarded':forwarded, 'timestamp': message.get('timestamp')}
+                                "metadata": {"message_id": message["id"],'source': modality,'forwarded':forwarded, 'timestamp': message.get('timestamp'), 'integration_id': str(integration_record['_id']) if modality == 'whatsapp_business' else None}
                             }
                             await event_queue.publish(event)
                         
@@ -171,17 +187,17 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                         # Publish event with FileResult
                                         event = {
                                             "user_id": str(user_record["_id"]),
-                                            'output_type': 'whatsapp',
+                                            'output_type': modality,
                                             'output_phone_number': phone_number,
-                                            "source": "whatsapp",
+                                            "source": modality,
                                             "logging_context": {'user_id': str(user_record["_id"]), 'request_id': str(request_id_var.get()), 'modality': modality_var.get() },
                                             "payload": {"files": [file_result.to_event_file_entry()]},
                                             "metadata": {
                                                 "message_id": message["id"],
-                                                'source': 'whatsapp',
+                                                'source': modality,
                                                 'forwarded': forwarded,
                                                 'timestamp': message.get('timestamp')
-                                            }
+                                            , 'integration_id': str(integration_record['_id']) if modality == 'whatsapp_business' else None}
                                         }
 
                                         await event_queue.publish(event)
@@ -221,14 +237,14 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
 
                             event = {
                                 "user_id": str(user_record["_id"]),
-                                'output_type': 'whatsapp',
+                                'output_type': modality,
                                 'output_phone_number': phone_number,
-                                "source": "whatsapp",
+                                "source": modality,
                                 "logging_context": {'user_id': str(user_record["_id"]), 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
                                 "payload": {"text": location_text},
                                 "metadata": {
                                     "message_id": message["id"],
-                                    'source': 'whatsapp',
+                                    'source': modality,
                                     'timestamp': message.get('timestamp'),
                                     'type': 'text',
                                     'location': {
@@ -236,7 +252,7 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                         "longitude": longitude,
                                         "name": location_name,
                                         "address": location_address
-                                    }
+                                    , 'integration_id': str(integration_record['_id']) if modality == 'whatsapp_business' else None}
                                 }
                             }
                             await event_queue.publish(event)

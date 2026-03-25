@@ -70,10 +70,15 @@ class IngestWorker:
                     temp_file_path = temp_file.name
                 
                 try:
+                    file_metadata = file_data.get('metadata', {}).copy()
+                    if 'origin' not in file_metadata:
+                        file_metadata['origin'] = file_metadata.get('source', 'file_upload')
+
                     result = await praxos_client.add_file(
                         file_path=temp_file_path,
                         name=upload_filename,
-                        description=f"Ingested from {file_data['metadata'].get('source', 'unknown')}"
+                        description=f"Ingested from {file_data['metadata'].get('source', 'unknown')}",
+                        metadata=file_metadata
                     )
                     
                     if result:
@@ -99,6 +104,12 @@ class IngestWorker:
                             source_id = result['id']
                             await self.db_manager.update_document_source_id(file_data['metadata']['inserted_id'], source_id)
                             ingestion_results.append({"filename": upload_filename, "status": "success", "source_id  ": result["id"]})
+
+                        # Mark associated message as consolidated if message_id exists
+                        message_id = file_data.get("metadata", {}).get("message_id")
+                        if message_id:
+                            await self.db_manager.mark_message_consolidated(message_id)
+                            logger.info(f"Marked message {message_id} as consolidated after document ingestion")
                     else:
                         ingestion_results.append({"filename": upload_filename, "status": "failed", "error": result.get("error")})
 

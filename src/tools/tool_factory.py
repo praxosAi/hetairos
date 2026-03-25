@@ -15,6 +15,7 @@ from src.integrations.gdrive.google_sheets_client import GoogleSheetsIntegration
 from src.integrations.gdrive.google_slides_client import GoogleSlidesIntegration
 from src.integrations.dropbox.dropbox_client import DropboxIntegration
 from src.integrations.trello.trello_client import TrelloIntegration
+from src.integrations.hubspot.hubspot_client import HubSpotIntegration
 from src.core.praxos_client import PraxosClient
 
 # Tool Module Imports
@@ -27,6 +28,7 @@ from src.tools.google_slides import create_slides_tools
 from src.tools.microsoft_graph import create_outlook_tools
 from src.tools.notion import create_notion_tools
 from src.tools.trello import create_trello_tools
+from src.tools.hubspot import create_hubspot_tools
 from src.tools.praxos import create_praxos_memory_tool
 from src.tools.file_retrieval import create_file_retrieval_tools
 from src.tools.communication import create_bot_communication_tools, create_platform_messaging_tools
@@ -306,12 +308,12 @@ class AgentToolsFactory:
         ])
         needs_notion = needs_category(['list_databases', 'list_notion_pages', 'query_notion_database', 'get_all_workspace_entries', 'search_notion_pages_by_keyword', 'create_notion_page', 'create_notion_database_entry', 'create_notion_database', 'append_to_notion_page', 'update_notion_page_properties', 'get_notion_page_content'])
         needs_dropbox = needs_category(['save_file_to_dropbox', 'read_file_from_dropbox','list_dropbox_files','search_dropbox_files'])
-        needs_trello = needs_category(['list_trello_accounts','list_trello_organizations','list_trello_boards','get_trello_board_details','create_trello_board','share_trello_board','create_trello_list','list_trello_cards','get_trello_card','create_trello_card','update_trello_card','move_trello_card','add_trello_comment','create_trello_checklist','get_board_members','get_card_members','assign_member_to_card','unassign_member_from_card','search_trello']) 
+        needs_trello = needs_category(['list_trello_accounts','list_trello_organizations','list_trello_boards','get_trello_board_details','create_trello_board','share_trello_board','create_trello_list','list_trello_cards','get_trello_card','create_trello_card','update_trello_card','move_trello_card','add_trello_comment','create_trello_checklist','get_board_members','get_card_members','assign_member_to_card','unassign_member_from_card','search_trello'])
+        needs_hubspot = needs_category(['hubspot_search_contacts', 'hubspot_create_contact', 'hubspot_search_companies', 'hubspot_create_company', 'hubspot_create_deal', 'hubspot_create_note', 'hubspot_create_task'])
         logger.info(f'needs_gmail: {needs_gmail}')
          # If no specific tools requested, authenticate all (backward compatibility)
         if required_tool_ids is None:
-            needs_gmail = needs_gcal = needs_gdrive = needs_gdocs = needs_gsheets = needs_gslides = needs_outlook = needs_notion = needs_dropbox = needs_trello = True
-
+            needs_gmail = needs_gcal = needs_gdrive = needs_gdocs = needs_gsheets = needs_gslides = needs_outlook = needs_notion = needs_dropbox = needs_trello = needs_hubspot = True
         # Only authenticate integrations that are actually needed
         auth_tasks = []
         integration_map = {}
@@ -365,7 +367,10 @@ class AgentToolsFactory:
             trello_integration = TrelloIntegration(user_id)
             auth_tasks.append(trello_integration.authenticate())
             integration_map['trello'] = (len(auth_tasks) - 1, trello_integration)
-
+        if needs_hubspot:
+            hubspot_integration = HubSpotIntegration(user_id)
+            auth_tasks.append(hubspot_integration.authenticate())
+            integration_map['hubspot'] = (len(auth_tasks) - 1, hubspot_integration)
         logger.info(f"Authenticating {len(auth_tasks)} integrations based on required tools")
 
         # Authenticate only the needed integrations
@@ -468,6 +473,15 @@ class AgentToolsFactory:
                     logger.info("Trello tools loaded")
                 except Exception as e:
                     logger.error(f"Error creating Trello tools: {e}", exc_info=True)
+
+        if 'hubspot' in integration_map:
+            idx, hubspot_integration = integration_map['hubspot']
+            if authenticated_integrations[idx] is True:
+                try:
+                    tools.extend(create_hubspot_tools(hubspot_integration, tool_registry))
+                    logger.info("HubSpot tools loaded")
+                except Exception as e:
+                    logger.error(f"Error creating HubSpot tools: {e}", exc_info=True)
 
         # --- Praxos Memory Tools ---
         if needs_category(['query_praxos_memory', 'query_praxos_memory_intelligent_search', 'enrich_praxos_memory_entries', 'setup_new_trigger','consult_praxos_long_term_memory']):

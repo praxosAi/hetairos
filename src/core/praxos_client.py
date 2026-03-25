@@ -91,7 +91,8 @@ class PraxosClient:
             result = self.env.add_conversation(
                 messages=reformatted_messages,
                 name=unique_name,
-                description='message from user with conversation id ' + conversation_id
+                description='message from user with conversation id ' + conversation_id,
+                metadata=metadata
             ) 
             
             duration = time.time() - start_time
@@ -199,7 +200,7 @@ class PraxosClient:
                 log_praxos_api_error("add_integration_capability", e.status_code, str(e), getattr(e, 'details', None))
             return {"error": str(e)}
     
-    async def add_file(self, file_path: str, name: str, description: str = None):
+    async def add_file(self, file_path: str, name: str, description: str = None, metadata: dict = None):
         """Add a file to Praxos memory from file path"""
         if not self.env:
             return {"error": "Environment not initialized"}
@@ -212,7 +213,8 @@ class PraxosClient:
             result = self.env.add_file(
                 path=file_path,
                 name=name,
-                description=description or f"File: {name}"
+                description=description or f"File: {name}",
+                metadata=metadata
             )
             
             duration = time.time() - start_time

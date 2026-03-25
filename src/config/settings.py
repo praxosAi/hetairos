@@ -115,4 +115,6 @@ class Settings:
     BOT_EMAIL_ADDRESS = "my@praxos.ai"
     SENDER_SERVICE_URL = os.getenv('SENDER_SERVICE_URL')
     OUTLOOK_VALIDATION_TOKEN = os.getenv("OUTLOOK_VALIDATION_TOKEN")
+    HUBSPOT_CLIENT_ID = os.getenv("HUBSPOT_CLIENT_ID")
+    HUBSPOT_CLIENT_SECRET = os.getenv("HUBSPOT_CLIENT_SECRET")
 settings = Settings()

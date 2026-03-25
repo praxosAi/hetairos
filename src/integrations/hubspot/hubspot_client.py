@@ -1,9 +1,10 @@
 import httpx
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from src.integrations.base_integration import BaseIntegration
 from src.services.integration_service import integration_service
 from src.utils.logging import setup_logger
+from src.config.settings import settings
 
 logger = setup_logger(__name__)
 
@@ -14,9 +15,74 @@ class HubSpotIntegration(BaseIntegration):
         super().__init__(user_id)
         self.api_base = "https://api.hubapi.com"
 
+    async def _refresh_token_if_needed(self, token_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Check if token is expired and refresh it using HubSpot API if needed."""
+        if not token_info or not token_info.get("refresh_token"):
+            return token_info
+            
+        expiry = token_info.get("token_expiry")
+        if not expiry:
+            return token_info
+            
+        # Add 5 minutes buffer to be safe
+        if isinstance(expiry, datetime):
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=timezone.utc)
+            is_expired = datetime.now(timezone.utc) >= (expiry - timedelta(minutes=5))
+        else:
+            return token_info # Can't parse, hope it works
+            
+        if not is_expired:
+            return token_info
+            
+        logger.info(f"HubSpot token for user {self.user_id} has expired. Refreshing...")
+        
+        try:
+            url = f"{self.api_base}/oauth/v1/token"
+            payload = {
+                "grant_type": "refresh_token",
+                "client_id": settings.HUBSPOT_CLIENT_ID,
+                "client_secret": settings.HUBSPOT_CLIENT_SECRET,
+                "refresh_token": token_info["refresh_token"]
+            }
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url, 
+                    data=payload,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"}
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+            new_access_token = data.get("access_token")
+            new_refresh_token = data.get("refresh_token", token_info["refresh_token"])
+            expires_in = data.get("expires_in", 1800)
+            new_expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+            
+            # Save the new token back to Cosmos DB using integration_service
+            await integration_service.update_integration_token_and_refresh_token(
+                self.user_id, "hubspot", new_access_token, new_expiry, new_refresh_token
+            )
+            
+            logger.info(f"HubSpot token successfully refreshed and updated for user {self.user_id}.")
+            
+            # Return updated info matching integration_service's structure
+            return {
+                "access_token": new_access_token,
+                "refresh_token": new_refresh_token,
+                "token_expiry": new_expiry,
+                "scopes": token_info.get("scopes", [])
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to refresh HubSpot token for user {self.user_id}: {e}")
+            return token_info # Fallback to returning old info, might fail later but we tried
+
     async def authenticate(self) -> bool:
         try:
             token_info = await integration_service.get_integration_token(self.user_id, 'hubspot')
+            token_info = await self._refresh_token_if_needed(token_info)
             return bool(token_info and token_info.get('access_token'))
         except Exception as e:
             logger.error(f"Failed to authenticate HubSpot for user {self.user_id}: {e}")
@@ -24,6 +90,8 @@ class HubSpotIntegration(BaseIntegration):
 
     async def _get_headers(self) -> Dict[str, str]:
         token_info = await integration_service.get_integration_token(self.user_id, 'hubspot')
+        token_info = await self._refresh_token_if_needed(token_info)
+        
         if not token_info or not token_info.get('access_token'):
             raise Exception("No valid HubSpot token available")
         return {

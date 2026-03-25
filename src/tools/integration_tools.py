@@ -39,7 +39,7 @@ def create_integration_tools(user_id: str, tool_registry) -> list:
         If the user wants to use a tool for an integration they haven't connected yet, or asks to integrate it, use this tool. you can tell them about the direct way using app.mypraxos.com/integrations, but you must also generate the link for them using this tool, as the primary option.
         Args:
             integration_name: MUST BE EXACTLY ONE OF: gmail, google_calendar, google_drive, outlook, onedrive, microsoft_calendar, notion, dropbox, telegram, whatsapp, imessage, hubspot.
-
+        
         Returns:
             A dictionary containing the 'oauth_url' if successful, otherwise None.
         """
@@ -56,7 +56,7 @@ def create_integration_tools(user_id: str, tool_registry) -> list:
         try:
             # Generate a secure, random token that is safe to include in a URL.
             login_token = secrets.token_urlsafe(32)
-
+            #testing
             # Store the token in Redis with the user's ID. Set a 5-minute expiry
             # to limit the time window for authentication.
             await redis_client.set(f"login_token:{login_token}", str(user_id), ex=300)

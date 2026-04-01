@@ -1,0 +1,27 @@
+tool_id: airtable_update_record
+category: airtable
+display_name: airtable_update_record
+short_description: Update an existing record in an Airtable base and table
+arguments:
+  - name: base_id
+    type: string
+    description: The Airtable base ID.
+    required: true
+  - name: table_id_or_name
+    type: string
+    description: The name or ID of the specific table in the base.
+    required: true
+  - name: record_id
+    type: string
+    description: The unique ID of the record to update. Find this using airtable_search_records.
+    required: true
+  - name: fields
+    type: string
+    description: A valid JSON string containing ONLY the columns you wish to update and their new values.
+    required: true
+returns: Success message with the updated record ID
+use_cases:
+  - Modify an existing row in a database
+  - Update the status of an item in an Airtable base
+notes:
+  - The fields argument MUST be a valid JSON string.

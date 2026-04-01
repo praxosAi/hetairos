@@ -103,15 +103,18 @@ class HubSpotIntegration(BaseIntegration):
         """Fetch recently modified contacts as a default data sync method."""
         return await self.search_contacts(limit=10)
 
-    async def search_contacts(self, query: str = "", limit: int = 10) -> List[Dict[str, Any]]:
+    async def search_contacts(self, query: str = "", limit: int = 10, properties: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Search for HubSpot contacts."""
         try:
             headers = await self._get_headers()
             url = f"{self.api_base}/crm/v3/objects/contacts/search"
             
+            if not properties:
+                properties = ["firstname", "lastname", "email", "phone", "company", "lifecyclestage", "jobtitle", "website", "hs_object_id"]
+            
             payload = {
                 "limit": limit,
-                "properties": ["firstname", "lastname", "email", "phone", "company", "lifecyclestage"]
+                "properties": properties
             }
             if query:
                 payload["filterGroups"] = [{
@@ -147,15 +150,18 @@ class HubSpotIntegration(BaseIntegration):
             logger.error(f"Error creating HubSpot contact: {e}", exc_info=True)
             raise
 
-    async def search_companies(self, query: str = "", limit: int = 10) -> List[Dict[str, Any]]:
+    async def search_companies(self, query: str = "", limit: int = 10, properties: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Search for HubSpot companies."""
         try:
             headers = await self._get_headers()
             url = f"{self.api_base}/crm/v3/objects/companies/search"
             
+            if not properties:
+                properties = ["name", "domain", "industry", "phone", "city", "state", "country", "hs_object_id"]
+                
             payload = {
                 "limit": limit,
-                "properties": ["name", "domain", "industry", "phone", "city"]
+                "properties": properties
             }
             if query:
                 payload["filterGroups"] = [{
@@ -260,4 +266,98 @@ class HubSpotIntegration(BaseIntegration):
                 return response.json()
         except Exception as e:
             logger.error(f"Error creating HubSpot task: {e}", exc_info=True)
+            raise
+
+    async def search_deals(self, query: str = "", limit: int = 10, properties: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """Search for HubSpot deals."""
+        try:
+            headers = await self._get_headers()
+            url = f"{self.api_base}/crm/v3/objects/deals/search"
+            
+            if not properties:
+                properties = ["dealname", "amount", "dealstage", "pipeline", "closedate", "hs_object_id"]
+                
+            payload = {
+                "limit": limit,
+                "properties": properties
+            }
+            if query:
+                payload["filterGroups"] = [{
+                    "filters": [{
+                        "propertyName": "dealname",
+                        "operator": "CONTAINS_TOKEN",
+                        "value": f"*{query}*"
+                    }]
+                }]
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                data = response.json()
+                return data.get("results", [])
+        except Exception as e:
+            logger.error(f"Error searching HubSpot deals: {e}", exc_info=True)
+            raise
+
+    async def get_notes(self, contact_id: str) -> List[Dict[str, Any]]:
+        """Get all notes associated with a contact."""
+        try:
+            headers = await self._get_headers()
+            url = f"{self.api_base}/crm/v4/objects/contact/{contact_id}/associations/note"
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                associations = response.json().get("results", [])
+                
+            note_ids = [str(assoc.get("toObjectId")) for assoc in associations]
+            
+            if not note_ids:
+                return []
+                
+            # Batch read the actual note content
+            read_url = f"{self.api_base}/crm/v3/objects/notes/batch/read"
+            payload = {
+                "inputs": [{"id": nid} for nid in note_ids],
+                "properties": ["hs_note_body", "hs_createdate"]
+            }
+            
+            async with httpx.AsyncClient() as client:
+                read_response = await client.post(read_url, headers=headers, json=payload)
+                read_response.raise_for_status()
+                data = read_response.json()
+                return data.get("results", [])
+        except Exception as e:
+            logger.error(f"Error getting HubSpot notes for contact {contact_id}: {e}", exc_info=True)
+            raise
+
+    async def get_tasks(self, contact_id: str) -> List[Dict[str, Any]]:
+        """Get all tasks associated with a contact."""
+        try:
+            headers = await self._get_headers()
+            url = f"{self.api_base}/crm/v4/objects/contact/{contact_id}/associations/task"
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                associations = response.json().get("results", [])
+                
+            task_ids = [str(assoc.get("toObjectId")) for assoc in associations]
+            
+            if not task_ids:
+                return []
+                
+            read_url = f"{self.api_base}/crm/v3/objects/tasks/batch/read"
+            payload = {
+                "inputs": [{"id": tid} for tid in task_ids],
+                "properties": ["hs_task_subject", "hs_task_body", "hs_task_status", "hs_task_priority"]
+            }
+            
+            async with httpx.AsyncClient() as client:
+                read_response = await client.post(read_url, headers=headers, json=payload)
+                read_response.raise_for_status()
+                data = read_response.json()
+                return data.get("results", [])
+        except Exception as e:
+            logger.error(f"Error getting HubSpot tasks for contact {contact_id}: {e}", exc_info=True)
             raise

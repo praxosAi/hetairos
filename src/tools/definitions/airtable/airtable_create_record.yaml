@@ -1,0 +1,22 @@
+tool_id: airtable_create_record
+category: airtable
+display_name: airtable_create_record
+short_description: Create a new record in an Airtable base and table
+arguments:
+  - name: base_id
+    type: string
+    description: The Airtable base ID.
+    required: true
+  - name: table_id_or_name
+    type: string
+    description: The name or ID of the specific table in the base.
+    required: true
+  - name: fields
+    type: string
+    description: A valid JSON string mapping exactly to the column names and their new values.
+    required: true
+returns: Success message with the new record ID
+use_cases:
+  - Add a new row to a spreadsheet or database table.
+notes:
+  - The fields argument MUST be a valid JSON string.

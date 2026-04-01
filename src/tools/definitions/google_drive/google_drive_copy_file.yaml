@@ -1,0 +1,27 @@
+tool_id: google_drive_copy_file
+category: google_drive
+display_name: google_drive_copy_file
+short_description: Creates a copy of an existing file in Google Drive.
+arguments:
+  - name: file_id
+    type: string
+    description: The Google Drive ID of the file to copy.
+    required: true
+  - name: new_name
+    type: string
+    description: The name to give the new copied file.
+    required: true
+  - name: drive_folder_id
+    type: string
+    description: Optional ID of the folder where the copy should be placed.
+    required: false
+  - name: account
+    type: string
+    description: Optional specific Google Workspace account if user has multiple.
+    required: false
+returns: Success message with the new file ID and web view link
+use_cases:
+  - Duplicate a template document
+  - Create a backup of a file
+notes:
+  - You must know the source file_id, usually found via search_google_drive_files.

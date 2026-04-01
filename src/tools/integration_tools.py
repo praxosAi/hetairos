@@ -25,6 +25,7 @@ INTEGRATION_NAME_TO_PROVIDER_MAP = {
     "whatsapp": "whatsapp",
     "imessage": "imessage",
     "hubspot": "hubspot",
+    "airtable": "airtable",
 }
 
 
@@ -38,7 +39,7 @@ def create_integration_tools(user_id: str, tool_registry) -> list:
         a standard web login flow is not possible.
         If the user wants to use a tool for an integration they haven't connected yet, or asks to integrate it, use this tool. you can tell them about the direct way using app.mypraxos.com/integrations, but you must also generate the link for them using this tool, as the primary option.
         Args:
-            integration_name: MUST BE EXACTLY ONE OF: gmail, google_calendar, google_drive, outlook, onedrive, microsoft_calendar, notion, dropbox, telegram, whatsapp, imessage, hubspot.
+            integration_name: MUST BE EXACTLY ONE OF: gmail, google_calendar, google_drive, outlook, onedrive, microsoft_calendar, notion, dropbox, telegram, whatsapp, imessage, hubspot, airtable.
         
         Returns:
             A dictionary containing the 'oauth_url' if successful, otherwise None.

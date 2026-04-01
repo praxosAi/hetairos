@@ -181,6 +181,24 @@ class GoogleDriveIntegration(BaseIntegration):
             logger.error(f"Error creating folder in {resolved_account}: {e}")
             raise Exception(f"Failed to create folder in {resolved_account}: {e}")
 
+    async def copy_file(self, file_id: str, new_name: str, *, drive_folder_id: Optional[str] = None, account: Optional[str] = None) -> Dict:
+        """Copies an existing file in Google Drive."""
+        service, resolved_account = self._get_service_for_account(account)
+
+        body = {'name': new_name}
+        if drive_folder_id:
+            body['parents'] = [drive_folder_id]
+
+        try:
+            return service.files().copy(
+                fileId=file_id,
+                body=body,
+                fields='id, name, mimeType, webViewLink, parents'
+            ).execute()
+        except Exception as e:
+            logger.error(f"Error copying file in {resolved_account}: {e}")
+            raise Exception(f"Failed to copy file in {resolved_account}: {e}")
+
     async def create_text_file(self, filename: str, content: str, *, drive_folder_id: Optional[str] = None, account: Optional[str] = None) -> Dict:
         """Creates a new text file in a specific Google Drive account."""
         service, resolved_account = self._get_service_for_account(account)

@@ -1,0 +1,10 @@
+tool_id: airtable_list_bases
+category: airtable
+display_name: airtable_list_bases
+short_description: List all Airtable bases the user has access to
+arguments: []
+returns: JSON string of bases and their IDs
+use_cases:
+  - Find a base ID required for searching or adding records
+notes:
+  - Always run this first if you do not know the base_id yet.

@@ -1,0 +1,22 @@
+tool_id: airtable_delete_record
+category: airtable
+display_name: airtable_delete_record
+short_description: Delete a record from an Airtable base and table
+arguments:
+  - name: base_id
+    type: string
+    description: The Airtable base ID.
+    required: true
+  - name: table_id_or_name
+    type: string
+    description: The name or ID of the specific table in the base.
+    required: true
+  - name: record_id
+    type: string
+    description: The unique ID of the record to delete. Find this using airtable_search_records.
+    required: true
+returns: Success or failure message
+use_cases:
+  - Delete a row or entry from an Airtable database
+notes:
+  - This action is permanent. Use carefully.

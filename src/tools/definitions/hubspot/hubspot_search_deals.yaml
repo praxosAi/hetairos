@@ -1,0 +1,23 @@
+tool_id: hubspot_search_deals
+category: hubspot
+display_name: hubspot_search_deals
+short_description: Search for deals in HubSpot CRM
+arguments:
+  - name: query
+    type: string
+    description: Deal name query to search for. If empty, returns recent deals.
+    required: false
+  - name: limit
+    type: integer
+    description: Max number of results. Default is 10.
+    required: false
+  - name: properties
+    type: string
+    description: Comma-separated string of specific properties to fetch (e.g. "dealname,amount,dealstage").
+    required: false
+returns: JSON string of matching deals
+use_cases:
+  - Find a specific sales deal or opportunity by name
+  - Review recent deals in the pipeline
+notes:
+  - Can fetch custom properties if requested.

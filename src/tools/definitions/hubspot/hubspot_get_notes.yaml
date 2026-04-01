@@ -1,0 +1,15 @@
+tool_id: hubspot_get_notes
+category: hubspot
+display_name: hubspot_get_notes
+short_description: Retrieve all notes associated with a specific HubSpot contact
+arguments:
+  - name: contact_id
+    type: string
+    description: The HubSpot contact ID. Find this using hubspot_search_contacts.
+    required: true
+returns: JSON string of the contact's notes
+use_cases:
+  - Summarize previous meetings or interactions with a contact
+  - Catch up on the history of a lead
+notes:
+  - Requires the contact_id, not an email or name.

@@ -1,0 +1,14 @@
+tool_id: airtable_get_base_schema
+category: airtable
+display_name: airtable_get_base_schema
+short_description: Fetch the schema (tables and columns) of a specific Airtable base
+arguments:
+  - name: base_id
+    type: string
+    description: The Airtable base ID.
+    required: true
+returns: JSON string of tables and their fields
+use_cases:
+  - Determine what columns exist before creating or updating a record
+notes:
+  - Always run this first if you do not know the exact column names.

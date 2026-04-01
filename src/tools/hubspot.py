@@ -13,27 +13,25 @@ def create_hubspot_tools(hubspot_client: HubSpotIntegration, tool_registry) -> L
     
     @tool
     async def hubspot_search_contacts(
-        query: str = "", limit: int = 10
+        query: str = "", limit: int = 10, properties: Optional[str] = None
     ) -> ToolExecutionResponse:
         """
         Search for contacts in HubSpot CRM. 
         If query is empty, returns the most recent contacts.
         Otherwise, it searches by matching email.
+        You can pass a comma-separated string of property names to fetch (e.g. 'firstname,email,jobtitle').
         """
         try:
             logger.info(f"Searching HubSpot contacts: query='{query}', limit={limit}")
-            results = await hubspot_client.search_contacts(query=query, limit=limit)
+            props_list = [p.strip() for p in properties.split(",")] if properties else None
+            results = await hubspot_client.search_contacts(query=query, limit=limit, properties=props_list)
             
             formatted_results = []
             for item in results:
                 props = item.get("properties", {})
                 formatted_results.append({
                     "id": item.get("id"),
-                    "firstname": props.get("firstname"),
-                    "lastname": props.get("lastname"),
-                    "email": props.get("email"),
-                    "company": props.get("company"),
-                    "lifecyclestage": props.get("lifecyclestage"),
+                    **props
                 })
             
             return ToolExecutionResponse(
@@ -80,26 +78,25 @@ def create_hubspot_tools(hubspot_client: HubSpotIntegration, tool_registry) -> L
 
     @tool
     async def hubspot_search_companies(
-        query: str = "", limit: int = 10
+        query: str = "", limit: int = 10, properties: Optional[str] = None
     ) -> ToolExecutionResponse:
         """
         Search for companies in HubSpot CRM.
         If query is empty, returns recent companies.
         Otherwise, it searches by matching company name.
+        You can pass a comma-separated string of property names to fetch (e.g. 'name,domain,city').
         """
         try:
             logger.info(f"Searching HubSpot companies: query='{query}', limit={limit}")
-            results = await hubspot_client.search_companies(query=query, limit=limit)
+            props_list = [p.strip() for p in properties.split(",")] if properties else None
+            results = await hubspot_client.search_companies(query=query, limit=limit, properties=props_list)
             
             formatted_results = []
             for item in results:
                 props = item.get("properties", {})
                 formatted_results.append({
                     "id": item.get("id"),
-                    "name": props.get("name"),
-                    "domain": props.get("domain"),
-                    "industry": props.get("industry"),
-                    "city": props.get("city"),
+                    **props
                 })
             
             return ToolExecutionResponse(
@@ -220,6 +217,105 @@ def create_hubspot_tools(hubspot_client: HubSpotIntegration, tool_registry) -> L
                 context={"subject": subject}
             )
 
+    @tool
+    async def hubspot_search_deals(
+        query: str = "", limit: int = 10, properties: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """
+        Search for deals in HubSpot CRM.
+        If query is empty, returns recent deals.
+        Otherwise, it searches by matching deal name.
+        You can pass a comma-separated string of property names to fetch (e.g. 'dealname,amount,dealstage').
+        """
+        try:
+            logger.info(f"Searching HubSpot deals: query='{query}', limit={limit}")
+            props_list = [p.strip() for p in properties.split(",")] if properties else None
+            results = await hubspot_client.search_deals(query=query, limit=limit, properties=props_list)
+            
+            formatted_results = []
+            for item in results:
+                props = item.get("properties", {})
+                formatted_results.append({
+                    "id": item.get("id"),
+                    **props
+                })
+            
+            return ToolExecutionResponse(
+                status="success",
+                result=f"Found {len(formatted_results)} deals: {json.dumps(formatted_results, indent=2)}"
+            )
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="hubspot_search_deals",
+                exception=e,
+                integration="hubspot",
+                context={"query": query}
+            )
+
+    @tool
+    async def hubspot_get_notes(
+        contact_id: str
+    ) -> ToolExecutionResponse:
+        """
+        Retrieve all notes associated with a specific HubSpot contact.
+        Use hubspot_search_contacts to find the contact_id first.
+        """
+        try:
+            logger.info(f"Getting HubSpot notes for contact '{contact_id}'")
+            results = await hubspot_client.get_notes(contact_id=contact_id)
+            
+            formatted_results = []
+            for item in results:
+                props = item.get("properties", {})
+                formatted_results.append({
+                    "id": item.get("id"),
+                    **props
+                })
+            
+            return ToolExecutionResponse(
+                status="success",
+                result=f"Found {len(formatted_results)} notes: {json.dumps(formatted_results, indent=2)}"
+            )
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="hubspot_get_notes",
+                exception=e,
+                integration="hubspot",
+                context={"contact_id": contact_id}
+            )
+
+    @tool
+    async def hubspot_get_tasks(
+        contact_id: str
+    ) -> ToolExecutionResponse:
+        """
+        Retrieve all tasks associated with a specific HubSpot contact.
+        Use hubspot_search_contacts to find the contact_id first.
+        """
+        try:
+            logger.info(f"Getting HubSpot tasks for contact '{contact_id}'")
+            results = await hubspot_client.get_tasks(contact_id=contact_id)
+            
+            formatted_results = []
+            for item in results:
+                props = item.get("properties", {})
+                formatted_results.append({
+                    "id": item.get("id"),
+                    **props
+                })
+            
+            return ToolExecutionResponse(
+                status="success",
+                result=f"Found {len(formatted_results)} tasks: {json.dumps(formatted_results, indent=2)}"
+            )
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="hubspot_get_tasks",
+                exception=e,
+                integration="hubspot",
+                context={"contact_id": contact_id}
+            )
+
     all_tools = [
         hubspot_search_contacts,
         hubspot_create_contact,
@@ -227,7 +323,10 @@ def create_hubspot_tools(hubspot_client: HubSpotIntegration, tool_registry) -> L
         hubspot_create_company,
         hubspot_create_deal,
         hubspot_create_note,
-        hubspot_create_task
+        hubspot_create_task,
+        hubspot_search_deals,
+        hubspot_get_notes,
+        hubspot_get_tasks
     ]
     tool_registry.apply_descriptions_to_tools(all_tools)
     return all_tools

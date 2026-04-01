@@ -16,6 +16,7 @@ from src.integrations.gdrive.google_slides_client import GoogleSlidesIntegration
 from src.integrations.dropbox.dropbox_client import DropboxIntegration
 from src.integrations.trello.trello_client import TrelloIntegration
 from src.integrations.hubspot.hubspot_client import HubSpotIntegration
+from src.integrations.airtable.airtable_client import AirtableIntegration
 from src.core.praxos_client import PraxosClient
 
 # Tool Module Imports
@@ -29,6 +30,7 @@ from src.tools.microsoft_graph import create_outlook_tools
 from src.tools.notion import create_notion_tools
 from src.tools.trello import create_trello_tools
 from src.tools.hubspot import create_hubspot_tools
+from src.tools.airtable import create_airtable_tools
 from src.tools.praxos import create_praxos_memory_tool
 from src.tools.file_retrieval import create_file_retrieval_tools
 from src.tools.communication import create_bot_communication_tools, create_platform_messaging_tools
@@ -293,7 +295,7 @@ class AgentToolsFactory:
             'get_frequent_google_senders', 'create_google_email_rule', 'move_google_emails_by_sender', 'categorize_google_emails_by_sender'
         ])
         needs_gcal = needs_category(['get_calendar_events', 'create_calendar_event'])
-        needs_gdrive = needs_category(['search_google_drive_files', 'save_file_to_drive', 'create_text_file_in_drive', 'read_file_content_by_id', 'list_drive_files','create_gdrive_folder'])
+        needs_gdrive = needs_category(['search_google_drive_files', 'save_file_to_drive', 'create_text_file_in_drive', 'read_file_content_by_id', 'list_drive_files','create_gdrive_folder', 'google_drive_copy_file'])
         needs_gdocs = needs_category(['create_google_doc', 'get_google_doc_content', 'insert_text_in_doc', 'append_text_to_doc', 'format_doc_text', 'insert_paragraph_in_doc', 'insert_table_in_doc', 'delete_doc_content', 'replace_text_in_doc', 'search_google_doc'])
         needs_gsheets = needs_category(['create_google_sheet', 'get_sheet_values', 'update_sheet_values', 'append_sheet_rows', 'clear_sheet_range', 'get_single_cell', 'set_single_cell', 'add_sheet_tab', 'delete_sheet_tab', 'insert_sheet_rows', 'insert_sheet_columns', 'delete_sheet_rows', 'get_spreadsheet_info', 'search_google_sheet'])
         needs_gslides = needs_category(['create_google_presentation', 'get_presentation_info', 'add_slide', 'delete_slide', 'insert_text_in_slide', 'insert_image_in_slide', 'format_slide_text', 'create_table_in_slide', 'delete_slide_object', 'search_google_presentation'])
@@ -309,11 +311,12 @@ class AgentToolsFactory:
         needs_notion = needs_category(['list_databases', 'list_notion_pages', 'query_notion_database', 'get_all_workspace_entries', 'search_notion_pages_by_keyword', 'create_notion_page', 'create_notion_database_entry', 'create_notion_database', 'append_to_notion_page', 'update_notion_page_properties', 'get_notion_page_content'])
         needs_dropbox = needs_category(['save_file_to_dropbox', 'read_file_from_dropbox','list_dropbox_files','search_dropbox_files'])
         needs_trello = needs_category(['list_trello_accounts','list_trello_organizations','list_trello_boards','get_trello_board_details','create_trello_board','share_trello_board','create_trello_list','list_trello_cards','get_trello_card','create_trello_card','update_trello_card','move_trello_card','add_trello_comment','create_trello_checklist','get_board_members','get_card_members','assign_member_to_card','unassign_member_from_card','search_trello'])
-        needs_hubspot = needs_category(['hubspot_search_contacts', 'hubspot_create_contact', 'hubspot_search_companies', 'hubspot_create_company', 'hubspot_create_deal', 'hubspot_create_note', 'hubspot_create_task'])
+        needs_hubspot = needs_category(['hubspot_search_contacts', 'hubspot_create_contact', 'hubspot_search_companies', 'hubspot_create_company', 'hubspot_create_deal', 'hubspot_create_note', 'hubspot_create_task', 'hubspot_search_deals', 'hubspot_get_notes', 'hubspot_get_tasks'])
+        needs_airtable = needs_category(['airtable_list_bases', 'airtable_get_base_schema', 'airtable_search_records', 'airtable_create_record', 'airtable_update_record', 'airtable_delete_record'])
         logger.info(f'needs_gmail: {needs_gmail}')
          # If no specific tools requested, authenticate all (backward compatibility)
         if required_tool_ids is None:
-            needs_gmail = needs_gcal = needs_gdrive = needs_gdocs = needs_gsheets = needs_gslides = needs_outlook = needs_notion = needs_dropbox = needs_trello = needs_hubspot = True
+            needs_gmail = needs_gcal = needs_gdrive = needs_gdocs = needs_gsheets = needs_gslides = needs_outlook = needs_notion = needs_dropbox = needs_trello = needs_hubspot = needs_airtable = True
         # Only authenticate integrations that are actually needed
         auth_tasks = []
         integration_map = {}
@@ -371,6 +374,12 @@ class AgentToolsFactory:
             hubspot_integration = HubSpotIntegration(user_id)
             auth_tasks.append(hubspot_integration.authenticate())
             integration_map['hubspot'] = (len(auth_tasks) - 1, hubspot_integration)
+
+        if needs_airtable:
+            airtable_integration = AirtableIntegration(user_id)
+            auth_tasks.append(airtable_integration.authenticate())
+            integration_map['airtable'] = (len(auth_tasks) - 1, airtable_integration)
+
         logger.info(f"Authenticating {len(auth_tasks)} integrations based on required tools")
 
         # Authenticate only the needed integrations
@@ -482,6 +491,15 @@ class AgentToolsFactory:
                     logger.info("HubSpot tools loaded")
                 except Exception as e:
                     logger.error(f"Error creating HubSpot tools: {e}", exc_info=True)
+
+        if 'airtable' in integration_map:
+            idx, airtable_integration = integration_map['airtable']
+            if authenticated_integrations[idx] is True:
+                try:
+                    tools.extend(create_airtable_tools(airtable_integration, tool_registry))
+                    logger.info("Airtable tools loaded")
+                except Exception as e:
+                    logger.error(f"Error creating Airtable tools: {e}", exc_info=True)
 
         # --- Praxos Memory Tools ---
         if needs_category(['query_praxos_memory', 'query_praxos_memory_intelligent_search', 'enrich_praxos_memory_entries', 'setup_new_trigger','consult_praxos_long_term_memory']):

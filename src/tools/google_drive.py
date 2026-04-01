@@ -150,6 +150,38 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration, tool_registry
                 integration="Google Drive",
                 context={"folder_id": folder_id}
             )
+
+    @tool
+    async def google_drive_copy_file(
+        file_id: str,
+        new_name: str,
+        drive_folder_id: Optional[str] = None,
+        account: Optional[str] = None
+    ) -> ToolExecutionResponse:
+        """
+        Creates a copy of an existing file in Google Drive.
+        You can optionally place the new copy in a specific folder by providing the drive_folder_id.
+        """
+        try:
+            logger.info(f"Copying file {file_id} to '{new_name}' in Google Drive account {account}")
+            file_data = await gdrive_integration.copy_file(
+                file_id=file_id,
+                new_name=new_name,
+                drive_folder_id=drive_folder_id,
+                account=account
+            )
+            
+            return ToolExecutionResponse(
+                status="success",
+                result=f"File successfully copied. New file ID: {file_data.get('id')}, Link: {file_data.get('webViewLink')}"
+            )
+        except Exception as e:
+            return ErrorResponseBuilder.from_exception(
+                operation="google_drive_copy_file",
+                exception=e,
+                integration="Google Drive",
+                context={"file_id": file_id, "new_name": new_name}
+            )
     
     # Tool registry is passed in and already loaded
     accounts = gdrive_integration.get_connected_accounts()
@@ -162,7 +194,8 @@ def create_drive_tools(gdrive_integration: GoogleDriveIntegration, tool_registry
         create_text_file_in_drive,
         create_gdrive_folder,
         read_file_content_by_id,
-        list_drive_files
+        list_drive_files,
+        google_drive_copy_file
     ]
 
     # Apply descriptions from YAML database

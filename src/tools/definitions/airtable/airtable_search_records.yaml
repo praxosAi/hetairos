@@ -1,0 +1,26 @@
+tool_id: airtable_search_records
+category: airtable
+display_name: airtable_search_records
+short_description: Search for records in an Airtable base and table
+arguments:
+  - name: base_id
+    type: string
+    description: The Airtable base ID.
+    required: true
+  - name: table_id_or_name
+    type: string
+    description: The name or ID of the specific table in the base.
+    required: true
+  - name: formula
+    type: string
+    description: Optional Airtable filterByFormula string (e.g. "{Status} = 'Done'").
+    required: false
+  - name: limit
+    type: integer
+    description: Maximum number of records to return. Defaults to 10.
+    required: false
+returns: JSON string of matching records
+use_cases:
+  - Look up an existing row in a spreadsheet or database
+notes:
+  - Returns the record ID, created time, and all fields.

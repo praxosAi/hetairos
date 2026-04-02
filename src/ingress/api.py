@@ -156,12 +156,12 @@ async def extract_and_validate_jwt_from_ws(ws: WebSocket, cookie_name: str = "se
             return cookie, payload
 
     # 3) Authorization header (for non-browser clients like wscat/curl)
-    auth = ws.headers.get("authorization")
-    if auth and auth.lower().startswith("bearer "):
-        token = auth.split(" ", 1)[1].strip()
-        payload = await validate_jwt_with_backend(token)
-        if payload:
-            return token, payload
+    # auth = ws.headers.get("authorization")
+    # if auth and auth.lower().startswith("bearer "):
+    #     token = auth.split(" ", 1)[1].strip()
+    #     payload = await validate_jwt_with_backend(token)
+    #     if payload:
+    #         return token, payload
 
     return None
 

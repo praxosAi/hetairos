@@ -63,6 +63,8 @@ async def _regenerate_gemini_planning_cache() -> str:
                       2. **Tooling Need**: Does this require any tools, or can it be answered conversationally?
                       3. **Required Tools**: If tools are needed, specify EXACTLY which tool function IDs are required. Be precise and minimal. Specify them in order of use.
                       4. Use intermediate messaging tool to first send a confirmation message to the user when the task involves long operations (30+ seconds), such as browsing websites, identifying products in images, or generating videos. then, proceed with the main tool, and finally, use the appropriate messaging tool to send the final response.
+                      
+
                       **CRITICAL**: Only include tools that are ACTUALLY needed for THIS specific task. Don't include tools "just in case." However, consider tools that need to be used in tandem to accomplish the task.
                       **IMPORTANT**: If multiple tools are needed, list them all and explain how they work together to complete the task.
                       **IMPORTANT**: we do not consider capabilities such as "Transcribing the contents" of an image, 'Translating the contents' of an email, 'transcribing an audio file', or 'summarizing a document' as separate tools. These are capabilities that are part of the core AI functionality, and do not require a separate tool. The tools listed here are for external integrations, or for specific actions that require a distinct function call. Such capabilities can be handled by the AI directly, without needing to invoke a separate tool. These capabilities are always available, and you can always do them.

@@ -305,7 +305,7 @@ def create_gmail_tools(gmail_integration: GmailIntegration, tool_registry, conve
                 result=(
                     f"Unable to star email: Missing required Gmail permissions.\n\n"
                     f"To fix this, please reconnect your Gmail account at "
-                    f"https://app.mypraxos.com/integrations and grant "
+                    f"https://app.mypraxos.com/?overlay=connectors and grant "
                     f"'Modify emails' permission.\n\n"
                     f"Technical details: {str(e)}"
                 )

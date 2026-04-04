@@ -85,7 +85,7 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
 
     praxos_prompt = f"""
     this assistant service has been developed by Praxos AI. the user can register and manage their account at https://www.mypraxos.com.
-    the user can see the web application at https://app.mypraxos.com and can see their integrations at https://app.mypraxos.com/integrations. if the user is missing an integration they want, direct them there.
+    the user can see the web application at https://app.mypraxos.com and can see their integrations at https://app.mypraxos.com/?overlay=connectors. if the user is missing an integration they want, direct them there.
     {chat_context_prompt}
     """
     preferences = user_service.get_user_preferences(user_context.user_id) 

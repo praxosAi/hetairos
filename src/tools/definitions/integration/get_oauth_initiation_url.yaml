@@ -27,5 +27,5 @@ use_cases:
   - User requests a tool that requires an integration they don't have
 
 notes:
-  - You can tell them about app.mypraxos.com/integrations
+  - You can tell them about app.mypraxos.com/?overlay=connectors
   - But you must also generate the link using this tool as the primary option

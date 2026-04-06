@@ -138,6 +138,7 @@ class UserService:
     def can_have_access(self, user:dict=None, user_id=None):
         """
         Check if user can access the application.
+        
         Free tier users always have access.
         Pro/Enterprise users need active trial OR subscription.
         """
@@ -159,9 +160,9 @@ class UserService:
             return True
 
         # Pro/Enterprise users: Check trial OR billing
-        if user.get('trial_end_date') and user.get('trial_end_date') > datetime.now():
-            logger.info(f"User {str(user.get('_id'))} has trial access")
-            return True
+        # if user.get('trial_end_date') and user.get('trial_end_date') > datetime.now():
+        #     logger.info(f"User {str(user.get('_id'))} has trial access")
+        #     return True
 
         if not user.get("billing_setup_completed") or (user.get('payment_status') in ['pending', 'incomplete', 'incomplete_expired']):
             logger.error(f"User {str(user.get('_id'))} doesn't have access, billing not setup or payment status is {user.get('payment_status')}")

@@ -158,15 +158,15 @@ class UserService:
         if tier == SubscriptionTier.PERSONAL:
             logger.info(f"User {str(user.get('_id'))} has free tier access")
             return True
-
+        ### removing this, we need a better way to handle trials and billing status, but for now let's just allow all users to have access
         # Pro/Enterprise users: Check trial OR billing
         # if user.get('trial_end_date') and user.get('trial_end_date') > datetime.now():
         #     logger.info(f"User {str(user.get('_id'))} has trial access")
         #     return True
 
-        if not user.get("billing_setup_completed") or (user.get('payment_status') in ['pending', 'incomplete', 'incomplete_expired']):
-            logger.error(f"User {str(user.get('_id'))} doesn't have access, billing not setup or payment status is {user.get('payment_status')}")
-            return False
+        # if not user.get("billing_setup_completed") or (user.get('payment_status') in ['pending', 'incomplete', 'incomplete_expired']):
+        #     logger.error(f"User {str(user.get('_id'))} doesn't have access, billing not setup or payment status is {user.get('payment_status')}")
+        #     return False
 
         return True
 

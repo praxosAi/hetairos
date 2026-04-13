@@ -64,7 +64,7 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
         chat_type = chat_info.get("type", "private")
         is_group = chat_type != "private"
         chat_name = chat_info.get("title", "Direct Message") if is_group else "Direct Message"
-
+        chat_context = f"Message received in {'Direct Message' if chat_type == 'private' else f'Group Chat: {chat_name}'} (ID: {chat_id})."
         text = message.get("text", "")
 
         bot_username = "praxos_bot" # Should be from config ideally
@@ -165,6 +165,7 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
         #### handling forwarded messages
         forwarded  = False
         forward_origin = {}
+        
         if  message.get("forward_origin"):
             forwarded = True
             forward_origin_raw = message["forward_origin"]
@@ -183,7 +184,7 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                 forward_origin = {"type":"user",'original_sender_identifier': sender_user_full_identifier,'forward_date': forward_origin_raw.get("date")}
         if text:
             # Build context string to help LLM understand where the message came from
-            chat_context = f"Message received in {'Direct Message' if chat_type == 'private' else f'Group Chat: {chat_name}'} (ID: {chat_id})."
+            
             
             event = {
                 "user_id": user_id,

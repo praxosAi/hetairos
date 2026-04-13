@@ -169,7 +169,7 @@ class LangGraphAgentRunner:
             # Process input based on type
             if isinstance(input, list):
                 # Grouped messages - use the parallel method
-                history, has_media = await generate_user_messages_parallel(
+                history, has_new_media = await generate_user_messages_parallel(
                     conversation_manager=self.conversation_manager,
                     input_messages=input,
                     messages=history,
@@ -179,6 +179,7 @@ class LangGraphAgentRunner:
                     message_category=msg_category,
                     user_context=user_context
                 )
+                has_media = has_media or has_new_media
             elif isinstance(input, dict):
                 # Single message - existing logic
                 if input_text and source != 'browser_tool':
@@ -209,6 +210,7 @@ class LangGraphAgentRunner:
                         message_category=msg_category,
                         user_id=user_context.user_id
                     )
+                    has_media = True
             else:
                 return AgentFinalResponse(response="Invalid input format.", delivery_platform=source, execution_notes="Input must be a dict or list of dicts.", output_modality="text", file_links=[], generation_instructions=None)            
 

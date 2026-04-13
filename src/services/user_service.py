@@ -129,7 +129,7 @@ class UserService:
             return user.get('tier')
 
         # Auto-detect tier based on billing status
-        if user.get('billing_setup_completed') and user.get('payment_status') in ['active', 'trialing']:
+        if user.get('billing_setup_completed') and user.get('payment_status') in ['active']:
             return SubscriptionTier.PROFESSIONAL
 
         # Default to free tier
@@ -139,8 +139,7 @@ class UserService:
         """
         Check if user can access the application.
         
-        Free tier users always have access.
-        Pro/Enterprise users need active trial OR subscription.
+        Access is denied if usage_size exceeds memory_cap.
         """
         if not user:
             if not user_id:
@@ -154,19 +153,29 @@ class UserService:
         # Get user's tier
         tier = self.get_user_tier(user)
         logger.info(f"User {str(user.get('_id'))} is on {tier} tier")
-        # Free tier users always have access
-        if tier == SubscriptionTier.PERSONAL:
-            logger.info(f"User {str(user.get('_id'))} has free tier access")
-            return True
-        ### removing this, we need a better way to handle trials and billing status, but for now let's just allow all users to have access
-        # Pro/Enterprise users: Check trial OR billing
-        # if user.get('trial_end_date') and user.get('trial_end_date') > datetime.now():
-        #     logger.info(f"User {str(user.get('_id'))} has trial access")
-        #     return True
+        
+        # Enforce memory usage cap
+        usage_size = user.get("usage_size", 0)
+        memory_cap = user.get("memory_cap", 1024 * 1024 * 1024)  # Default 1 GB limit
 
-        # if not user.get("billing_setup_completed") or (user.get('payment_status') in ['pending', 'incomplete', 'incomplete_expired']):
-        #     logger.error(f"User {str(user.get('_id'))} doesn't have access, billing not setup or payment status is {user.get('payment_status')}")
-        #     return False
+        # Fetch real-time usage from External-API if API key exists
+        praxos_api_key = user.get("praxos_api_key")
+        if praxos_api_key:
+            try:
+                from src.services.token_encryption import decrypt_token
+                import praxos_python
+                decrypted_key = decrypt_token(praxos_api_key)
+                client = praxos_python.SyncClient(api_key=decrypted_key, timeout=10)
+                usage_data = client.get_usage(breakdown=False)
+                if usage_data:
+                    usage_size = usage_data.get("usage_size", usage_size)
+                    memory_cap = usage_data.get("memory_cap", memory_cap)
+            except Exception as e:
+                logger.error(f"Failed to fetch usage from SyncClient for user {user.get('_id')}: {e}")
+
+        if usage_size >= memory_cap:
+            logger.warning(f"User {str(user.get('_id'))} exceeded memory cap ({usage_size} >= {memory_cap})")
+            return False
 
         return True
 

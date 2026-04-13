@@ -131,8 +131,8 @@ class AzureEventQueue:
         response_event['output_type'] = response_event.get('source')
         result = {
             'response': (
-                "Your subscription has been deactivated due to either the end of your trial period or a billing issue.\n"
-                "Please log in to app.mypraxos.com and complete your payment to restore access."
+                "Your account has exceeded the memory usage limit.\n"
+                "Please log in to app.mypraxos.com and add a payment method to continue using the system."
             )
         }
         await egress_service.send_response(response_event, result)

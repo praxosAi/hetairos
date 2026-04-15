@@ -134,7 +134,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Cookie
 from typing import Optional
 
 
-async def extract_and_validate_jwt_from_ws(ws: WebSocket, cookie_name: str = "session_token") -> Optional[tuple[str, dict]]:
+async def extract_and_validate_jwt_from_ws(ws: WebSocket, cookie_name: str = "access_token") -> Optional[tuple[str, dict]]:
     """
     Extract JWT token from WebSocket connection
     Tries multiple sources: subprotocol, cookie, Authorization header
@@ -168,13 +168,13 @@ async def extract_and_validate_jwt_from_ws(ws: WebSocket, cookie_name: str = "se
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket, session_token: Optional[str] = Cookie(default=None)):
+async def websocket_endpoint(ws: WebSocket, access_token: Optional[str] = Cookie(default=None)):
     # Accept handshake first, and echo subprotocol if present (required by browsers)
     requested_proto = ws.headers.get("sec-websocket-protocol") or ""
     await ws.accept(subprotocol=requested_proto if requested_proto else None)
 
     # Extract JWT from subprotocol, cookie, or Authorization
-    token, payload = await extract_and_validate_jwt_from_ws(ws, cookie_name="session_token")
+    token, payload = await extract_and_validate_jwt_from_ws(ws, cookie_name="access_token")
     if not payload:
         logger.info("No valid token found, closing websocket")
         await ws.close(code=1008)

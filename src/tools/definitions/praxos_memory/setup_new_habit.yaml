@@ -1,0 +1,21 @@
+tool_id: setup_new_habit
+category: praxos_memory
+display_name: Setup New Habit
+short_description: Setup a recurring habit pattern that matches incoming user messages in Praxos memory
+arguments:
+  - name: habit_statement
+    type: str
+    description: The habit pattern to setup in plain English (e.g., "When I send a message starting with 'expense:', log it as an expense")
+    required: true
+returns: Habit setup response with rule_id
+use_cases:
+  - Recognizing recurring patterns in the user's own messages
+  - Auto-tagging or auto-routing messages based on prefixes or keywords (e.g., "todo:", "expense:", "idea:")
+  - Turning repetitive user phrasings into structured actions
+  - Matching message shape (not external events) to trigger follow-up behavior
+notes:
+  - Habits match the user's incoming messages, not external events — use setup_new_trigger for email/calendar/time-based rules
+  - Habits are always persistent (no one-time option) — they apply to every matching message
+  - Statement should describe both the message pattern and the action to take
+  - Habit is stored in database with conversation context
+requires_auth: true

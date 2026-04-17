@@ -1,0 +1,55 @@
+tool_id: sync_file_to_praxos_knowledge_graph
+category: praxos_memory
+display_name: Sync File to Knowledge Graph
+short_description: Sync a file from the conversation into Praxos memory via structured ingestion (Praxolex extraction + Neo4j), best for data-oriented / structured queries later
+
+detailed_description: |
+  Takes a file the user has already shared in the conversation (identified by its
+  inserted_id) and ingests it into Praxos memory through the structured knowledge-graph
+  path: the file is chunked, entities and relations are extracted via Praxolex, and
+  written into the user's Neo4j graph (plus fact embeddings).
+
+  Use this when the user is likely to ask structured, data-oriented questions about the
+  file later — "what was the total on that invoice", "who signed the contract", "what
+  date is the renewal", "list every line item in the expense report". It is the
+  higher-fidelity but more expensive path.
+
+  On success the file message is flagged as synced with sync_type="knowledge_graph" so
+  future turns can see it's already in memory and avoid re-syncing.
+
+arguments:
+  - name: inserted_id
+    type: str
+    description: The inserted_id of the file message in this conversation. Obtain from list_available_media or from the file metadata attached to a user message.
+    required: true
+  - name: description
+    type: str
+    description: Short human-readable description to store with the synced source (e.g. "Q3 invoice from Acme Corp"). Helps retrieval later.
+    required: false
+  - name: sync_both
+    type: bool
+    description: If True, also run the embedding-only path (sync_file_for_semantic_search) after KG sync. Use only for genuinely ambiguous files where both structured and qualitative queries are likely — e.g. a long legal contract. Default False to save compute.
+    required: false
+    default: false
+
+returns: Object with inserted_id, sync_type, source_id (Praxos-side identifier), and file_name on success.
+
+examples:
+  - 'sync_file_to_praxos_knowledge_graph(inserted_id="65f...", description="Q3 Acme invoice")'
+  - 'sync_file_to_praxos_knowledge_graph(inserted_id="65f...", description="Employment contract", sync_both=True)'
+
+use_cases:
+  - User shared an invoice, receipt, or expense doc and will ask about totals/line items/dates
+  - User shared a contract and will ask about parties, clauses, dates
+  - User shared structured JSON, a spreadsheet, or data dump
+  - Any file where precise extracted facts matter more than fuzzy semantic recall
+
+notes:
+  - Prefer this for data-heavy / structured files. For long-form prose (papers, manuals), use sync_file_for_semantic_search instead.
+  - Only files already in the conversation (with an inserted_id) can be synced — if the user mentions a file by name, first confirm which one and find the inserted_id.
+  - This is a one-shot ingestion; calling again re-uploads the file. Check the file's metadata.synced flag in conversation history before re-syncing.
+
+requires_integration: praxos
+requires_auth: true
+is_long_running: true
+estimated_duration_seconds: 20

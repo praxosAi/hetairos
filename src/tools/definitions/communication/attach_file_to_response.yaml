@@ -1,0 +1,65 @@
+tool_id: attach_file_to_response
+category: communication
+display_name: attach_file_to_response
+short_description: Attach a file (image, document, audio, video) to the final response so the user receives it as a real attachment instead of a raw URL in the message text
+
+detailed_description: |
+  Attach a file to the response being prepared for the user. The file will be delivered
+  as a real media attachment on whichever channel the user is on (WhatsApp voice note,
+  Telegram image, mypraxos-mobile inline preview, etc.) instead of appearing as a plain
+  URL in the message body.
+
+  Call this whenever you have retrieved or generated a file that the user should receive
+  directly, such as:
+    - A file fetched from Google Drive, Dropbox, or any cloud storage
+    - A generated image, audio, or video
+    - An email attachment the user asked for
+    - A PDF, CSV, or document you produced or exported
+
+  Multiple calls accumulate — call once per file. All attached files are flushed to the
+  egress layer after your turn completes.
+
+  Use "other_file" as the file_type when the content does not fall cleanly into image,
+  document, audio, or video categories.
+
+arguments:
+  - name: url
+    type: str
+    description: Publicly accessible URL of the file to send to the user (blob SAS URL, direct download link, generated-media URL, etc.). Must be reachable without the agent's credentials — if the URL requires auth, first fetch it and re-host, or use the authenticated-file proxy.
+    required: true
+  - name: file_type
+    type: str
+    description: High-level type of the file — controls how the client renders it (inline image preview, audio player, video player, document card, generic link card).
+    required: true
+    enum_values:
+      - image
+      - document
+      - audio
+      - video
+      - other_file
+  - name: file_name
+    type: str
+    description: Human-readable filename shown to the user in the attachment card (e.g. "Q3_Report.pdf", "sales_chart.png"). Include an extension when possible.
+    required: true
+
+returns: Confirmation that the file has been queued for delivery with the final response.
+
+examples:
+  - 'attach_file_to_response(url="https://drive.google.com/uc?export=download&id=...", file_type="document", file_name="Project_Proposal.pdf")'
+  - 'attach_file_to_response(url="https://cdn.mypraxos.com/images/chart.png", file_type="image", file_name="sales_chart.png")'
+  - 'attach_file_to_response(url="https://cdn.mypraxos.com/audio/reply.mp3", file_type="audio", file_name="voice_reply.mp3")'
+
+use_cases:
+  - User asks for a file from their Drive/Dropbox and you fetched a URL for it — attach it instead of pasting the link
+  - You generated media (image, audio, video) and need to deliver it as an actual attachment
+  - You are forwarding an email attachment to the user
+  - You produced a PDF, CSV, or spreadsheet export the user requested
+
+notes:
+  - Call once per file. Multiple files are supported; each call adds one attachment.
+  - Do not paste the same URL into the assistant message text — the attachment is already delivered, and duplicating the URL as text clutters the conversation.
+  - If the URL requires authentication (e.g. raw Google Drive share that 403s without a token), route it through the authenticated-file proxy first or re-upload to a public blob URL.
+
+requires_integration: null
+requires_auth: false
+is_long_running: false

@@ -18,6 +18,7 @@ from src.core.praxos_client import PraxosClient
 from src.core.models.agent_runner_models import AgentFinalResponse, AgentState, FileLink,GraphConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chat_models import init_chat_model
+
 import uuid
 from src.core.prompts.system_prompt import create_system_prompt
 from bson import ObjectId
@@ -28,7 +29,16 @@ from src.services.ai_service.ai_service import ai_service
 from src.core.callbacks.ImmediatePersistenceCallback import ImmediatePersistenceCallback
 from src.core.nodes import call_model, generate_final_response, obtain_data, should_continue_router
 from src.utils.file_msg_utils import generate_file_messages,get_conversation_history,process_media_output, generate_user_messages_parallel,update_history, extract_text_from_chunk,extract_thinking_from_chunk
+from src.core.media_bus import media_bus
 logger = setup_logger(__name__)
+
+# Tools that are pure plumbing — the user already sees their effect directly
+# (a file appears as an attachment, a response is sent, etc.), so streaming an
+# "Action: X" status line for them is just noise on the frontend. Extend as
+# needed; the stream event is suppressed on both tool_start and tool_status.
+HIDDEN_FROM_STREAM_TOOLS = {
+    "attach_file_to_response",
+}
 
 
 
@@ -262,13 +272,17 @@ class LangGraphAgentRunner:
                 })
             else:
                 logger.info(f"No plan string generated from granular planning. query_type {plan.query_type if plan else 'None'}, reasoning: {plan.reason if plan else 'None'}")
+            # Shared mutable buffer — tools append to it, we flush after streaming
+            file_attachment_buffer = []
+
             tools = await self.tools_factory.create_tools(
                 user_context,
                 metadata,
                 timezone_name,
                 request_id=self.trace_id,
                 required_tool_ids=required_tool_ids,
-                conversation_manager=self.conversation_manager
+                conversation_manager=self.conversation_manager,
+                file_buffer=file_attachment_buffer,
             )
             logger.info(f"Tools loaded based on planning. ")
             # NEW: Type-driven parameter resolution
@@ -442,7 +456,54 @@ class LangGraphAgentRunner:
                     await self.conversation_manager.add_assistant_message(user_context.user_id, conversation_id, final_response.reasonings, message_type='text', message_category=MessageCategory.REASONING.value)
             logger.info(f"Final response generated for execution {execution_id}: {final_response.model_dump_json(indent=2)}")
             final_response = await process_media_output(conversation_manager=self.conversation_manager, final_response=final_response, user_context=user_context, source=source, conversation_id=conversation_id)
-            
+
+            # Flush files accumulated by attach_file_to_response tool calls
+            if file_attachment_buffer:
+                if not final_response.file_links:
+                    final_response.file_links = []
+                _MEDIA_TYPE_MAP = {
+                    "image": "image",
+                    "audio": "audio",
+                    "voice": "audio",
+                    "video": "video",
+                    "document": "document",
+                    "file": "document",
+                    "other_file": "document",
+                }
+                # URLs already persisted by generate_* tools via media_bus; skip to avoid duplicate MEDIA rows.
+                already_persisted_urls = {
+                    ref.url for ref in media_bus.list_media(conversation_id) if ref.url
+                }
+                for f in file_attachment_buffer:
+                    final_response.file_links.append(FileLink(
+                        url=f["url"],
+                        file_type=f.get("file_type", "other_file"),
+                        file_name=f.get("file_name", "file"),
+                    ))
+                    if f.get("url") in already_persisted_urls:
+                        continue
+                    try:
+                        msg_type = _MEDIA_TYPE_MAP.get(f.get("file_type", "other_file"), "document")
+                        await self.conversation_manager.add_assistant_message(
+                            user_context.user_id,
+                            conversation_id,
+                            f.get("file_name", "file"),
+                            message_type=msg_type,
+                            metadata={
+                                "url": f["url"],
+                                "file_name": f.get("file_name", "file"),
+                                "file_type": f.get("file_type", "other_file"),
+                                "source": "attach_file_to_response",
+                                "timestamp": datetime.utcnow().isoformat(),
+                            },
+                        )
+                    except Exception as persist_err:
+                        logger.error(
+                            f"Failed to persist attached file '{f.get('file_name')}' to conversation history: {persist_err}",
+                            exc_info=True,
+                        )
+                logger.info(f"Flushed {len(file_attachment_buffer)} file attachment(s) from buffer into final response")
+
             # Trigger conversation naming at the end of the execution cycle
             asyncio.create_task(self.conversation_manager._try_name_conversation(conversation_id))
 
@@ -480,7 +541,6 @@ class LangGraphAgentRunner:
 
             # Clean up media bus for this conversation
             try:
-                from src.core.media_bus import media_bus
                 cleared_count = media_bus.clear_conversation(conversation_id)
                 if cleared_count > 0:
                     logger.info(f"Cleared {cleared_count} media references from bus for conversation {conversation_id}")
@@ -568,7 +628,10 @@ class LangGraphAgentRunner:
                             # Skip user-facing communication tools from technical stream
                             if tool_name.startswith('reply_to_user_'):
                                 continue
-                                
+                            # Skip plumbing tools whose effect is already visible to the user
+                            if tool_name in HIDDEN_FROM_STREAM_TOOLS:
+                                continue
+
                             await self.stream_buffer.write({
                                 "type": "tool_start",
                                 "tool": tool_name,
@@ -637,6 +700,9 @@ class LangGraphAgentRunner:
                     
                 # 2. Ignore background communication tools (fixes REPLY_TO_USER_...)
                 if tool_name.startswith('reply_to_user_'):
+                    return
+                # 3. Ignore plumbing tools whose effect is already visible to the user
+                if tool_name in HIDDEN_FROM_STREAM_TOOLS:
                     return
 
                 # Extract output for frontend display

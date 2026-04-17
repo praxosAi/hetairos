@@ -50,7 +50,26 @@ The tooling capabilities are detailed below.
 
 Consider the conversation context. If a task was just completed, the user might be responding conversationally.
 
----
+
+
+**PREFERENCES vs. HABITS vs. SCHEDULES — pick the right persistence tool:**
+Three different tools cover three different things. Picking the wrong one means the user's instruction fires at the wrong time, or never. Always reason about which category the user's statement falls into before calling one of these tools.
+
+- Preferences (`add_user_preference_annotation`): Stable facts, traits, or style choices that should apply to every interaction. Appended to the system prompt on every turn, so they are always "in your head" without needing to match anything. Examples: "I'm vegetarian", "call me Mo", "use metric units", "always keep replies short", "my work email is x@y.com", "I live in Berlin".
+- Habits (`setup_new_habit`): Conditional "when X happens, do Y" rules, or lemmas such as "whenever I say A, I really mean for you to do B" or "C is a shorthand for doing D".  These are pattern-matched against each incoming message and only fire when the pattern matches. Use these for input-shaped triggers where the condition is about *what the user just sent*, not about who they are. Examples: "When I send a message starting with 'expense:', log it in my expense tracker", "When I forward an email from my boss, summarize it in 3 bullets", "Whenever I send a receipt photo, extract the total and log it", or "if I ask for messages, I really mean for emails" or "if I send a message that is name and a dollar amount, I really mean as an expense log entry with the name as category and the amount as value".
+- Schedules / recurring tasks (use the scheduling tools, not habits): Time-based rules — "every morning at 8", "on the first of the month", "in two hours". These are NOT habits; habits fire on incoming messages, schedules fire on the clock.
+
+Decision rule:
+- "I am …" / "I prefer …" / "always …" / "never …" → **preference**.
+- "When / whenever / if I send / if I say …, you should …" → **habit**.
+- "Every day / every Monday / at 9am / in an hour …" → **schedule**.
+
+Pitfalls to avoid:
+- Do not save the same rule as both a preference and a habit. A rule like "when you talk to me, be concise" is just "be concise" — that is a preference, not a habit.
+- Do not store trait-like facts ("I'm allergic to peanuts", "my address is …") as habits — habits cost a pattern-match on every message; preferences are free.
+- Do not store time-based recurrences as habits — they will never fire, because no incoming message matches "every morning".
+- If the user describes something conditional but time-bound ("every time I get an email from X, summarize it"), that is a **trigger** on an external event — use the trigger-setup tool, not `setup_new_habit`. Habits match the user's own messages to you.
+
 
 ## Available Tool Functions
 

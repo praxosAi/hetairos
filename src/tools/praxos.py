@@ -123,6 +123,232 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
             )
 
     @tool
+    async def sync_file_to_praxos_knowledge_graph(
+        inserted_id: str,
+        description: str = None,
+        sync_both: bool = False,
+    ) -> ToolExecutionResponse:
+        """
+        Sync a file that already exists in this conversation into Praxos memory via the
+        structured knowledge-graph path (Praxolex extraction → Neo4j + fact embeddings).
+
+        Best for data-oriented or structured queries — invoices, contracts, receipts,
+        JSON, spreadsheets — where the user will later ask things like "what was the
+        total on that invoice" or "who signed the contract". After syncing, the file
+        message is flagged as synced so you can see it's already in memory.
+
+        Args:
+            inserted_id: The inserted_id of the file message (from list_available_media
+                         or the file metadata in conversation history).
+            description: Optional human-readable description to store with the synced source.
+            sync_both: If True, also run the embedding-only path after KG sync. Use this
+                       only when the file is genuinely ambiguous (both structured AND
+                       qualitative queries likely), e.g. a long legal contract.
+
+        Returns:
+            Success with the Praxos source_id, or an error message.
+        """
+        try:
+            logger.info(f"Syncing file to knowledge graph: inserted_id={inserted_id}, sync_both={sync_both}")
+            document = await db_manager.get_document_by_id(inserted_id)
+            if not document:
+                return ErrorResponseBuilder.from_exception(
+                    operation="sync_file_to_praxos_knowledge_graph",
+                    exception=Exception(f"No document found for inserted_id={inserted_id}"),
+                    integration="Praxos",
+                )
+
+            blob_path = document.get("blob_path")
+            file_name = document.get("file_name") or document.get("name") or str(inserted_id)
+            mime_type = document.get("mime_type") or "application/octet-stream"
+
+            if not blob_path:
+                return ErrorResponseBuilder.from_exception(
+                    operation="sync_file_to_praxos_knowledge_graph",
+                    exception=Exception("Document has no blob_path — cannot sync"),
+                    integration="Praxos",
+                    context={"inserted_id": inserted_id},
+                )
+
+            kg_result = await praxos_client.sync_file_to_knowledge_graph(
+                blob_path=blob_path,
+                file_name=file_name,
+                mime_type=mime_type,
+                description=description,
+                metadata={"inserted_id": inserted_id, "user_id": user_id},
+            )
+            if "error" in kg_result:
+                return ErrorResponseBuilder.from_exception(
+                    operation="sync_file_to_praxos_knowledge_graph",
+                    exception=Exception(kg_result["error"]),
+                    integration="Praxos",
+                    context={"inserted_id": inserted_id},
+                )
+
+            source_id = kg_result.get("source_id")
+            effective_sync_type = "knowledge_graph"
+
+            if sync_both:
+                sem_result = await praxos_client.sync_file_for_semantic_search(
+                    blob_path=blob_path,
+                    file_name=file_name,
+                    mime_type=mime_type,
+                    description=description,
+                    metadata={"inserted_id": inserted_id, "user_id": user_id},
+                )
+                if "error" not in sem_result:
+                    effective_sync_type = "both"
+
+            await db_manager.mark_document_synced(
+                document_id=inserted_id,
+                sync_type=effective_sync_type,
+                sync_ref=source_id,
+            )
+
+            return ToolExecutionResponse(
+                status="success",
+                result={
+                    "inserted_id": inserted_id,
+                    "sync_type": effective_sync_type,
+                    "source_id": source_id,
+                    "file_name": file_name,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Error syncing file to knowledge graph: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="sync_file_to_praxos_knowledge_graph",
+                exception=e,
+                integration="Praxos",
+                context={"inserted_id": inserted_id},
+            )
+
+    @tool
+    async def sync_file_for_semantic_search(
+        inserted_id: str,
+        description: str = None,
+        sync_both: bool = False,
+    ) -> ToolExecutionResponse:
+        """
+        Sync a file that already exists in this conversation into Praxos memory via
+        the embedding-only path (chunk + embed → Qdrant, no KG extraction).
+
+        Best for qualitative queries over long-form documents — research papers,
+        manuals, prose — where the user will ask things like "what does this paper
+        say about X" or "summarize chapter 3". Faster and cheaper than KG sync but
+        no structured-fact retrieval.
+
+        Args:
+            inserted_id: The inserted_id of the file message.
+            description: Optional human-readable description stored with the embedded chunks.
+            sync_both: If True, also run the knowledge-graph path. Use only when the
+                       file is genuinely ambiguous.
+
+        Returns:
+            Success with a sync_ref, or an error message.
+        """
+        try:
+            logger.info(f"Syncing file for semantic search: inserted_id={inserted_id}, sync_both={sync_both}")
+            document = await db_manager.get_document_by_id(inserted_id)
+            if not document:
+                return ErrorResponseBuilder.from_exception(
+                    operation="sync_file_for_semantic_search",
+                    exception=Exception(f"No document found for inserted_id={inserted_id}"),
+                    integration="Praxos",
+                )
+
+            blob_path = document.get("blob_path")
+            file_name = document.get("file_name") or document.get("name") or str(inserted_id)
+            mime_type = document.get("mime_type") or "application/octet-stream"
+
+            if not blob_path:
+                return ErrorResponseBuilder.from_exception(
+                    operation="sync_file_for_semantic_search",
+                    exception=Exception("Document has no blob_path — cannot sync"),
+                    integration="Praxos",
+                    context={"inserted_id": inserted_id},
+                )
+
+            sem_result = await praxos_client.sync_file_for_semantic_search(
+                blob_path=blob_path,
+                file_name=file_name,
+                mime_type=mime_type,
+                description=description,
+                metadata={"inserted_id": inserted_id, "user_id": user_id},
+            )
+            if "error" in sem_result:
+                return ErrorResponseBuilder.from_exception(
+                    operation="sync_file_for_semantic_search",
+                    exception=Exception(sem_result["error"]),
+                    integration="Praxos",
+                    context={"inserted_id": inserted_id},
+                )
+
+            sync_ref = sem_result.get("sync_ref")
+            effective_sync_type = "embedding"
+
+            if sync_both:
+                kg_result = await praxos_client.sync_file_to_knowledge_graph(
+                    blob_path=blob_path,
+                    file_name=file_name,
+                    mime_type=mime_type,
+                    description=description,
+                    metadata={"inserted_id": inserted_id, "user_id": user_id},
+                )
+                if "error" not in kg_result:
+                    effective_sync_type = "both"
+                    sync_ref = sync_ref or kg_result.get("source_id")
+
+            await db_manager.mark_document_synced(
+                document_id=inserted_id,
+                sync_type=effective_sync_type,
+                sync_ref=sync_ref,
+            )
+
+            return ToolExecutionResponse(
+                status="success",
+                result={
+                    "inserted_id": inserted_id,
+                    "sync_type": effective_sync_type,
+                    "sync_ref": sync_ref,
+                    "file_name": file_name,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Error syncing file for semantic search: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="sync_file_for_semantic_search",
+                exception=e,
+                integration="Praxos",
+                context={"inserted_id": inserted_id},
+            )
+
+    @tool
+    async def setup_new_habit(habit_statement: str) -> ToolExecutionResponse:
+        """Setup a habit pattern in Praxos memory. A habit is a recurring pattern that matches incoming messages,
+        of form "When I send a message starting with 'expense:', log it as an expense"
+        Args:
+            habit_statement: The habit pattern to setup. Should describe the pattern and the action, in plain English.
+        """
+        try:
+            logger.info(f"Setting up new habit in Praxos memory: {habit_statement}")
+            habit_setup_response = await praxos_client.setup_habit(habit_statement)
+            if 'rule_id' in habit_setup_response:
+                await db_manager.insert_new_trigger(
+                    habit_setup_response['rule_id'], conversation_id, habit_statement, user_id,
+                    is_one_time=False  # habits are always persistent
+                )
+            return ToolExecutionResponse(status="success", result=habit_setup_response)
+        except Exception as e:
+            logger.error(f"Error setting up new habit in Praxos memory: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="setup_new_habit",
+                exception=e,
+                integration="Praxos",
+                context={"habit_statement": habit_statement}
+            )
+
+    @tool
     async def extract_entities_by_type(type_description: str, max_results: int = 20) -> ToolExecutionResponse:
         """
         Extract entities from the knowledge graph using intelligent type-based extraction.
@@ -563,6 +789,9 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
         enrich_praxos_memory_entries,
         query_praxos_memory_intelligent_search,
         setup_new_trigger,
+        setup_new_habit,
+        sync_file_to_praxos_knowledge_graph,
+        sync_file_for_semantic_search,
         extract_entities_by_type,
         extract_literals_by_type,
         get_entities_by_type_name,

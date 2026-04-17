@@ -589,6 +589,159 @@ class PraxosClient:
             praxos_logger.error(f"Error evaluating event {event_json} of type {event_type}: {e}")
             return {"error": str(e)}
 
+    async def evaluate_user_message(self, message_json, source: str,
+                                    output_type: str = None, output_chat_id: str = None):
+        """Evaluate a user message against habits and triggers in Praxos memory.
+        Args:
+            message_json: The user message payload (CanonUserMessage format).
+            source: The source platform (e.g., 'whatsapp', 'telegram', 'slack').
+            output_type: Optional output platform for dispatch routing.
+            output_chat_id: Optional chat/phone ID for dispatch routing.
+        """
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        start_time = time.time()
+
+        try:
+            result = self.env.evaluate_user_message(message_json, source, output_type, output_chat_id)
+            return result
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(f"Error evaluating user message from {source}: {e}")
+            return {"error": str(e)}
+
+    async def setup_habit(self, habit_conditional_statement: str):
+        """Setup a habit pattern in Praxos memory.
+        Args:
+            habit_conditional_statement: The habit pattern to setup, in plain English.
+        """
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        start_time = time.time()
+
+        try:
+            result = self.env.ingest_habit(habit_conditional_statement)
+            return result
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(f"Error setting up habit with statement {habit_conditional_statement}: {e}")
+            return {"error": str(e)}
+
+    async def sync_file_to_knowledge_graph(
+        self,
+        blob_path: str,
+        file_name: str,
+        mime_type: str,
+        description: str = None,
+        metadata: dict = None,
+        container_name: str = None,
+    ) -> dict:
+        """
+        Sync a file from Azure Blob Storage into Praxos memory via the structured
+        ingestion path (add_file → Praxolex → Neo4j + fact embeddings). Best for
+        data-oriented or structured queries (invoices, contracts, JSON, Excel, etc.).
+        """
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        import os
+        import tempfile
+        from src.utils.blob_utils import download_from_blob_storage
+
+        start_time = time.time()
+        log_praxos_file_upload_started(blob_path, file_name, description)
+        tmp_path = None
+        try:
+            data = await download_from_blob_storage(blob_path, container_name=container_name)
+            extension = os.path.splitext(file_name)[1] or ""
+            with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as tmp:
+                tmp.write(data)
+                tmp_path = tmp.name
+
+            result = self.env.add_file(
+                path=tmp_path,
+                name=file_name,
+                description=description or f"File synced to knowledge graph: {file_name}",
+                metadata=metadata,
+            )
+            source_id = getattr(result, "id", None)
+            duration = time.time() - start_time
+            log_praxos_file_upload_completed(blob_path, file_name, source_id, duration)
+            return {"success": True, "sync_type": "knowledge_graph", "source_id": source_id}
+        except Exception as e:
+            duration = time.time() - start_time
+            log_praxos_file_upload_failed(blob_path, file_name, e, duration)
+            return {"error": f"Knowledge-graph sync failed: {str(e)}"}
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+
+    async def sync_file_for_semantic_search(
+        self,
+        blob_path: str,
+        file_name: str,
+        mime_type: str,
+        description: str = None,
+        metadata: dict = None,
+        container_name: str = None,
+    ) -> dict:
+        """
+        Sync a file into Praxos memory via the embedding-only path (chunk + embed
+        → Qdrant, no Praxolex/KG extraction). Best for qualitative queries over
+        long-form docs (research papers, manuals, prose).
+
+        Requires the SDK's add_file_for_semantic_search method, which posts to the
+        External-API /ingest-file-embedding route and then to the search service.
+        """
+        if not self.env:
+            return {"error": "Environment not initialized"}
+
+        if not hasattr(self.env, "add_file_for_semantic_search"):
+            return {"error": "SDK does not expose add_file_for_semantic_search — update Praxos-python"}
+
+        import os
+        import tempfile
+        from src.utils.blob_utils import download_from_blob_storage
+
+        start_time = time.time()
+        tmp_path = None
+        try:
+            data = await download_from_blob_storage(blob_path, container_name=container_name)
+            extension = os.path.splitext(file_name)[1] or ""
+            with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as tmp:
+                tmp.write(data)
+                tmp_path = tmp.name
+
+            result = self.env.add_file_for_semantic_search(
+                path=tmp_path,
+                name=file_name,
+                description=description or f"File synced for semantic search: {file_name}",
+                metadata=metadata,
+            )
+            duration = time.time() - start_time
+            sync_ref = None
+            if isinstance(result, dict):
+                sync_ref = result.get("id") or result.get("point_id") or result.get("collection")
+            praxos_logger.info(
+                f"Semantic sync of '{file_name}' done in {duration:.2f}s (ref={sync_ref})"
+            )
+            return {"success": True, "sync_type": "embedding", "sync_ref": sync_ref, "raw": result}
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(f"Semantic sync failed for '{file_name}' after {duration:.2f}s: {e}")
+            return {"error": f"Semantic sync failed: {str(e)}"}
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+
     async def create_entity_in_kg(self, entity_type: str, label: str, properties: List[Dict[str, Any]], nested_entities: Dict = None):
         """Create a new entity in the knowledge graph"""
         if not self.env:

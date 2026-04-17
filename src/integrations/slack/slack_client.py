@@ -149,6 +149,50 @@ class SlackIntegration(BaseIntegration):
             logger.error(f"Slack API error sending message: {e}")
             raise Exception(f"Failed to send Slack message: {e.response['error']}")
 
+    async def send_file(
+        self,
+        channel: str,
+        file_url: str,
+        file_name: str,
+        *,
+        initial_comment: Optional[str] = None,
+        thread_ts: Optional[str] = None,
+        account: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Upload a file to a Slack channel using files_upload_v2.
+
+        Downloads bytes from ``file_url`` (expected to be a publicly reachable URL such
+        as an Azure Blob SAS URL) and uploads them to Slack.
+        """
+        import httpx
+
+        client, resolved_account = self._get_client_for_account(account)
+        logger.info(f"Uploading file '{file_name}' to Slack channel {channel} in workspace {resolved_account}")
+
+        async with httpx.AsyncClient(timeout=60.0) as http_client:
+            resp = await http_client.get(file_url)
+            resp.raise_for_status()
+            file_bytes = resp.content
+
+        try:
+            response = await client.files_upload_v2(
+                channel=channel,
+                filename=file_name,
+                content=file_bytes,
+                initial_comment=initial_comment,
+                thread_ts=thread_ts,
+            )
+            file_info = response.get("file") or (response.get("files") or [{}])[0]
+            return {
+                "status": "success",
+                "file_id": file_info.get("id") if isinstance(file_info, dict) else None,
+                "channel": channel,
+            }
+        except SlackApiError as e:
+            logger.error(f"Slack API error uploading file: {e}")
+            raise Exception(f"Failed to upload Slack file: {e.response['error']}")
+
     async def send_dm(self, user_id: str, text: str, *, blocks: List[Dict] = None, account: Optional[str] = None) -> Dict[str, Any]:
         """
         Send a direct message to a Slack user.

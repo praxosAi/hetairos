@@ -81,7 +81,30 @@ def create_media_bus_tools(conversation_id: str, user_id: str, tool_registry = N
                     result=f"No media items{type_msg} currently available in this conversation."
                 )
 
-            # Format results
+            inserted_ids = [
+                str(ref.metadata.get("inserted_id"))
+                for ref in refs
+                if ref.metadata and ref.metadata.get("inserted_id")
+            ]
+            sync_by_inserted_id: Dict[str, Dict] = {}
+            if inserted_ids:
+                try:
+                    from bson import ObjectId
+                    object_ids = [ObjectId(x) for x in inserted_ids if ObjectId.is_valid(x)]
+                    if object_ids:
+                        cursor = db_manager.documents.find(
+                            {"_id": {"$in": object_ids}},
+                            {"synced": 1, "last_sync_type": 1, "last_sync_at": 1},
+                        )
+                        async for doc in cursor:
+                            sync_by_inserted_id[str(doc["_id"])] = {
+                                "synced": bool(doc.get("synced", False)),
+                                "sync_type": doc.get("last_sync_type"),
+                                "synced_at": doc.get("last_sync_at"),
+                            }
+                except Exception as e:
+                    logger.warning(f"Could not fetch sync state for media: {e}")
+
             result = f"Available media items ({len(refs)}):\n\n"
 
             for i, ref in enumerate(refs, 1):
@@ -90,7 +113,20 @@ def create_media_bus_tools(conversation_id: str, user_id: str, tool_registry = N
                 result += f"   File: {ref.file_name}\n"
                 result += f"   Source: {ref.source}\n"
                 result += f"   Created: {ref.timestamp.strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
-                if i < len(refs):  # Not last item
+
+                inserted_id = ref.metadata.get("inserted_id") if ref.metadata else None
+                if inserted_id:
+                    result += f"   InsertedId: {inserted_id}\n"
+                    sync_info = sync_by_inserted_id.get(str(inserted_id))
+                    if sync_info and sync_info["synced"]:
+                        result += (
+                            f"   Praxos sync: YES (type={sync_info['sync_type']}, "
+                            f"at={sync_info.get('synced_at')})\n"
+                        )
+                    else:
+                        result += "   Praxos sync: NO (not yet synced to memory)\n"
+
+                if i < len(refs):
                     result += "\n"
 
             logger.info(f"Listed {len(refs)} media items for conversation {conversation_id}")

@@ -182,7 +182,16 @@ def create_media_generation_tools(
             await conversation_manager.add_assistant_media_message(
                 user_id,
                 conversation_id, f"we generated an image for the user. this image was described as follows: {prompt}", inserted_id,
-                message_type='image', metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
+                message_type='image',
+                metadata={
+                    "inserted_id": inserted_id,
+                    "url": image_url,
+                    "file_name": file_name,
+                    "file_type": "image",
+                    "mime_type": "image/png",
+                    "blob_path": blob_path,
+                    "timestamp": datetime.utcnow().isoformat(),
+                },
             )
             # Add to media bus for future reference
             media_id = await media_bus.add_media(
@@ -333,7 +342,9 @@ def create_media_generation_tools(
                 raise Exception("Audio generation returned no URL")
 
             # Determine mime_type based on format
-            mime_type = "audio/x-caf" if is_imessage else "audio/ogg"
+            # iMessage path produces CAF; all other channels produce MP3 so
+            # every browser and mobile player can decode it natively.
+            mime_type = "audio/x-caf" if is_imessage else "audio/mpeg"
 
             # Log to conversation
             document_entry = {
@@ -352,7 +363,16 @@ def create_media_generation_tools(
             await conversation_manager.add_assistant_media_message(
                 user_id,
                 conversation_id, f"we generated an audio for the user. this audio was described as follows: {text}", inserted_id,
-                message_type='audio', metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
+                message_type='audio',
+                metadata={
+                    "inserted_id": inserted_id,
+                    "url": audio_url,
+                    "file_name": file_name,
+                    "file_type": "audio",
+                    "mime_type": mime_type,
+                    "blob_path": blob_path,
+                    "timestamp": datetime.utcnow().isoformat(),
+                },
             )
 
             # Add to media bus for future reference
@@ -486,7 +506,16 @@ def create_media_generation_tools(
             await conversation_manager.add_assistant_media_message(
                 user_id,
                 conversation_id, f"we generated a video for the user. this video was described as follows: {prompt}", inserted_id,
-                message_type='video', metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
+                message_type='video',
+                metadata={
+                    "inserted_id": inserted_id,
+                    "url": video_url,
+                    "file_name": file_name,
+                    "file_type": "video",
+                    "mime_type": "video/mp4",
+                    "blob_path": blob_path,
+                    "timestamp": datetime.utcnow().isoformat(),
+                },
             )
 
             # Add to media bus for future reference

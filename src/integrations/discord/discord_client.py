@@ -1,5 +1,6 @@
 import asyncio
 import httpx
+import json
 import os
 from typing import Optional, Dict, List, Tuple, Any
 from src.integrations.base_integration import BaseIntegration
@@ -101,6 +102,57 @@ class DiscordIntegration(BaseIntegration):
         except Exception as e:
             logger.error(f"Discord API error sending message: {e}")
             raise Exception(f"Failed to send Discord message: {e}")
+
+    async def send_file(
+        self,
+        channel: str,
+        file_url: str,
+        file_name: str,
+        *,
+        text: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Upload a file to a Discord channel using the bot token.
+
+        Downloads bytes from ``file_url`` (expected to be a publicly reachable URL such
+        as an Azure Blob SAS URL) and posts them as a multipart attachment.
+        """
+        if not self.bot_token:
+            raise Exception("DISCORD_BOT_TOKEN not set in environment")
+
+        logger.info(f"Uploading file '{file_name}' to Discord channel {channel}")
+
+        async with httpx.AsyncClient(timeout=60.0) as http_client:
+            download = await http_client.get(file_url)
+            download.raise_for_status()
+            file_bytes = download.content
+
+        try:
+            payload_json = {"content": text} if text else {}
+            files = {
+                "files[0]": (file_name, file_bytes, "application/octet-stream"),
+                "payload_json": (None, json.dumps(payload_json), "application/json"),
+            }
+            async with httpx.AsyncClient(timeout=60.0) as http_client:
+                response = await http_client.post(
+                    f"{self.api_base}/channels/{channel}/messages",
+                    headers={"Authorization": f"Bot {self.bot_token}"},
+                    files=files,
+                )
+
+            if response.status_code not in [200, 201]:
+                raise Exception(f"Discord API error: {response.status_code} - {response.text}")
+
+            data = response.json()
+            return {
+                "status": "success",
+                "message_id": data.get("id"),
+                "channel_id": data.get("channel_id"),
+            }
+
+        except Exception as e:
+            logger.error(f"Discord API error uploading file: {e}")
+            raise Exception(f"Failed to upload Discord file: {e}")
 
     async def send_dm(self, user_id: str, text: str, *, embed: Dict = None) -> Dict[str, Any]:
         """

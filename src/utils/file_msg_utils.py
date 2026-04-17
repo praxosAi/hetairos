@@ -414,7 +414,15 @@ async def process_media_output(conversation_manager:Any,final_response:AgentFina
                             user_context.user_id,
                             conversation_id, 'we generated an image for the user. this image was described as follows: " + generation_instructions', inserted_id,
                             message_type='image',
-                            metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
+                            metadata={
+                                "inserted_id": inserted_id,
+                                "url": image_blob_url,
+                                "file_name": image_file_name,
+                                "file_type": "image",
+                                "mime_type": "image/png",
+                                "blob_path": image_blob_name,
+                                "timestamp": datetime.utcnow().isoformat(),
+                            }
                         )
                 except Exception as e:
                     logger.info(f"Error generating image output: {e}", exc_info=True)
@@ -432,7 +440,7 @@ async def process_media_output(conversation_manager:Any,final_response:AgentFina
                             "platform": source,
                             'type': 'audio',
                             "blob_path": audio_blob_name,
-                            "mime_type": 'audio/x-caf' if is_imessage else 'audio/ogg',
+                            "mime_type": 'audio/x-caf' if is_imessage else 'audio/mpeg',
                             "caption": 'we generated an audio for the user. this audio was described as follows: ' + generation_instructions,
                             'file_name':    audio_file_name,
                         }
@@ -444,7 +452,15 @@ async def process_media_output(conversation_manager:Any,final_response:AgentFina
                             user_context.user_id,
                             conversation_id, "we generated audio for the user. this audio was described as follows: " + generation_instructions, inserted_id,
                             message_type='audio',
-                            metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
+                            metadata={
+                                "inserted_id": inserted_id,
+                                "url": audio_blob_url,
+                                "file_name": audio_file_name,
+                                "file_type": "audio",
+                                "mime_type": "audio/x-caf" if is_imessage else "audio/mpeg",
+                                "blob_path": audio_blob_name,
+                                "timestamp": datetime.utcnow().isoformat(),
+                            }
                         )
                 except Exception as e:
                     logger.info(f"Error generating audio output: {e}", exc_info=True)
@@ -472,8 +488,16 @@ async def process_media_output(conversation_manager:Any,final_response:AgentFina
                             user_context.user_id,
                             conversation_id, "we generated video for the user. this video was described as follows: " + generation_instructions, inserted_id,
                             message_type='video',
-                            metadata={"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
-                        )                
+                            metadata={
+                                "inserted_id": inserted_id,
+                                "url": video_blob_url,
+                                "file_name": video_file_name,
+                                "file_type": "video",
+                                "mime_type": "video/mp4",
+                                "blob_path": video_blob_name,
+                                "timestamp": datetime.utcnow().isoformat(),
+                            }
+                        )
                 except Exception as e:
                     logger.info(f"Error generating video output: {e}", exc_info=True)
                     await conversation_manager.add_assistant_message(user_context.user_id, conversation_id, "we failed to generate a video for the user. there was an error: " + str(e) + " the video was described as follows: " + generation_instructions)

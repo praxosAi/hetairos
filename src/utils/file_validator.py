@@ -208,6 +208,17 @@ class FileValidator:
             claimed_category = claimed_mime.split('/')[0]
             actual_category = actual_mime.split('/')[0]
 
+            # MP4/QuickTime containers can carry audio-only tracks (iOS voice
+            # memos, Android .m4a recordings). libmagic identifies them by
+            # container as video/mp4 or video/quicktime even when there is no
+            # video stream. Treat these as audio when the caller claimed audio.
+            if (
+                claimed_category == "audio"
+                and actual_mime in ("video/mp4", "video/quicktime")
+            ):
+                actual_mime = "audio/mp4"
+                actual_category = "audio"
+
             # Categories must match (image vs image, video vs video, etc.)
             if claimed_category != actual_category:
                 logger.warning(

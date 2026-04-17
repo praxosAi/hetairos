@@ -859,6 +859,9 @@ class FileManager:
                         file_result.blob_path,
                         container_name=file_result.container_name
                     )
+                # Persist back so callers holding this FileResult can use the URL
+                # (e.g. when storing user-uploaded media in the conversation log).
+                file_result.url = url
 
             # Auto-generate description if not provided
             if not description:

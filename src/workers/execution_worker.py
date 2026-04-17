@@ -400,27 +400,10 @@ class ExecutionWorker:
             "fired_habits": fired_habits,
             "habit_statements": habit_statements,
         }
-
-        if habit_statements:
-            self._prepend_habit_prefix(event, habit_statements)
-
-    def _prepend_habit_prefix(self, event: dict, habit_statements: list):
-        """Prepend fired-habit context to the user's message text so the planner sees it."""
-        bullets = "\n".join(f"- {s}" for s in habit_statements)
-        prefix = (
-            "[Active habits matching this message — apply them while handling the request:\n"
-            f"{bullets}\n"
-            "End of habit context.]\n\n"
-        )
-        payload = event.get("payload")
-        if isinstance(payload, list):
-            for item in payload:
-                if isinstance(item, dict) and item.get("text"):
-                    item["text"] = prefix + item["text"]
-                    return
-            payload.insert(0, {"text": prefix})
-        elif isinstance(payload, dict):
-            payload["text"] = prefix + payload.get("text", "")
+        # Habit prefix is applied later at the LLM HumanMessage construction
+        # step (see file_msg_utils.build_habit_prefix). Mutating payload text
+        # here would persist agent-only guidance into the conversation log and
+        # leak it into the mobile UI on reload.
 
     def build_user_message_json(self, event: dict, user_context) -> dict:
         """Transform execution worker event into UserMessageAdapter-compatible dict."""

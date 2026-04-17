@@ -20,6 +20,27 @@ logger = setup_logger(__name__)
 
 #### prefix reconstruction utilities
 
+def build_habit_prefix(metadata: Dict[str, Any]) -> str:
+    """Build the habit-context prefix for a single LLM HumanMessage.
+
+    Reads `metadata.habit_evaluation.habit_statements` (populated by the
+    execution worker). Returns an empty string when no habits fired so callers
+    can unconditionally concatenate.
+    """
+    if not metadata:
+        return ""
+    habit_eval = metadata.get("habit_evaluation") or {}
+    statements = habit_eval.get("habit_statements") or []
+    if not statements:
+        return ""
+    bullets = "\n".join(f"- {s}" for s in statements)
+    return (
+        "[Active habits matching this message — apply them while handling the request:\n"
+        f"{bullets}\n"
+        "End of habit context.]\n\n"
+    )
+
+
 def reconstruct_message_prefix(metadata: Dict[str, Any]) -> str:
     """
     Reconstruct message prefix from metadata.
@@ -65,12 +86,16 @@ async def _gather_bounded(coros: List[Any], limit: int = 8):
     return await asyncio.gather(*(_run(c) for c in coros), return_exceptions=True)
 
 
-async def build_payload_entry(file: Dict[str, Any], add_to_media_bus=False, conversation_id: str = None) -> Optional[Dict[str, Any]]:
+async def build_payload_entry(file: Dict[str, Any], add_to_media_bus=False, conversation_id: str = None) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """
     Create a single payload dict for a file entry.
 
     UPDATED: Now uses FileManager for unified payload building.
     This is a compatibility wrapper for existing code.
+
+    Returns (payload, file_meta). file_meta carries url/file_name/file_type/
+    mime_type/blob_path so callers can persist render-ready metadata for the
+    mobile/web client. Either entry may be None on failure.
     """
     try:
         # Handle both old dict format and new FileResult objects
@@ -90,7 +115,17 @@ async def build_payload_entry(file: Dict[str, Any], add_to_media_bus=False, conv
                 conversation_id=conversation_id if add_to_media_bus else None,
                 add_to_media_bus=add_to_media_bus
             )
-            return payload
+            file_meta = None
+            if file_result:
+                file_meta = {
+                    "url": file_result.url,
+                    "file_name": file_result.file_name,
+                    "file_type": file_result.file_type,
+                    "mime_type": file_result.mime_type,
+                    "blob_path": file_result.blob_path,
+                    "container_name": file_result.container_name,
+                }
+            return payload, file_meta
 
         # Fallback: old-style dict without inserted_id (legacy compatibility)
         # This path handles cases where file info comes from other sources
@@ -102,7 +137,11 @@ async def build_payload_entry(file: Dict[str, Any], add_to_media_bus=False, conv
         blob_path = file_dict.get("blob_path")
 
         if not blob_path or not ftype:
-            return None
+            return None, None
+
+        file_name = file_dict.get("file_name")
+        if not file_name or file_name == 'Original filename not accessible':
+            file_name = blob_path.split('/')[-1]
 
         if ftype in {"image", "photo"}:
             from src.utils.blob_utils import get_cdn_url
@@ -125,9 +164,6 @@ async def build_payload_entry(file: Dict[str, Any], add_to_media_bus=False, conv
         # Add to media bus if requested
         if add_to_media_bus and conversation_id and payload:
             try:
-                file_name = file_dict.get("file_name")
-                if not file_name or file_name == 'Original filename not accessible':
-                    file_name = blob_path.split('/')[-1]
                 caption = file_dict.get("caption", "")
                 await media_bus.add_media(
                     conversation_id=conversation_id,
@@ -144,11 +180,19 @@ async def build_payload_entry(file: Dict[str, Any], add_to_media_bus=False, conv
             except Exception as e:
                 logger.error(f"Error adding media to media bus: {e}", exc_info=True)
 
-        return payload
+        file_meta = {
+            "url": url,
+            "file_name": file_name,
+            "file_type": ftype,
+            "mime_type": mime_type,
+            "blob_path": blob_path,
+            "container_name": container_name or settings.AZURE_BLOB_CONTAINER_NAME,
+        }
+        return payload, file_meta
 
     except Exception as e:
         logger.error(f"Error building payload entry: {e}", exc_info=True)
-        return None
+        return None, None
 
 async def build_payload_entry_from_inserted_id(inserted_id: str, add_to_media_bus:bool=False, conversation_id: str = None) -> Tuple[Optional[Dict[str, Any]],Optional[Dict[str, Any]]]:
     """
@@ -237,6 +281,10 @@ async def generate_user_messages_parallel(
         file_start = structure_entry["file_task_start_index"]
         file_count = structure_entry["file_count"]
 
+        # Habit prefix is LLM-only guidance — applied here, never persisted.
+        # Consumed by whichever message (text or first file) goes out first.
+        habit_prefix = build_habit_prefix(metadata)
+
         # Add text message
         if text_content:
             text_content = text_content.strip().replace('/START_NEW','').replace('/start_new','').strip()
@@ -252,7 +300,8 @@ async def generate_user_messages_parallel(
             await conversation_manager.add_user_message(user_context.user_id, conversation_id, text_content, storage_metadata, message_category)
 
             # But use prefixed content for LLM history
-            full_message = message_prefix + text_content
+            full_message = habit_prefix + message_prefix + text_content
+            habit_prefix = ""  # consumed
             messages.append(HumanMessage(content=full_message))
             logger.info(f"Added text for message {i+1}/{len(input_messages)}")
         
@@ -260,18 +309,25 @@ async def generate_user_messages_parallel(
         if file_count > 0:
             has_media = True
             message_payloads = file_payloads[file_start:file_start + file_count]
-            for file_info, payload in zip(files_info, message_payloads):
-                if isinstance(payload, Exception) or payload is None:
+            for file_info, payload_entry in zip(files_info, message_payloads):
+                if isinstance(payload_entry, Exception) or payload_entry is None:
                     continue
-                
+                payload, file_meta = payload_entry
+                if payload is None:
+                    continue
+
                 # Add to conversation DB
                 ftype = file_info.get("type")
                 caption = file_info.get("caption", "")
                 inserted_id = file_info.get("inserted_id")
-                
+
                 if inserted_id and conversation_id:
-                    # Prepare metadata for media message
+                    # Prepare metadata for media message — include render-ready
+                    # fields (url/file_name/mime_type) so the mobile/web client
+                    # can play user-uploaded media without an extra lookup.
                     media_metadata = {"inserted_id": inserted_id, "timestamp": datetime.utcnow().isoformat()}
+                    if file_meta:
+                        media_metadata.update({k: v for k, v in file_meta.items() if v is not None})
                     if prefix_metadata:
                         media_metadata.update(prefix_metadata)
                     # Merge with any forwarding metadata
@@ -301,12 +357,15 @@ async def generate_user_messages_parallel(
                         )
 
 
-                
-                # Add to LLM message history
+
+                # Add to LLM message history. Apply habit prefix to the first
+                # outgoing file message if no text in this entry consumed it.
                 logger.info(f"caption is {caption}")
-                content = ([{"type": "text", "text": caption}] if caption else []) + [payload]
+                effective_caption = (habit_prefix + caption) if (habit_prefix or caption) else ""
+                habit_prefix = ""  # consumed (or empty)
+                content = ([{"type": "text", "text": effective_caption}] if effective_caption else []) + [payload]
                 messages.append(HumanMessage(content=content))
-            
+
             logger.info(f"Added {file_count} files for message {i+1}/{len(input_messages)}")
     
     return messages, has_media
@@ -325,6 +384,7 @@ async def generate_file_messages(
     message_category: str = None,
     max_concurrency: int = 8,
     user_id: str = None,
+    habit_prefix: str = "",
 ) -> List[BaseMessage]:
     logger.info(f"Generating file messages; current messages length: {len(messages)}")
 
@@ -336,15 +396,22 @@ async def generate_file_messages(
     payloads = await _gather_bounded(payload_tasks, limit=max_concurrency)
 
     # Assemble messages & persist conversation log in order
-    for idx, (ftype, cap, payload, ins_id) in enumerate(zip(file_types, captions, payloads, inserted_ids)):
-        if isinstance(payload, Exception) or payload is None:
+    for idx, (ftype, cap, payload_entry, ins_id) in enumerate(zip(file_types, captions, payloads, inserted_ids)):
+        if isinstance(payload_entry, Exception) or payload_entry is None:
             logger.warning(f"Skipping file at index {idx} due to payload error/None")
+            continue
+        payload, file_meta = payload_entry
+        if payload is None:
+            logger.warning(f"Skipping file at index {idx} due to empty payload")
             continue
 
         # Persist to conversation log first, in-order
         if ins_id and conversation_id:
-            # Prepare metadata including prefix components
+            # Prepare metadata including prefix components and render-ready
+            # file fields so the mobile/web client can play the media.
             media_metadata = {"inserted_id": ins_id, "timestamp": datetime.utcnow().isoformat()}
+            if file_meta:
+                media_metadata.update({k: v for k, v in file_meta.items() if v is not None})
             if prefix_metadata:
                 media_metadata.update(prefix_metadata)
 
@@ -373,8 +440,12 @@ async def generate_file_messages(
                 )
 
     
-        # Build LLM-facing message (caption first, then payload), in-order
-        content = ([{"type": "text", "text": cap}] if cap else []) + [payload]
+        # Build LLM-facing message (caption first, then payload), in-order.
+        # Habit prefix (if not yet consumed by a text message) rides on the
+        # first file caption.
+        effective_caption = (habit_prefix + cap) if (habit_prefix or cap) else ""
+        habit_prefix = ""  # consumed (or already empty)
+        content = ([{"type": "text", "text": effective_caption}] if effective_caption else []) + [payload]
         messages.append(HumanMessage(content=content))
         logger.info(f"Added '{ftype}' message; messages length now {len(messages)}")
 

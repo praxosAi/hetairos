@@ -192,6 +192,12 @@ class LangGraphAgentRunner:
                 has_media = has_media or has_new_media
             elif isinstance(input, dict):
                 # Single message - existing logic
+                # Habit prefix is LLM-only guidance — applied to the first
+                # outgoing message of this turn (text if present, otherwise
+                # the first file caption). Never persisted.
+                from src.utils.file_msg_utils import build_habit_prefix
+                habit_prefix = build_habit_prefix(metadata)
+
                 if input_text and source != 'browser_tool':
                     ### filter out flags, empty text, etc.
                     input_text = input_text.replace('/START_NEW','').replace('/start_new','').strip()
@@ -204,8 +210,9 @@ class LangGraphAgentRunner:
                     # Store raw content without prefix
                     await self.conversation_manager.add_user_message(user_context.user_id, conversation_id, input_text, storage_metadata, msg_category)
                     # But use prefixed content for LLM history
-                    history.append(HumanMessage(content=message_prefix + input_text))
-                
+                    history.append(HumanMessage(content=habit_prefix + message_prefix + input_text))
+                    habit_prefix = ""  # consumed by text message
+
                 # Handle files for single message
                 if input_files:
                     # Merge prefix metadata with file metadata
@@ -218,7 +225,8 @@ class LangGraphAgentRunner:
                         message_prefix=message_prefix,
                         prefix_metadata=file_storage_metadata,
                         message_category=msg_category,
-                        user_id=user_context.user_id
+                        user_id=user_context.user_id,
+                        habit_prefix=habit_prefix,
                     )
                     has_media = True
             else:

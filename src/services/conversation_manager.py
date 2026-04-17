@@ -59,12 +59,12 @@ class ConversationManager:
         return await self.db.add_message(user_id, conversation_id, 'user', content, 'text', metadata, message_category)
 
     async def add_user_media_message(self, user_id:str, conversation_id: str, content: str, inserted_id: str, message_type: str = 'media', metadata: Dict = None, message_category: str = None) -> str:
-        """Add user media message to conversation"""
-        return await self.db.add_message(user_id, conversation_id, 'user', content + f" PLACEHOLDER FOR {inserted_id}", message_type, metadata, message_category)
+        """Add user media message to conversation. inserted_id lives in metadata."""
+        return await self.db.add_message(user_id, conversation_id, 'user', content, message_type, metadata, message_category)
 
     async def add_assistant_media_message(self, user_id:str, conversation_id: str, content: str, inserted_id: str, message_type: str = 'media', metadata: Dict = None, message_category: str = None) -> str:
-        """Add user media message to conversation"""
-        return await self.db.add_message(user_id, conversation_id, 'assistant', content + f" PLACEHOLDER FOR {inserted_id}", message_type, metadata, message_category)
+        """Add assistant media message to conversation. inserted_id lives in metadata."""
+        return await self.db.add_message(user_id, conversation_id, 'assistant', content, message_type, metadata, message_category)
 
     async def add_assistant_message(self, user_id: str, conversation_id: str, content: str,
                              message_type: str = 'text', metadata: Dict = None, message_category: str = None) -> str:

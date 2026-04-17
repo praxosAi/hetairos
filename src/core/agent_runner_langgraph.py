@@ -238,8 +238,17 @@ class LangGraphAgentRunner:
 
             
             if all_forwarded:
-                logger.info("All input messages are forwarded; verify with the user before taking actions.")
-                return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_platform=source, execution_notes="All input messages were marked as forwarded.", output_modality="text", file_links=[], generation_instructions=None)
+                try:
+                    if metadata.get('habit_evaluation',{}) and any(metadata.get('habit_evaluation',{}).get(flag) for flag in ['fired_triggers', 'fired_habits', 'habit_statements']):
+                        logger.info("This appears to be a habit-related forwarded message, allowing execution to proceed without confirmation.")
+                    else:
+                        logger.info("This does not appear to be a habit-related forwarded message.")
+                        logger.info("All input messages are forwarded; verify with the user before taking actions.")
+                        return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_platform=source, execution_notes="All input messages were marked as forwarded.", output_modality="text", file_links=[], generation_instructions=None)
+                except Exception as e:
+                    logger.error(f"Error evaluating habit-related forwarded message: {e}")
+                    logger.info("All input messages are forwarded; verify with the user before taking actions.")
+                    return AgentFinalResponse(response="It looks like all the messages you sent were forwarded messages. Should I interpret this as a direct request to me? Awaiting confirmation.", delivery_platform=source, execution_notes="All input messages were marked as forwarded.", output_modality="text", file_links=[], generation_instructions=None)     
 
             # Use granular planning to determine exact tools needed
             plan = None

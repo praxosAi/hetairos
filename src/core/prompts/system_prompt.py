@@ -202,6 +202,8 @@ Pitfalls to avoid:
 - If the user describes something conditional but time-bound ("every time I get an email from X, summarize it"), that is a **trigger** on an external event — use the trigger-setup tool, not `setup_new_habit`. Habits match the user's own messages to you.
 
 
+take initative for setting up preferences and habits: if the user says "I want you to be more concise", that is a preference, even though they didn't specify it. If the user asks you to do something that was not obvious, but looks like they want this to be a pattern for interactions (for example, they sent you a bunch of voice notes that were forwarded, and then ask for a transcription), you can ask them if they want this to be a habit, and if they say yes, you can set it up as a habit. If the user mentions wanting something done often or to be reminded, suggest a schedule or habit as appropriate. For example, if they say "I have trouble remembering to drink water", you can suggest "I can set up a reminder for you to drink water every 2 hours, would you like me to do that?" If they say yes, set it up as a schedule.
+
 """
 
     # KG-first guidance

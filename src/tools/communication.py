@@ -8,6 +8,79 @@ from src.services.conversation_manager import ConversationManager
 from src.integrations.ios.client import IOSClient
 logger = setup_logger(__name__)
 
+
+def create_file_attachment_tool(file_buffer: list, tool_registry=None) -> List:
+    """
+    Create a tool that lets the agent attach files for delivery to the user.
+
+    The agent calls this when it has retrieved a file URL (e.g. from Google Drive,
+    Dropbox, or any blob storage) and wants to send the actual file — not just
+    mention the URL as inline text.
+
+    The files accumulate in `file_buffer` (a shared mutable list) and are flushed
+    to the egress layer after the agent finishes its turn.
+    """
+
+    @tool
+    async def attach_file_to_response(
+        url: str,
+        file_type: str,
+        file_name: str,
+    ) -> ToolExecutionResponse:
+        """
+        Attach a file to your response so it is delivered to the user as a real
+        file/media attachment rather than a plain URL in the message text.
+
+        Call this whenever you retrieve or generate a file that the user should
+        receive directly (Google Drive export, Dropbox download link, generated
+        image/audio/video, etc.).
+
+        Args:
+            url: Publicly accessible URL of the file to send.
+            file_type: One of "image", "document", "audio", "video", "other_file".
+            file_name: Human-readable file name shown to the user (e.g. "Q3_Report.pdf").
+
+        Examples:
+            # Send a Google Drive file
+            attach_file_to_response(
+                url="https://drive.google.com/uc?export=download&id=...",
+                file_type="document",
+                file_name="Project_Proposal.pdf"
+            )
+
+            # Send a generated or fetched image
+            attach_file_to_response(
+                url="https://cdn.mypraxos.com/images/chart.png",
+                file_type="image",
+                file_name="sales_chart.png"
+            )
+        """
+        try:
+            valid_types = {"image", "document", "audio", "video", "other_file"}
+            resolved_type = file_type if file_type in valid_types else "other_file"
+
+            file_buffer.append({
+                "url": url,
+                "file_type": resolved_type,
+                "file_name": file_name,
+            })
+            logger.info(
+                f"attach_file_to_response: queued '{file_name}' ({resolved_type}). "
+                f"Buffer size: {len(file_buffer)}"
+            )
+            return ToolExecutionResponse(
+                status="success",
+                result=f"File '{file_name}' will be delivered to the user."
+            )
+        except Exception as e:
+            logger.error(f"attach_file_to_response error: {e}", exc_info=True)
+            raise Exception(f"Failed to attach file: {str(e)}")
+
+    tools = [attach_file_to_response]
+    if tool_registry:
+        tool_registry.apply_descriptions_to_tools(tools)
+    return tools
+
 def create_platform_messaging_tools(
     source: str,
     user_id: str,

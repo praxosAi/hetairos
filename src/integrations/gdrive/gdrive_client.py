@@ -14,6 +14,32 @@ from src.utils.logging.base_logger import setup_logger
 
 logger = setup_logger('gdrive_client')
 
+
+_DRIVE_QUERY_OPERATORS = (
+    "contains", " in ", " in parents", "=", "!=", " and ", " or ", " not ",
+    "mimetype", "fulltext", "modifiedtime", "createdtime", "viewedbymetime",
+    "parents", "trashed", "starred", "sharedwithme", "name ", "owners",
+    "writers", "readers", "appproperties", "properties",
+)
+
+
+def _normalize_drive_query(query: str) -> str:
+    """Accept either a Drive query clause or a bare search term.
+
+    Drive's `q` parameter requires operator-based syntax (`name contains 'x'`,
+    `fullText contains 'x'`, `mimeType='...'`, ...). Callers occasionally pass a
+    bare string; rewrite those into a name/fullText search so the API accepts them.
+    """
+    stripped = query.strip()
+    if not stripped:
+        return stripped
+    lowered = stripped.lower()
+    if any(op in lowered for op in _DRIVE_QUERY_OPERATORS):
+        return stripped
+    safe = stripped.replace("\\", "\\\\").replace("'", "\\'")
+    return f"name contains '{safe}' or fullText contains '{safe}'"
+
+
 class GoogleDriveIntegration(BaseIntegration):
 
     def __init__(self, user_id: str):
@@ -125,7 +151,7 @@ class GoogleDriveIntegration(BaseIntegration):
     async def download_file(self, file_id: str, *, account: Optional[str] = None) -> Optional[bytes]:
         """Download a file from a specific Google Drive account."""
         service, resolved_account = self._get_service_for_account(account)
-        
+
         try:
             request = service.files().get_media(fileId=file_id)
             fh = BytesIO()
@@ -133,11 +159,76 @@ class GoogleDriveIntegration(BaseIntegration):
             done = False
             while not done:
                 _, done = downloader.next_chunk()
-            
+
             fh.seek(0)
             return fh.read()
         except Exception as e:
             logger.error(f"Error downloading file {file_id} from {resolved_account}: {e}")
+            return None
+
+    # Native Google types must be exported — get_media() returns 400 for them.
+    # Target formats chosen for broad client compatibility (PDF for docs/slides,
+    # xlsx for sheets, png for drawings).
+    _GOOGLE_EXPORT_MAP = {
+        'application/vnd.google-apps.document': (
+            'application/pdf', '.pdf'
+        ),
+        'application/vnd.google-apps.presentation': (
+            'application/pdf', '.pdf'
+        ),
+        'application/vnd.google-apps.drawing': (
+            'image/png', '.png'
+        ),
+        'application/vnd.google-apps.spreadsheet': (
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.xlsx'
+        ),
+    }
+
+    async def download_or_export_file(
+        self, file_id: str, *, account: Optional[str] = None
+    ) -> Optional[Tuple[bytes, str, str]]:
+        """Download a file's bytes, exporting native Google types as PDF/xlsx/png.
+
+        Returns (bytes, resolved_mime_type, suggested_extension) or None on failure.
+        suggested_extension is "" for non-Google binary files (caller should keep the
+        original filename) and e.g. ".pdf" when an export happened.
+        """
+        service, resolved_account = self._get_service_for_account(account)
+
+        try:
+            meta = service.files().get(fileId=file_id, fields="mimeType,name").execute()
+            src_mime = meta.get('mimeType', '') or ''
+
+            if src_mime in self._GOOGLE_EXPORT_MAP:
+                export_mime, ext = self._GOOGLE_EXPORT_MAP[src_mime]
+                request = service.files().export_media(fileId=file_id, mimeType=export_mime)
+                fh = BytesIO()
+                downloader = MediaIoBaseDownload(fh, request)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+                fh.seek(0)
+                return fh.read(), export_mime, ext
+
+            if src_mime.startswith('application/vnd.google-apps'):
+                logger.warning(
+                    f"Unsupported native Google type {src_mime} for file {file_id}; "
+                    "no export target configured"
+                )
+                return None
+
+            request = service.files().get_media(fileId=file_id)
+            fh = BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+            fh.seek(0)
+            return fh.read(), src_mime or 'application/octet-stream', ''
+        except Exception as e:
+            logger.error(
+                f"Error downloading/exporting file {file_id} from {resolved_account}: {e}"
+            )
             return None
 
     async def save_file_to_drive(self, file_url: str, file_name: str, *, drive_folder_id: Optional[str] = None, account: Optional[str] = None) -> str:
@@ -256,11 +347,11 @@ class GoogleDriveIntegration(BaseIntegration):
             if folder_id:
                 q_parts.append(f"'{folder_id}' in parents")
 
-            # --- CORRECTED LOGIC ---
-            # Treat the 'query' as a complete clause from the tool, do not wrap it.
-            # Wrapping in parentheses ensures it combines correctly with other 'and' clauses.
+            # Agents sometimes pass a bare search term instead of a Drive query clause
+            # (e.g. "Arash The Archer"), which Drive rejects with 400. Detect that and
+            # rewrite as a name/fullText contains search. Proper clauses pass through.
             if query:
-                q_parts.append(f"({query})")
+                q_parts.append(f"({_normalize_drive_query(query)})")
 
             q_string = " and ".join(q_parts)
             logger.info(f"Executing Drive search with query: '{q_string}' for account {resolved_account}")

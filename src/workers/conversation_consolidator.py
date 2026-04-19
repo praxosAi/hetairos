@@ -48,14 +48,13 @@ class ConversationConsolidator:
                         if file_doc:
                             file_type = file_doc.get('type', 'file')
 
-                            # For non-document files (images, videos, audio), generate descriptions
+                            # For non-document files (images, videos, audio), ensure an auto_description
+                            # exists on the doc — describe_file is idempotent, so if upload-time
+                            # enrichment already ran this is a cheap cache hit.
                             if file_type in {'image', 'photo', 'video', 'audio', 'voice'}:
                                 file_message_idx.append(idx)
                                 tasks.append(asyncio.create_task(
-                                    ai_service.multi_modal_by_doc_id(
-                                        'provide a full description of this media. prefix it with "description of media type: , where media type is the type of the media, for example, audio, video, etc."',
-                                        inserted_id
-                                    )
+                                    ai_service.describe_file(inserted_id)
                                 ))
 
                             # For documents, add to ingestion list
@@ -78,6 +77,8 @@ class ConversationConsolidator:
                         message_idx = file_message_idx[i]
                         message = messages[message_idx]
                         description = descriptions[i]
+                        if not description:
+                            continue
                         message['content'] = f'Description of media type with id: {message["metadata"]["inserted_id"]}: {description}'
                         message_dict[str(message['_id'])] = {'content': message['content']}
 

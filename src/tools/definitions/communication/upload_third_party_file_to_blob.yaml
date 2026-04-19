@@ -1,0 +1,60 @@
+tool_id: upload_third_party_file_to_blob
+category: communication
+display_name: upload_third_party_file_to_blob
+short_description: Download a file from the user's connected cloud storage (Google Drive, Dropbox) and rehost it on public blob storage so it can be attached to the response.
+
+detailed_description: |
+  Raw share URLs from Google Drive, Dropbox, and similar services require the user's
+  OAuth token to access — they return 403/401 when handed to WhatsApp, Telegram,
+  mypraxos-mobile, or any other client that does not have those credentials.
+
+  This tool uses the already-authenticated integration client to fetch the file
+  bytes, uploads them to Azure Blob Storage, and returns a SAS URL that is valid
+  for 48 hours without any authentication. Pass the returned url/file_type/file_name
+  directly into attach_file_to_response.
+
+  Call this BEFORE attach_file_to_response whenever the source URL is authenticated.
+  Do NOT call this for files already on blob/CDN storage (generated media, previously
+  proxied files).
+
+arguments:
+  - name: integration
+    type: str
+    description: Which cloud storage the file lives in.
+    required: true
+    enum_values:
+      - google_drive
+      - dropbox
+  - name: file_identifier
+    type: str
+    description: Source-specific identifier. For Google Drive use the file_id (from search_google_drive_files or list_drive_files). For Dropbox use the file path (e.g. "/Reports/Q3.pdf").
+    required: true
+  - name: file_name
+    type: str
+    description: Filename to use on the rehosted blob and in the delivered attachment card (include extension).
+    required: true
+  - name: account
+    type: str
+    description: Optional account selector when the user has multiple accounts connected to the same integration. Omit if only one account is connected.
+    required: false
+
+returns: Dict with {url, file_type, file_name, mime_type} — pass url/file_type/file_name straight into attach_file_to_response.
+
+examples:
+  - 'upload_third_party_file_to_blob(integration="google_drive", file_identifier="1AbCdEfGhIjKlMnOp", file_name="Q3_Report.pdf")'
+  - 'upload_third_party_file_to_blob(integration="dropbox", file_identifier="/Reports/sales.xlsx", file_name="sales.xlsx")'
+
+use_cases:
+  - User asks you to send them a file that lives in their Google Drive or Dropbox
+  - You need to deliver an email attachment that was stored in cloud storage
+  - Any case where attach_file_to_response would otherwise receive an authenticated URL
+
+notes:
+  - Always follow with attach_file_to_response using the returned url/file_type/file_name.
+  - Do NOT re-proxy files that are already on blob/CDN storage (e.g. generated media URLs).
+  - Rehosted blobs are signed for 48 hours; do not try to reuse URLs from prior conversations.
+  - Native Google Docs/Slides are auto-exported as PDF, Sheets as xlsx, Drawings as png; the returned file_name reflects the exported extension.
+
+requires_integration: null
+requires_auth: true
+is_long_running: false

@@ -1,0 +1,59 @@
+tool_id: list_recent_uploaded_files
+category: praxos_memory
+display_name: list_recent_uploaded_files
+short_description: List the user's most recently uploaded files across ALL conversations (time-ordered, from MongoDB), regardless of Praxos sync state
+
+detailed_description: |
+  Returns the user's recent file uploads across every conversation — not limited to the
+  current turn. Reads directly from MongoDB (time-ordered, newest first). Includes files
+  that have NOT yet been synced to Praxos memory.
+
+  Each row includes:
+    - `InsertedId:` — the MongoDB document id. This is the identifier the sync tools
+      (`sync_file_for_semantic_search`, `sync_file_to_praxos_knowledge_graph`) require.
+    - `Source ID:` — present only if the file has already been ingested to Praxos. Use
+      this with `retrieve_file_by_source_id` to re-attach the file to the current
+      conversation.
+    - `About:` — a short auto-generated description (or transcript, for audio). Absent
+      for very recent uploads while enrichment is still pending.
+
+  Use this when:
+    - The user refers to a file from an earlier conversation and you need to locate it.
+    - You want a chronological view of what the user has uploaded recently.
+    - You need the MongoDB `inserted_id` of a past file in order to sync it to memory.
+
+  Contrast with `list_available_media` (only the CURRENT conversation) and
+  `search_uploaded_files` (semantic search over SYNCED-only files).
+
+arguments:
+  - name: file_type
+    type: str
+    description: Optional filter — one of 'image', 'video', 'audio', 'document', 'file'.
+    required: false
+  - name: limit
+    type: int
+    description: Max number of files to return (default 10, max 50).
+    required: false
+    default: 10
+
+returns: Formatted string listing recent files with InsertedId, Source ID (if ingested), About, and upload time.
+
+examples:
+  - 'list_recent_uploaded_files()'
+  - 'list_recent_uploaded_files(file_type="document", limit=5)'
+
+use_cases:
+  - User says "the contract I uploaded last week" — find its InsertedId or source_id.
+  - Before syncing a past file, fetch its `inserted_id`.
+  - Show the user what files are on record when they ask.
+
+notes:
+  - This is the cross-conversation counterpart to `list_available_media`.
+  - Unsynced files show `⚠️ Not yet ingested to Praxos (no source_id)`.
+  - Pair with `sync_file_for_semantic_search` / `sync_file_to_praxos_knowledge_graph`
+    (using the `InsertedId`) to make a past file retrievable later, or with
+    `retrieve_file_by_source_id` (using `Source ID`) to reload an already-synced file
+    into the current conversation.
+
+requires_integration: mypraxos
+requires_auth: true

@@ -1,0 +1,31 @@
+tool_id: habit_automation
+category: patterns
+display_name: "Pattern: Habit-Based Automation (WHEN I SAY → DO)"
+short_description: Explains how to turn the user's recurring message patterns into automatic actions.
+detailed_description: |
+  Habits are how Praxos recognizes *the user's own messaging patterns* and turns them into actions.
+  Unlike triggers (which react to external events like emails or calendar items), habits fire when
+  an incoming user message matches a pattern the user has taught the system.
+
+  Typical habit shapes:
+  - Prefix keywords: "expense:", "todo:", "idea:", "note:"
+  - Message shape: forwarded messages, voice notes with a certain phrase
+  - Recurring phrasings: "remind me to…", "log this as…"
+
+  The glue tool is `setup_new_habit`. Unlike triggers, habits are always persistent.
+
+use_cases:
+  - When the user says "whenever I send a message starting with…"
+  - When the user wants to auto-log, auto-tag, or auto-route their own messages
+  - When the user describes a personal shorthand they want the system to recognize
+  - When the pattern is about *what the user types*, not about external events
+
+examples:
+  - 'setup_new_habit("When I send a message starting with ''expense:'', log it as an expense in my Google Sheet.")'
+  - 'setup_new_habit("When I forward a message to you, summarize it and save to my notes.")'
+  - 'setup_new_habit("When I say ''todo:'' followed by text, add it as a task in Trello.")'
+
+distinguishing_from_triggers:
+  - Triggers react to EXTERNAL events (email arrived, meeting starts, 8am hits) → use setup_new_trigger
+  - Habits react to the USER'S own incoming messages (prefix, shape, phrasing) → use setup_new_habit
+  - If the user says "when I get…" → trigger; if "when I say/send…" → habit

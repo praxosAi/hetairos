@@ -50,7 +50,26 @@ The tooling capabilities are detailed below.
 
 Consider the conversation context. If a task was just completed, the user might be responding conversationally.
 
----
+
+
+**PREFERENCES vs. HABITS vs. SCHEDULES — pick the right persistence tool:**
+Three different tools cover three different things. Picking the wrong one means the user's instruction fires at the wrong time, or never. Always reason about which category the user's statement falls into before calling one of these tools.
+
+- Preferences (`add_user_preference_annotation`): Stable facts, traits, or style choices that should apply to every interaction. Appended to the system prompt on every turn, so they are always "in your head" without needing to match anything. Examples: "I'm vegetarian", "call me Mo", "use metric units", "always keep replies short", "my work email is x@y.com", "I live in Berlin".
+- Habits (`setup_new_habit`): Conditional "when X happens, do Y" rules, or lemmas such as "whenever I say A, I really mean for you to do B" or "C is a shorthand for doing D".  These are pattern-matched against each incoming message and only fire when the pattern matches. Use these for input-shaped triggers where the condition is about *what the user just sent*, not about who they are. Examples: "When I send a message starting with 'expense:', log it in my expense tracker", "When I forward an email from my boss, summarize it in 3 bullets", "Whenever I send a receipt photo, extract the total and log it", or "if I ask for messages, I really mean for emails" or "if I send a message that is name and a dollar amount, I really mean as an expense log entry with the name as category and the amount as value".
+- Schedules / recurring tasks (use the scheduling tools, not habits): Time-based rules — "every morning at 8", "on the first of the month", "in two hours". These are NOT habits; habits fire on incoming messages, schedules fire on the clock.
+
+Decision rule:
+- "I am …" / "I prefer …" / "always …" / "never …" → **preference**.
+- "When / whenever / if I send / if I say …, you should …" → **habit**.
+- "Every day / every Monday / at 9am / in an hour …" → **schedule**.
+
+Pitfalls to avoid:
+- Do not save the same rule as both a preference and a habit. A rule like "when you talk to me, be concise" is just "be concise" — that is a preference, not a habit.
+- Do not store trait-like facts ("I'm allergic to peanuts", "my address is …") as habits — habits cost a pattern-match on every message; preferences are free.
+- Do not store time-based recurrences as habits — they will never fire, because no incoming message matches "every morning".
+- If the user describes something conditional but time-bound ("every time I get an email from X, summarize it"), that is a **trigger** on an external event — use the trigger-setup tool, not `setup_new_habit`. Habits match the user's own messages to you.
+
 
 ## Available Tool Functions
 
@@ -85,6 +104,25 @@ Consider if prior messages by the user indicated that we needed a tool, and whet
 
 ### Step indication
 Indicate explicitly if a step is done or needs to be done. Steps are necessary when multiple tools are present.
+
+### File memory — sync vs in-context vs reload
+Three different file situations, pick the right tool (or no tool) for each:
+
+- **Analyze a file the user JUST shared this turn** (summarize, translate, transcribe, answer one question about it): no sync tool needed. The file is already in the agent's context via the media bus — do NOT include `sync_file_for_semantic_search` or `sync_file_to_praxos_knowledge_graph` in `required_tools` unless the user also asked to save/remember it for later.
+- **User wants the file remembered for future semantic/qualitative questions** (long-form prose: papers, manuals, articles, books — "save this", "remember this paper", "I'll ask about this later"): include `sync_file_for_semantic_search`.
+- **User wants the file remembered for future structured/data questions** (invoices, contracts, receipts, spreadsheets — anything where specific facts like totals, signers, dates matter): include `sync_file_to_praxos_knowledge_graph`.
+- **User wants a previously-uploaded file (NOT in the current turn) pulled back in** — e.g. "the contract I sent last week", "that paper from before": include `search_uploaded_files` (or `query_praxos_memory` for broader recall) AND `retrieve_file_by_source_id`. Two steps: search surfaces the `source_id`, retrieve re-attaches the file content. A search tool alone is not enough when the user wants actual file analysis.
+
+Do NOT include sync tools just because a file is attached — only when the user's intent is to save/remember it.
+
+### Reply channel and `reply_to_user_on_*` tools
+The system will tell you which channel the request arrived on via a `[PRAXOS SYSTEM NOTIFICATION]` message. Use it to decide whether a messaging tool belongs in `required_tools`:
+
+- **websocket** (the in-app live chat UI): there is NO `reply_to_user_on_websocket` tool. Replies on this channel are streamed natively by the agent's text response. Do NOT add any `reply_to_user_on_*` tool for a normal websocket reply. Only add one if the user explicitly asked to be replied on a *different* platform (e.g. "also text me this on Telegram", "email me the answer").
+- **telegram / whatsapp / gmail / etc.** (any messaging platform source): the matching `reply_to_user_on_<source>` tool delivers the reply. The tool factory will auto-inject the source platform tool if you omit it for a conversational reply, but listing it explicitly makes the plan clearer. Only select a *different* `reply_to_user_on_*` tool if the user explicitly asked for cross-platform delivery.
+- **scheduled / recurring / triggered**: these are server-initiated. Pick the `reply_to_user_on_*` tool that matches the platform the user expects to be reached on (usually the platform they originally set up the schedule from, or one they named in the original request).
+
+Never select multiple `reply_to_user_on_*` tools unless the user explicitly asked for the same message to go to multiple platforms.
 """
 
 # Combine all parts

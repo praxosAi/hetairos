@@ -859,6 +859,9 @@ class FileManager:
                         file_result.blob_path,
                         container_name=file_result.container_name
                     )
+                # Persist back so callers holding this FileResult can use the URL
+                # (e.g. when storing user-uploaded media in the conversation log).
+                file_result.url = url
 
             # Auto-generate description if not provided
             if not description:
@@ -875,7 +878,7 @@ class FileManager:
                 source="uploaded",
                 blob_path=file_result.blob_path,
                 mime_type=file_result.mime_type,
-                metadata=file_result.metadata,
+                metadata={**(file_result.metadata or {}), "inserted_id": file_result.inserted_id},
                 container_name=file_result.container_name
             )
 
@@ -884,6 +887,17 @@ class FileManager:
                 f"({file_result.file_type}) - {file_result.file_name} "
                 f"(conversation={conversation_id})"
             )
+
+            # Fire-and-forget: generate a searchable auto-description (transcript for audio,
+            # short factual summary otherwise) on gemini-flash-lite and persist to
+            # documents.auto_description. Does not block the current turn; the file is
+            # already in context for this turn's analysis.
+            try:
+                import asyncio
+                from src.services.ai_service.ai_service import ai_service
+                asyncio.create_task(ai_service.describe_file(file_result.inserted_id))
+            except Exception as e:
+                self.logger.warning(f"Could not schedule auto-description for {file_result.inserted_id}: {e}")
 
             return media_id
 
@@ -992,6 +1006,11 @@ class FileManager:
 
         results = []
         for doc in documents:
+            metadata = dict(doc.get("metadata") or {})
+            if doc.get("auto_description"):
+                metadata["auto_description"] = doc["auto_description"]
+            if doc.get("source_id") and "source_id" not in metadata:
+                metadata["source_id"] = doc["source_id"]
             file_result = FileResult(
                 inserted_id=str(doc.get("_id")),
                 blob_path=doc.get("blob_path"),
@@ -1007,7 +1026,7 @@ class FileManager:
                 platform_file_id=doc.get("platform_file_id"),
                 platform_message_id=doc.get("platform_message_id"),
                 created_at=doc.get("created_at"),
-                metadata=doc.get("metadata", {})
+                metadata=metadata
             )
             results.append(file_result)
 

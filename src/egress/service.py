@@ -377,9 +377,25 @@ class EgressService:
                     thread_ts=thread_ts  # Reply in thread
                 )
 
-            # Note: File attachments not implemented yet for Slack
             if response_files:
-                logger.warning("Slack file attachments not yet implemented")
+                for file_obj in response_files:
+                    try:
+                        if isinstance(file_obj, str):
+                            import json as _json
+                            file_obj = _json.loads(file_obj)
+                        file_url = file_obj.get("url")
+                        file_name = file_obj.get("file_name", "file")
+                        if not file_url:
+                            logger.warning(f"Skipping Slack file with no url: {file_obj}")
+                            continue
+                        await slack_integration.send_file(
+                            channel=channel,
+                            file_url=file_url,
+                            file_name=file_name,
+                            thread_ts=thread_ts,
+                        )
+                    except Exception as file_err:
+                        logger.error(f"Failed to upload file to Slack: {file_err}", exc_info=True)
 
             logger.info(f"Successfully sent response to Slack channel {channel}")
 
@@ -443,19 +459,35 @@ class EgressService:
                 )
 
             if response_files:
-                logger.warning("Discord file attachments not yet implemented")
+                for file_obj in response_files:
+                    try:
+                        if isinstance(file_obj, str):
+                            import json as _json
+                            file_obj = _json.loads(file_obj)
+                        file_url = file_obj.get("url")
+                        file_name = file_obj.get("file_name", "file")
+                        if not file_url:
+                            logger.warning(f"Skipping Discord file with no url: {file_obj}")
+                            continue
+                        await discord_integration.send_file(
+                            channel=channel,
+                            file_url=file_url,
+                            file_name=file_name,
+                        )
+                    except Exception as file_err:
+                        logger.error(f"Failed to upload file to Discord: {file_err}", exc_info=True)
 
             logger.info(f"Successfully sent response to Discord channel {channel}")
 
         except Exception as e:
             logger.error(f"Failed to send Discord response: {e}", exc_info=True)
 
-    async def _send_websocket_response(self, event, response_text):
+    async def _send_websocket_response(self, event, response_text, response_files=None):
         logging.info('attempting to publish to websocket')
         metadata = event.get("metadata", {})
         token = metadata.get("token")
         conversation_id = metadata.get("conversation_id")
-        
+
         if not token:
             logger.error(f"No token in event metadata for WebSocket message. Event: {event}")
             return
@@ -467,21 +499,42 @@ class EgressService:
         else:
             channel = f"ws-out:{token}"
             logger.info(f"Publishing response to user channel '{channel}'")
-            
-        # Format as a streaming event so the frontend can parse it
-        # This makes the batch response look like a stream chunk to the frontend
+
         import json
-        
-        # If response_text is JSON (from structured output), we might need to handle it differently
-        # For now, treat it as a plain message
-        payload = {
-            "type": "message_token",
-            "content": response_text,
-            "display_as": "message"
-        }
-        
-        await publish_message(channel, json.dumps(payload))
-        logger.info(f"Successfully published response to Redis channel '{channel}'")
+
+        # Publish text if present (batch/fallback path — streaming already sent tokens live)
+        if response_text:
+            payload = {
+                "type": "message_token",
+                "content": response_text,
+                "display_as": "message"
+            }
+            await publish_message(channel, json.dumps(payload))
+            logger.info(f"Published text response to Redis channel '{channel}'")
+
+        # Publish file attachments as a dedicated event
+        if response_files:
+            files_list = []
+            for f in response_files:
+                if isinstance(f, dict):
+                    files_list.append({
+                        "url": f.get("url", ""),
+                        "file_type": f.get("file_type", "other_file"),
+                        "file_name": f.get("file_name", "file"),
+                    })
+                else:
+                    # FileLink pydantic object
+                    files_list.append({
+                        "url": getattr(f, "url", ""),
+                        "file_type": getattr(f, "file_type", "other_file"),
+                        "file_name": getattr(f, "file_name", "file"),
+                    })
+            files_payload = {
+                "type": "file_links",
+                "files": files_list,
+            }
+            await publish_message(channel, json.dumps(files_payload))
+            logger.info(f"Published {len(files_list)} file(s) to Redis channel '{channel}'")
 
     async def _send_mcp_response(self, event: dict, response_text: str, response_files):
         """Send response to MCP client via Redis pub/sub."""
@@ -656,7 +709,7 @@ class EgressService:
                 await self._send_discord_response(event, response_text, response_files)
 
             elif final_output_type == "websocket":
-                await self._send_websocket_response(event, response_text)
+                await self._send_websocket_response(event, response_text, response_files)
 
             elif final_output_type == "mcp":
                 await self._send_mcp_response(event, response_text, response_files)

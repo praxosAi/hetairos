@@ -12,7 +12,7 @@ from src.utils.logging.base_logger import setup_logger, user_id_var, modality_va
 from src.services.scheduling_service import scheduling_service
 from src.ingest.ingestion_worker import InitialIngestionCoordinator
 from src.egress.service import egress_service
-from src.utils.database import conversation_db
+from src.utils.database import conversation_db, db_manager
 import uuid
 logger = setup_logger(__name__)
 
@@ -255,6 +255,14 @@ class ExecutionWorker:
                 if not user_context:
                     logger.error(f"Could not create user context for user {event['user_id']}. Skipping event.")
                     return  # Changed from continue to return
+
+                # --- Evaluate user message against habits/triggers ---
+                if source in ["whatsapp", "telegram", "imessage", "slack", "discord",'websocket']:
+                    try:
+                        await self.evaluate_message_habits(event, user_context)
+                    except Exception as e:
+                        logger.warning(f"Habit evaluation failed (continuing): {e}")
+
                 has_media = await self.determine_media_presence(event)
 
                 # Start activity indicator (typing for Telegram)
@@ -318,9 +326,22 @@ class ExecutionWorker:
         # Stop typing indicator
         await egress_service.stop_typing_indicator(typing_task_id)
 
-        # Check if response is empty (agent used messaging tools) OR if it was already streamed
-        if (not result.response or result.response.strip() == "") or getattr(result, 'is_direct_stream', False):
-            logger.info("No fallback response needed - agent used communication tools or response streamed directly")
+        is_streamed = getattr(result, 'is_direct_stream', False)
+        has_files = bool(result.file_links)
+        has_text = bool(result.response and result.response.strip())
+
+        if is_streamed:
+            # Text was already streamed live — only call egress if there are files to deliver
+            if has_files:
+                logger.info(f"Response was streamed; delivering {len(result.file_links)} file(s) via egress")
+                event["output_type"] = result.delivery_platform
+                await egress_service.send_response(event, {"response": "", "file_links": result.file_links})
+            else:
+                logger.info("Response was streamed; no files to deliver — skipping egress")
+            return
+
+        if not has_text:
+            logger.info("No fallback response needed - agent used communication tools directly")
             return
 
         # Fallback was used - send via egress service
@@ -328,6 +349,141 @@ class ExecutionWorker:
         event["output_type"] = result.delivery_platform
         await egress_service.send_response(event, {"response": result.response, "file_links": result.file_links})
 
+
+    async def evaluate_message_habits(self, event: dict, user_context):
+        """Evaluate incoming user message against habits and triggers via trigger-ingestor."""
+        from src.core.praxos_client import PraxosClient
+        from src.config.settings import settings
+
+        user_record = user_context.user_record
+        email = user_record.get("email", "")
+        api_key = user_record.get("praxos_api_key") or settings.PRAXOS_API_KEY
+        if not email or not api_key:
+            logger.info("Skipping habit evaluation: no email or API key for user")
+            return
+
+        praxos_client = PraxosClient(f"env_for_{email}", api_key=api_key)
+
+        source = event.get("source", "user")
+        message_json = self.build_user_message_json(event, user_context)
+
+        result = await praxos_client.evaluate_user_message(
+            message_json=message_json,
+            source=source,
+            output_type=event.get("output_type"),
+            output_chat_id=event.get("output_chat_id") or event.get("output_phone_number"),
+        )
+
+        if result.get("error"):
+            logger.warning(f"Habit evaluation error: {result['error']}")
+            return
+
+        fired_triggers = result.get("fired_triggers", {})
+        fired_habits = result.get("fired_habits", {})
+
+        if not (fired_triggers or fired_habits):
+            logger.info("Message evaluation: no habits or triggers fired")
+            return
+
+        logger.info(f"Message evaluation: {len(fired_triggers)} triggers, {len(fired_habits)} habits fired")
+
+        habit_statements = []
+        for rule_id in fired_habits.keys():
+            trigger_doc = await db_manager.get_trigger_by_rule_id(rule_id)
+            if trigger_doc and trigger_doc.get("trigger_text"):
+                habit_statements.append(trigger_doc["trigger_text"])
+            else:
+                logger.warning(f"Fired habit {rule_id} has no trigger_text in DB")
+
+        event.setdefault("metadata", {})["habit_evaluation"] = {
+            "fired_triggers": fired_triggers,
+            "fired_habits": fired_habits,
+            "habit_statements": habit_statements,
+        }
+        # Habit prefix is applied later at the LLM HumanMessage construction
+        # step (see file_msg_utils.build_habit_prefix). Mutating payload text
+        # here would persist agent-only guidance into the conversation log and
+        # leak it into the mobile UI on reload.
+
+    def build_user_message_json(self, event: dict, user_context) -> dict:
+        """Transform execution worker event into UserMessageAdapter-compatible dict."""
+        payload = event.get("payload", {})
+        metadata = event.get("metadata", {})
+        user_record = user_context.user_record
+
+        # Handle list payload (grouped messages)
+        if isinstance(payload, list):
+            text = " ".join(item.get("text", "") for item in payload if item.get("text"))
+            files = []
+            for item in payload:
+                files.extend(item.get("files", []))
+            forwarded = any(item.get("metadata", {}).get("forwarded") for item in payload)
+        else:
+            text = payload.get("text", "")
+            files = payload.get("files", []) or []
+            forwarded = metadata.get("forwarded", False)
+
+        # Determine content_type
+        content_type = "text"
+        if forwarded:
+            content_type = "forwarded"
+        elif files:
+            first_type = files[0].get("type", "")
+            if first_type in ("voice", "audio"):
+                content_type = "voice"
+            elif first_type in ("image", "photo"):
+                content_type = "image"
+            elif first_type in ("document", "file"):
+                content_type = "document"
+
+        # Build attachments
+        attachments = []
+        for f in files:
+            attachments.append({
+                "id": f.get("inserted_id") or f.get("filename", ""),
+                "filename": f.get("filename", "unknown"),
+                "mime": f.get("mime_type", "application/octet-stream"),
+                "size": f.get("size"),
+            })
+
+        # Voice-specific fields
+        transcription = None
+        duration_seconds = None
+        language = None
+        if content_type == "voice" and files:
+            voice_file = files[0]
+            transcription = text  # text is the transcription for voice messages
+            duration_seconds = voice_file.get("duration")
+            language = voice_file.get("language")
+
+        # Forwarded fields
+        forwarded_text = None
+        forwarded_from_name = None
+        if forwarded:
+            forward_origin = metadata.get("forward_origin", {})
+            forwarded_from_name = (
+                forward_origin.get("sender_name")
+                or forward_origin.get("chat", {}).get("title")
+            )
+
+        user_name = f"{user_record.get('first_name', '')} {user_record.get('last_name', '')}".strip() or "User"
+
+        return {
+            "id": metadata.get("message_id") or str(uuid.uuid4()),
+            "text": text,
+            "source": event.get("source", "user"),
+            "user_name": user_name,
+            "content_type": content_type,
+            "timestamp": metadata.get("timestamp"),
+            "attachments": attachments,
+            "transcription": transcription,
+            "duration_seconds": duration_seconds,
+            "language": language,
+            "channel_name": metadata.get("channel_name"),
+            "channel_id": metadata.get("channel_id"),
+            "forwarded_text": forwarded_text,
+            "forwarded_from_name": forwarded_from_name,
+        }
 
     async def determine_media_presence(self, event: dict) -> bool:
         has_media = False

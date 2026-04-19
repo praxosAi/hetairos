@@ -75,6 +75,37 @@ def wav_bytes_to_ogg_bytes(wav_bytes: bytes) -> bytes:
     return ogg_io.read()
 
 
+def wav_bytes_to_mp3_bytes(wav_bytes: bytes, bitrate: str = "96k") -> bytes:
+    """
+    Convert WAV audio bytes to MP3 bytes (mono, 24 kHz).
+
+    MP3 is chosen for the web/mobile delivery path because every major browser
+    (including older Safari) plays it natively. OGG/Opus support on Safari was
+    only added in 2023 and is unreliable on pre-Sonoma versions.
+
+    Args:
+        wav_bytes: Raw audio in WAV format.
+        bitrate: Target MP3 bitrate. 96k is a good speech/voice default.
+
+    Returns:
+        MP3 encoded audio as bytes.
+    """
+    wav_io = BytesIO(wav_bytes)
+    sound = AudioSegment.from_file(wav_io, format="wav")
+
+    mp3_io = BytesIO()
+    sound.export(
+        mp3_io,
+        format="mp3",
+        codec="libmp3lame",
+        bitrate=bitrate,
+        parameters=["-ac", "1", "-ar", "24000"],  # mono, 24 kHz
+    )
+
+    mp3_io.seek(0)
+    return mp3_io.read()
+
+
 def caf_bytes_to_ogg_bytes(caf_bytes: bytes) -> bytes:
     """
     Convert CAF audio bytes to OGG/Opus bytes (mono, 16 kHz).

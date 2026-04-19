@@ -33,7 +33,8 @@ from src.tools.hubspot import create_hubspot_tools
 from src.tools.airtable import create_airtable_tools
 from src.tools.praxos import create_praxos_memory_tool
 from src.tools.file_retrieval import create_file_retrieval_tools
-from src.tools.communication import create_bot_communication_tools, create_platform_messaging_tools
+from src.tools.communication import create_bot_communication_tools, create_platform_messaging_tools, create_file_attachment_tool
+from src.tools.file_proxy import create_file_proxy_tools
 from src.tools.media_generation import create_media_generation_tools
 from src.tools.media_bus_tools import create_media_bus_tools
 from src.tools.scheduling import create_scheduling_tools
@@ -66,7 +67,8 @@ class AgentToolsFactory:
         request_id: str = None,
         minimal_tools: bool = False,
         required_tool_ids: Optional[List[str]] = None,
-        conversation_manager: ConversationManager = None
+        conversation_manager: ConversationManager = None,
+        file_buffer: Optional[list] = None,
     ) -> List:
         """Create tools based on agent configuration by instantiating integration clients.
 
@@ -156,6 +158,15 @@ class AgentToolsFactory:
                 tools.extend(create_bot_communication_tools(metadata, user_id, tool_registry))
             except Exception as e:
                 logger.error(f"Error creating bot communication tools: {e}", exc_info=True)
+
+        # File attachment tool - always available so the agent can send files to the user
+        # on any platform (websocket, messaging apps, etc.)
+        if file_buffer is not None:
+            try:
+                tools.extend(create_file_attachment_tool(file_buffer, tool_registry))
+                logger.info("File attachment tool created successfully.")
+            except Exception as e:
+                logger.error(f"Error creating file attachment tool: {e}", exc_info=True)
 
         # Media Generation Tools - Conditionally included based on planning
         # Per implementation plan: Planning decides if these are needed
@@ -295,7 +306,7 @@ class AgentToolsFactory:
             'get_frequent_google_senders', 'create_google_email_rule', 'move_google_emails_by_sender', 'categorize_google_emails_by_sender'
         ])
         needs_gcal = needs_category(['get_calendar_events', 'create_calendar_event'])
-        needs_gdrive = needs_category(['search_google_drive_files', 'save_file_to_drive', 'create_text_file_in_drive', 'read_file_content_by_id', 'list_drive_files','create_gdrive_folder', 'google_drive_copy_file'])
+        needs_gdrive = needs_category(['search_google_drive_files', 'save_file_to_drive', 'create_text_file_in_drive', 'read_file_content_by_id', 'list_drive_files','create_gdrive_folder', 'google_drive_copy_file', 'upload_third_party_file_to_blob'])
         needs_gdocs = needs_category(['create_google_doc', 'get_google_doc_content', 'insert_text_in_doc', 'append_text_to_doc', 'format_doc_text', 'insert_paragraph_in_doc', 'insert_table_in_doc', 'delete_doc_content', 'replace_text_in_doc', 'search_google_doc'])
         needs_gsheets = needs_category(['create_google_sheet', 'get_sheet_values', 'update_sheet_values', 'append_sheet_rows', 'clear_sheet_range', 'get_single_cell', 'set_single_cell', 'add_sheet_tab', 'delete_sheet_tab', 'insert_sheet_rows', 'insert_sheet_columns', 'delete_sheet_rows', 'get_spreadsheet_info', 'search_google_sheet'])
         needs_gslides = needs_category(['create_google_presentation', 'get_presentation_info', 'add_slide', 'delete_slide', 'insert_text_in_slide', 'insert_image_in_slide', 'format_slide_text', 'create_table_in_slide', 'delete_slide_object', 'search_google_presentation'])
@@ -309,7 +320,7 @@ class AgentToolsFactory:
             'get_frequent_outlook_senders'
         ])
         needs_notion = needs_category(['list_databases', 'list_notion_pages', 'query_notion_database', 'get_all_workspace_entries', 'search_notion_pages_by_keyword', 'create_notion_page', 'create_notion_database_entry', 'create_notion_database', 'append_to_notion_page', 'update_notion_page_properties', 'get_notion_page_content'])
-        needs_dropbox = needs_category(['save_file_to_dropbox', 'read_file_from_dropbox','list_dropbox_files','search_dropbox_files'])
+        needs_dropbox = needs_category(['save_file_to_dropbox', 'read_file_from_dropbox','list_dropbox_files','search_dropbox_files', 'upload_third_party_file_to_blob'])
         needs_trello = needs_category(['list_trello_accounts','list_trello_organizations','list_trello_boards','get_trello_board_details','create_trello_board','share_trello_board','create_trello_list','list_trello_cards','get_trello_card','create_trello_card','update_trello_card','move_trello_card','add_trello_comment','create_trello_checklist','get_board_members','get_card_members','assign_member_to_card','unassign_member_from_card','search_trello'])
         needs_hubspot = needs_category(['hubspot_search_contacts', 'hubspot_create_contact', 'hubspot_search_companies', 'hubspot_create_company', 'hubspot_create_deal', 'hubspot_create_note', 'hubspot_create_task', 'hubspot_search_deals', 'hubspot_get_notes', 'hubspot_get_tasks'])
         needs_airtable = needs_category(['airtable_list_bases', 'airtable_get_base_schema', 'airtable_search_records', 'airtable_create_record', 'airtable_update_record', 'airtable_delete_record'])
@@ -474,6 +485,32 @@ class AgentToolsFactory:
                 except Exception as e:
                     logger.error(f"Error creating Dropbox tools: {e}", exc_info=True)
 
+        # File proxy tool — rehosts authenticated third-party files to blob storage.
+        # Needs at least one of gdrive/dropbox to have authenticated successfully.
+        if is_tool_required('upload_third_party_file_to_blob'):
+            proxy_gdrive = None
+            proxy_dropbox = None
+            if 'gdrive' in integration_map:
+                idx, gdrive_client = integration_map['gdrive']
+                if authenticated_integrations[idx] is True:
+                    proxy_gdrive = gdrive_client
+            if 'dropbox' in integration_map:
+                idx, dropbox_client = integration_map['dropbox']
+                if authenticated_integrations[idx] is True:
+                    proxy_dropbox = dropbox_client
+            if proxy_gdrive or proxy_dropbox:
+                try:
+                    tools.extend(create_file_proxy_tools(
+                        gdrive_integration=proxy_gdrive,
+                        dropbox_integration=proxy_dropbox,
+                        tool_registry=tool_registry,
+                    ))
+                    logger.info("File proxy tool loaded")
+                except Exception as e:
+                    logger.error(f"Error creating file proxy tool: {e}", exc_info=True)
+            else:
+                logger.warning("upload_third_party_file_to_blob requested but no cloud storage integrations authenticated")
+
         if 'trello' in integration_map:
             idx, trello_integration = integration_map['trello']
             if authenticated_integrations[idx] is True:
@@ -502,7 +539,22 @@ class AgentToolsFactory:
                     logger.error(f"Error creating Airtable tools: {e}", exc_info=True)
 
         # --- Praxos Memory Tools ---
-        if needs_category(['query_praxos_memory', 'query_praxos_memory_intelligent_search', 'enrich_praxos_memory_entries', 'setup_new_trigger','consult_praxos_long_term_memory']):
+        if needs_category([
+            'query_praxos_memory',
+            'query_praxos_memory_intelligent_search',
+            'enrich_praxos_memory_entries',
+            'setup_new_trigger',
+            'setup_new_habit',
+            'sync_file_to_praxos_knowledge_graph',
+            'sync_file_for_semantic_search',
+            'extract_entities_by_type',
+            'extract_literals_by_type',
+            'get_entities_by_type_name',
+            'store_new_entity_in_knowledge_graph',
+            'update_knowledge_graph_literal',
+            'update_entity_properties_in_knowledge_graph',
+            'delete_from_knowledge_graph',
+        ]):
             from src.config.settings import settings
             if settings.OPERATING_MODE == "local":
                 praxos_api_key = settings.PRAXOS_API_KEY

@@ -410,6 +410,10 @@ def create_file_retrieval_tools(
                 if file_res.caption:
                     result_text += f"   Caption: {file_res.caption}\n"
 
+                # Always expose the MongoDB inserted_id — sync tools need it
+                if file_res.inserted_id:
+                    result_text += f"   InsertedId: {file_res.inserted_id}\n"
+
                 # Show how to retrieve
                 if hasattr(file_res, 'metadata') and file_res.metadata.get('source_id'):
                     source_id = file_res.metadata['source_id']
@@ -417,6 +421,10 @@ def create_file_retrieval_tools(
                     result_text += f"   Use: retrieve_file_by_source_id('{source_id}')\n"
                 else:
                     result_text += f"   ⚠️  Not yet ingested to Praxos (no source_id)\n"
+
+                auto_desc = file_res.metadata.get('auto_description') if getattr(file_res, 'metadata', None) else None
+                if auto_desc:
+                    result_text += f"   About: {auto_desc}\n"
 
                 if file_res.created_at:
                     result_text += f"   Uploaded: {file_res.created_at}\n"

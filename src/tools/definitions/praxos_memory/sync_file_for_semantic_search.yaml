@@ -1,0 +1,58 @@
+tool_id: sync_file_for_semantic_search
+category: praxos_memory
+display_name: Sync File for Semantic Search
+short_description: Sync a file from the conversation into Praxos memory via embedding-only ingestion (chunk + embed → Qdrant), best for qualitative queries over long-form documents
+
+detailed_description: |
+  Takes a file the user has already shared in the conversation (identified by its
+  inserted_id) and ingests it into Praxos memory through the embedding-only path: the
+  file is chunked, each chunk is embedded, and the embeddings are stored in the user's
+  Qdrant collection with sync_type="embedding" metadata. No Praxolex extraction, no
+  Neo4j writes.
+
+  Use this when the user is likely to ask qualitative, semantic, or summarization-style
+  questions about the file later — "what does this paper say about X", "summarize
+  chapter 3", "find the section where the author argues Y". It is the lighter-weight
+  path: faster and cheaper than knowledge-graph sync, but without structured-fact
+  retrieval.
+
+  On success the file message is flagged as synced with sync_type="embedding" so future
+  turns can see it's already in memory.
+
+arguments:
+  - name: inserted_id
+    type: str
+    description: The inserted_id of the file message in this conversation. Obtain from list_available_media or from the file metadata attached to a user message.
+    required: true
+  - name: description
+    type: str
+    description: Short human-readable description to store with the embedded chunks (e.g. "Research paper on transformer scaling"). Helps retrieval later.
+    required: false
+  - name: sync_both
+    type: bool
+    description: If True, also run the knowledge-graph path (sync_file_to_praxos_knowledge_graph) after the embedding sync. Use only for genuinely ambiguous files where both structured and qualitative queries are likely. Default False to save compute.
+    required: false
+    default: false
+
+returns: Object with inserted_id, sync_type, sync_ref, and file_name on success.
+
+examples:
+  - 'sync_file_for_semantic_search(inserted_id="65f...", description="Research paper on attention mechanisms")'
+  - 'sync_file_for_semantic_search(inserted_id="65f...", description="Company handbook", sync_both=True)'
+
+use_cases:
+  - User shared a research paper, book chapter, or long article and will ask semantic questions about it
+  - User shared a manual, handbook, or documentation
+  - User shared prose where exact facts matter less than "what does it say about X"
+  - Any long-form document where semantic similarity retrieval is the right tool
+
+notes:
+  - Prefer this for long-form prose. For structured data (invoices, contracts, spreadsheets), use sync_file_to_praxos_knowledge_graph.
+  - Supports a wider set of formats than knowledge-graph sync: PDF, JSON, text, CSV, Markdown, Word, Excel.
+  - Only files already in the conversation (with an inserted_id) can be synced.
+  - Check the file's metadata.synced flag before re-syncing.
+
+requires_integration: praxos
+requires_auth: true
+is_long_running: true
+estimated_duration_seconds: 10

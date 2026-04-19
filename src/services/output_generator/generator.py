@@ -4,7 +4,7 @@ from google.genai import types
 from src.config.settings import settings
 from src.utils.logging import setup_logger
 from src.utils.blob_utils import upload_bytes_to_blob_storage,get_blob_sas_url
-from src.utils.audio import wave_file, wav_bytes_to_ogg_bytes, ogg_bytes_to_caf_bytes
+from src.utils.audio import wave_file, wav_bytes_to_ogg_bytes, wav_bytes_to_mp3_bytes, ogg_bytes_to_caf_bytes
 logger = setup_logger(__name__)
 
 
@@ -114,23 +114,55 @@ class OutputGenerator:
             ),
         )
         logger.info(f"speech generated")
-        data = response.candidates[0].content.parts[0].inline_data
+
+        # Gemini returns empty candidates (content=None) when it rejects the
+        # request — e.g. unsupported voice/language combo, safety filter, or
+        # region block. Guard against that instead of crashing on AttributeError.
+        candidates = getattr(response, "candidates", None) or []
+        if not candidates:
+            logger.warning(
+                f"Gemini TTS returned no candidates (voice={voice.value if voice else None}); "
+                "request likely rejected (unsupported voice/language or safety filter)."
+            )
+            return None, None, None
+
+        content = getattr(candidates[0], "content", None)
+        parts = getattr(content, "parts", None) if content else None
+        if not parts:
+            logger.warning(
+                f"Gemini TTS returned candidate with no content/parts "
+                f"(voice={voice.value if voice else None}); finish_reason="
+                f"{getattr(candidates[0], 'finish_reason', 'unknown')}."
+            )
+            return None, None, None
+
+        data = parts[0].inline_data
         if data and data.data:
-            wave_bytes = wave_file(data.data) 
-            ogg_bytes = wav_bytes_to_ogg_bytes(wave_bytes)
-            logger.info(f"Generated OGG audio")
+            wave_bytes = wave_file(data.data)
+
             if imessage_scenario:
+                # iMessage requires CAF/Opus — keep the existing WAV → OGG → CAF
+                # pipeline because ogg_bytes_to_caf_bytes is already tuned for it.
+                ogg_bytes = wav_bytes_to_ogg_bytes(wave_bytes)
                 logger.info(f"Converting OGG to CAF for iMessage compatibility")
                 caf_bytes = ogg_bytes_to_caf_bytes(ogg_bytes)
                 file_name = f"{uuid.uuid4().hex}.caf"
                 audio_blob_name = await upload_bytes_to_blob_storage(caf_bytes,  f"{prefix}/generated_audio/{file_name}", content_type="audio/x-caf")
                 audio_blob_sas_url = await get_blob_sas_url(audio_blob_name)
-                return audio_blob_sas_url, file_name, audio_blob_name  # Return blob_path too
+                return audio_blob_sas_url, file_name, audio_blob_name
 
-            file_name = f"{datetime.datetime.utcnow().isoformat()}_{uuid.uuid4()}.ogg"
-            audio_blob_name = await upload_bytes_to_blob_storage(ogg_bytes,  f"{prefix}/generated_audio/{file_name}", content_type="audio/ogg")
+            # Web / mobile / messaging apps: use MP3. Every major browser plays
+            # it natively; OGG/Opus is unreliable on older Safari.
+            mp3_bytes = wav_bytes_to_mp3_bytes(wave_bytes)
+            logger.info(f"Generated MP3 audio ({len(mp3_bytes)} bytes)")
+            file_name = f"{datetime.datetime.utcnow().isoformat()}_{uuid.uuid4()}.mp3"
+            audio_blob_name = await upload_bytes_to_blob_storage(
+                mp3_bytes,
+                f"{prefix}/generated_audio/{file_name}",
+                content_type="audio/mpeg",
+            )
             audio_blob_sas_url = await get_blob_sas_url(audio_blob_name)
-            return audio_blob_sas_url, file_name, audio_blob_name  # Return blob_path too
+            return audio_blob_sas_url, file_name, audio_blob_name
         return None, None, None
     async def generate_video(self, prompt: str, prefix: str, reference_image_bytes:list={}) -> str:
         """

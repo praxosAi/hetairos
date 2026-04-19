@@ -384,6 +384,7 @@ class DatabaseManager:
         self.rate_limits = self.db["rate_limits"]
         self.agent_schedules = self.db["agent_schedules"]
         self.documents = self.db["documents"]
+        self.messages = self.db["messages"]
         self.agent_triggers = self.db["agent_triggers"]
         self.tool_monitor_collection = self.db["user_tool_monitor"]
     async def _create_index_if_not_exists(self, collection, keys, **kwargs):
@@ -629,11 +630,50 @@ class DatabaseManager:
             return document
         return None
 
-    async def update_document_source_id(self, document_id: str, source_id: str):    
+    async def update_document_source_id(self, document_id: str, source_id: str):
         """Update the source_id of a document."""
         await self.documents.update_one(
             {"_id": ObjectId(document_id)},
             {"$set": {"source_id": source_id}}
+        )
+
+    async def update_document_auto_description(self, document_id: str, description: str):
+        """Set an auto-generated description/transcript on a document."""
+        await self.documents.update_one(
+            {"_id": ObjectId(document_id)},
+            {"$set": {"auto_description": description}}
+        )
+
+    async def mark_document_synced(self, document_id: str, sync_type: str, sync_ref: str = None):
+        """
+        Flag a document as synced to Praxos memory.
+
+        sync_type: "knowledge_graph" (structured ingest via add_file → Praxolex → Neo4j),
+                   "embedding" (chunk+embed only, no KG extraction),
+                   or "both" (when synced through both paths).
+        sync_ref: optional Praxos-side identifier (source_id for KG, point_id/collection for embedding).
+        """
+        sync_entry = {
+            "sync_type": sync_type,
+            "sync_ref": sync_ref,
+            "synced_at": datetime.utcnow().isoformat(),
+        }
+        update = {
+            "$set": {
+                "synced": True,
+                "last_sync_type": sync_type,
+                "last_sync_at": sync_entry["synced_at"],
+            },
+            "$push": {"sync_history": sync_entry},
+        }
+        await self.documents.update_one({"_id": ObjectId(document_id)}, update)
+        await self.messages.update_many(
+            {"metadata.inserted_id": document_id},
+            {"$set": {
+                "metadata.synced": True,
+                "metadata.last_sync_type": sync_type,
+                "metadata.last_sync_ref": sync_ref,
+            }},
         )
     async def insert_or_reject_items(
         self,

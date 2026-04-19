@@ -72,10 +72,19 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
         "\n you must use a reply_to_user_on tool, such as reply_to_user_on_whatsapp, reply_to_user_on_telegram, reply_to_user_on_imessage, to send the generated media to the user. do not just say 'i have generated the image' without sending it to them. use the media bus to get the reference to the generated media, and send it to them using the appropriate reply_to_user tool."
         "\n\n**MEDIA BUS - REFERENCING PREVIOUS MEDIA**:"
         "\nYou can access previously generated media in this conversation:"
-        "\n- list_available_media(): See all media in conversation"
+        "\n- list_available_media(): See all media in conversation. For uploaded files this also prints the `InsertedId:` — the MongoDB document id that sync/ingestion tools need."
         "\n- get_media_by_id(media_id): Load specific media into context (for images, you'll see it visually)"
         "\n- get_recent_images(): Quick access to recent images"
         "\nUse these to create variations or reference previous generations."
+        "\n\n**FILE MEMORY — WHEN TO SYNC, WHEN NOT TO, AND HOW TO RELOAD**:"
+        "\nThree distinct things, do not confuse them:"
+        "\n1. **Just analyze the file now (no sync)**: If the user shared a file THIS turn and is only asking a one-shot question about it (summarize, translate, transcribe, extract a single value), the file is already in your context via the media bus. Do NOT call any sync tool — just answer. Syncing is for *future* retrieval, not for reading the file now."
+        "\n2. **Sync to semantic search** (`sync_file_for_semantic_search`): Use when the user will later ask qualitative/semantic questions — 'what does this paper say about X', 'summarize chapter 3', 'find the section arguing Y'. Best for long-form prose: papers, manuals, articles, books."
+        "\n3. **Sync to knowledge graph** (`sync_file_to_praxos_knowledge_graph`): Use when the user will later ask structured/data-oriented questions — 'what was the invoice total', 'who signed the contract', 'list the line items', 'when does it expire'. Best for invoices, contracts, receipts, spreadsheets, structured JSON. Higher-fidelity but more expensive."
+        "\n   If the file is genuinely ambiguous (e.g. a long contract with both narrative prose AND extractable facts), pass `sync_both=True` on either tool instead of calling both."
+        "\n   Both sync tools require the file's `inserted_id` — get it from `list_available_media`'s `InsertedId:` line, or from the file metadata on the user's message."
+        "\n4. **Reload a previously-synced file into context**: If the user refers to a file from an earlier conversation (not in the current media bus), use `search_uploaded_files(query)` — or `query_praxos_memory(query)` for broader recall — to locate it. Results include a `source_id`. Then call `retrieve_file_by_source_id(source_id)` to download the file and re-attach it to the current conversation (it will be added to the media bus). Only then can you analyze its content again."
+        "\n   Do NOT try to answer from search snippets alone when the user wants actual file analysis — reload the file first."
         "\n\nIf the user requests a trigger setup, attempt to use the other tools at your disposal to enrich the information about the trigger's rules. however, only add info that you are certain about to the conditions of the trigger."
         "\n\nIMPORTANT: YOU MUST ALWAYS USE APPROPRIATE TOOLS AND PERFORM THE REQUESTED TASK BEFORE OUTPUTTING TO THE USER. YOU MAY NOT SEND AN OUTPUT TO THE USER TELLING THEM YOU ARE PERFORMING A TASK WITHOUT ACTUALLY PERFORMING THE TASK."
         "\n\n**IMPORTANT**: we do not consider capabilities such as 'Transcribing the contents' of an image, 'Translating the contents' of an email, 'transcribing an audio file', or 'summarizing a document' as separate tools. These are capabilities that are part of the core AI functionality, and do not require a separate tool. The tools listed here are for external integrations, or for specific actions that require a distinct function call. Such capabilities can be handled by the AI directly, without needing to invoke a separate tool. These capabilities are always available, and you can always do them."
@@ -182,6 +191,30 @@ def create_system_prompt(user_context: UserContext, source: str, metadata: Optio
 
     """
 
+    prefs_vs_habits_prompt = """
+**PREFERENCES vs. HABITS vs. SCHEDULES — pick the right persistence tool:**
+Three different tools cover three different things. Picking the wrong one means the user's instruction fires at the wrong time, or never. Always reason about which category the user's statement falls into before calling one of these tools.
+
+- Preferences (`add_user_preference_annotation`): Stable facts, traits, or style choices that should apply to every interaction. Appended to the system prompt on every turn, so they are always "in your head" without needing to match anything. Examples: "I'm vegetarian", "call me Mo", "use metric units", "always keep replies short", "my work email is x@y.com", "I live in Berlin".
+- Habits (`setup_new_habit`): Conditional "when X happens, do Y" rules, or lemmas such as "whenever I say A, I really mean for you to do B" or "C is a shorthand for doing D".  These are pattern-matched against each incoming message and only fire when the pattern matches. Use these for input-shaped triggers where the condition is about *what the user just sent*, not about who they are. Examples: "When I send a message starting with 'expense:', log it in my expense tracker", "When I forward an email from my boss, summarize it in 3 bullets", "Whenever I send a receipt photo, extract the total and log it", or "if I ask for messages, I really mean for emails" or "if I send a message that is name and a dollar amount, I really mean as an expense log entry with the name as category and the amount as value".
+- Schedules / recurring tasks (use the scheduling tools, not habits): Time-based rules — "every morning at 8", "on the first of the month", "in two hours". These are NOT habits; habits fire on incoming messages, schedules fire on the clock.
+
+Decision rule:
+- "I am …" / "I prefer …" / "always …" / "never …" → **preference**.
+- "When / whenever / if I send / if I say …, you should …" → **habit**.
+- "Every day / every Monday / at 9am / in an hour …" → **schedule**.
+
+Pitfalls to avoid:
+- Do not save the same rule as both a preference and a habit. A rule like "when you talk to me, be concise" is just "be concise" — that is a preference, not a habit.
+- Do not store trait-like facts ("I'm allergic to peanuts", "my address is …") as habits — habits cost a pattern-match on every message; preferences are free.
+- Do not store time-based recurrences as habits — they will never fire, because no incoming message matches "every morning".
+- If the user describes something conditional but time-bound ("every time I get an email from X, summarize it"), that is a **trigger** on an external event — use the trigger-setup tool, not `setup_new_habit`. Habits match the user's own messages to you.
+
+
+take initative for setting up preferences and habits: if the user says "I want you to be more concise", that is a preference, even though they didn't specify it. If the user asks you to do something that was not obvious, but looks like they want this to be a pattern for interactions (for example, they sent you a bunch of voice notes that were forwarded, and then ask for a transcription), you can ask them if they want this to be a habit, and if they say yes, you can set it up as a habit. If the user mentions wanting something done often or to be reminded, suggest a schedule or habit as appropriate. For example, if they say "I have trouble remembering to drink water", you can suggest "I can set up a reminder for you to drink water every 2 hours, would you like me to do that?" If they say yes, set it up as a schedule.
+
+"""
+
     # KG-first guidance
     kg_first_prompt = ""
     if resolution_guidance:
@@ -203,7 +236,7 @@ ONLY ASK THE USER for information that is NOT in the knowledge graph.
 
 
     
-    system_prompt = base_prompt + praxos_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt + total_system_capabilities_prompt + kg_first_prompt
+    system_prompt = base_prompt + praxos_prompt + time_prompt + tool_output_prompt + user_record_for_context + side_effect_explanation_prompt + task_prompt + personilization_prompt + total_system_capabilities_prompt + prefs_vs_habits_prompt + kg_first_prompt
     if tool_descriptions:
         system_prompt += f"\n\nThe following tools are available to you:\n{tool_descriptions}\nUse them in accordance with the user intent."
     if plan:

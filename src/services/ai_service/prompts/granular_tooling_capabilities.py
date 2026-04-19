@@ -104,6 +104,25 @@ Consider if prior messages by the user indicated that we needed a tool, and whet
 
 ### Step indication
 Indicate explicitly if a step is done or needs to be done. Steps are necessary when multiple tools are present.
+
+### File memory — sync vs in-context vs reload
+Three different file situations, pick the right tool (or no tool) for each:
+
+- **Analyze a file the user JUST shared this turn** (summarize, translate, transcribe, answer one question about it): no sync tool needed. The file is already in the agent's context via the media bus — do NOT include `sync_file_for_semantic_search` or `sync_file_to_praxos_knowledge_graph` in `required_tools` unless the user also asked to save/remember it for later.
+- **User wants the file remembered for future semantic/qualitative questions** (long-form prose: papers, manuals, articles, books — "save this", "remember this paper", "I'll ask about this later"): include `sync_file_for_semantic_search`.
+- **User wants the file remembered for future structured/data questions** (invoices, contracts, receipts, spreadsheets — anything where specific facts like totals, signers, dates matter): include `sync_file_to_praxos_knowledge_graph`.
+- **User wants a previously-uploaded file (NOT in the current turn) pulled back in** — e.g. "the contract I sent last week", "that paper from before": include `search_uploaded_files` (or `query_praxos_memory` for broader recall) AND `retrieve_file_by_source_id`. Two steps: search surfaces the `source_id`, retrieve re-attaches the file content. A search tool alone is not enough when the user wants actual file analysis.
+
+Do NOT include sync tools just because a file is attached — only when the user's intent is to save/remember it.
+
+### Reply channel and `reply_to_user_on_*` tools
+The system will tell you which channel the request arrived on via a `[PRAXOS SYSTEM NOTIFICATION]` message. Use it to decide whether a messaging tool belongs in `required_tools`:
+
+- **websocket** (the in-app live chat UI): there is NO `reply_to_user_on_websocket` tool. Replies on this channel are streamed natively by the agent's text response. Do NOT add any `reply_to_user_on_*` tool for a normal websocket reply. Only add one if the user explicitly asked to be replied on a *different* platform (e.g. "also text me this on Telegram", "email me the answer").
+- **telegram / whatsapp / gmail / etc.** (any messaging platform source): the matching `reply_to_user_on_<source>` tool delivers the reply. The tool factory will auto-inject the source platform tool if you omit it for a conversational reply, but listing it explicitly makes the plan clearer. Only select a *different* `reply_to_user_on_*` tool if the user explicitly asked for cross-platform delivery.
+- **scheduled / recurring / triggered**: these are server-initiated. Pick the `reply_to_user_on_*` tool that matches the platform the user expects to be reached on (usually the platform they originally set up the schedule from, or one they named in the original request).
+
+Never select multiple `reply_to_user_on_*` tools unless the user explicitly asked for the same message to go to multiple platforms.
 """
 
 # Combine all parts

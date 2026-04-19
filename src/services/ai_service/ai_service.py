@@ -22,6 +22,7 @@ class AIService:
         self.model_gpt_mini = init_chat_model("@azureopenai/gpt-5-mini", api_key=settings.PORTKEY_API_KEY, base_url=portkey_gateway_url, default_headers=portkey_headers, model_provider="openai")
         self.model_gemini_flash = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", google_api_key=settings.GEMINI_API_KEY,   include_thoughts=True)
         self.model_gemini_flash_no_thinking = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", google_api_key=settings.GEMINI_API_KEY, thinking_level = 'minimal', include_thoughts=False)
+        self.model_gemini_flash_lite = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite-preview", google_api_key=settings.GEMINI_API_KEY, include_thoughts=False)
     async def with_structured_output(self, schema: BaseModel, prompt: str):
         structured_llm = self.model_gemini_flash.with_structured_output(schema)
         return await structured_llm.ainvoke(prompt)
@@ -50,7 +51,7 @@ class AIService:
 
 
 
-    async def granular_planning(self, context: list[BaseMessage], user_integration_names: set[str], stream_buffer: Optional['StreamBuffer'] = None) -> Tuple[GranularPlanningResponse, Optional[list[str]], Optional[str]]:
+    async def granular_planning(self, context: list[BaseMessage], user_integration_names: set[str], source: Optional[str] = None, stream_buffer: Optional['StreamBuffer'] = None) -> Tuple[GranularPlanningResponse, Optional[list[str]], Optional[str]]:
         # Default to no-op if not provided
         if stream_buffer is None:
             from src.core.stream_buffer import NoOpStreamBuffer
@@ -85,6 +86,25 @@ class AIService:
         # messages = [sys_message] + msgs_with_placeholders
         messages = msgs_with_placeholders
         messages.append(HumanMessage(content='We know that the user has the following tools available to them: \n' + '\n'.join(list(user_integration_names))))
+        if source:
+            if source == 'websocket':
+                source_note = (
+                    "[PRAXOS SYSTEM NOTIFICATION]: This request arrived over the 'websocket' channel "
+                    "(the in-app live chat UI). There is NO `reply_to_user_on_websocket` tool — replies "
+                    "on this channel are streamed natively by the agent's text response, not by a tool call. "
+                    "Therefore: do NOT include any `reply_to_user_on_*` tool in `required_tools` UNLESS the "
+                    "user has explicitly asked you to reply on a DIFFERENT platform (e.g. 'text me on Telegram', "
+                    "'email me the answer'). For a normal in-app reply, leave the messaging tools out entirely."
+                )
+            else:
+                source_note = (
+                    f"[PRAXOS SYSTEM NOTIFICATION]: This request arrived over the '{source}' channel. "
+                    f"If a reply is needed and the user did not ask for delivery on a different platform, "
+                    f"prefer `reply_to_user_on_{source}` (it will be auto-injected if you omit it, but listing "
+                    f"it makes the plan explicit). Only select a different `reply_to_user_on_*` tool if the "
+                    f"user explicitly asked to be replied on that other platform."
+                               )
+            messages.append(HumanMessage(content=source_note))
         logger.info('Calling granular_planning for precise tool selection')
 
         # structured_llm = planning_llm.with_structured_output(GranularPlanningResponse)
@@ -187,6 +207,82 @@ class AIService:
         logger.info(f"Retrieved payload for doc_id: {doc_id}, preparing messages for AI model.")
         messages = [HumanMessage(content=prompt), HumanMessage(content=[payload])]
         return await self.model_gemini_flash.ainvoke(messages)
+
+    async def describe_file(self, inserted_id: str, force: bool = False) -> Optional[str]:
+        """Generate (or return cached) a searchable description for a file and persist it to `documents.auto_description`.
+
+        For audio/voice files the output is a verbatim transcript; for everything else it is a short
+        (<= 40 words) factual description suitable for later retrieval. Idempotent: if auto_description
+        already exists on the doc and force=False, returns the cached value without calling the model.
+
+        Fire-and-forget safe: all exceptions are caught and logged; the method returns None on failure.
+        """
+        from src.utils.database import db_manager
+        try:
+            doc = await db_manager.get_document_by_id(inserted_id)
+            if not doc:
+                logger.warning(f"describe_file: document {inserted_id} not found")
+                return None
+
+            existing = doc.get("auto_description")
+            if existing and not force:
+                return existing
+
+            file_type = doc.get("type", "file")
+            file_name = doc.get("file_name", "unknown")
+
+            if file_type in {"audio", "voice"}:
+                instruction = (
+                    "Transcribe this audio verbatim. If it is longer than ~500 words, transcribe the "
+                    "first portion in full and summarize the remainder in one sentence. Return only the "
+                    "transcript, no preamble."
+                )
+            elif file_type in {"image", "photo"}:
+                instruction = (
+                    f"In 40 words or fewer, describe what this image ({file_name}) depicts — subjects, "
+                    f"setting, any legible text. Be specific enough that a later search could find it. "
+                    f"Return only the description, no preamble."
+                )
+            elif file_type == "video":
+                instruction = (
+                    f"In 40 words or fewer, describe what this video ({file_name}) shows — subjects, "
+                    f"setting, any spoken or on-screen text. Return only the description, no preamble."
+                )
+            else:
+                instruction = (
+                    f"In 40 words or fewer, describe what this file ({file_name}) contains — topic, "
+                    f"type of content, any distinguishing details. Be specific enough that a later "
+                    f"search could find it. Return only the description, no preamble."
+                )
+
+            payload, _ = await build_payload_entry_from_inserted_id(inserted_id)
+            if not payload:
+                logger.warning(f"describe_file: could not build payload for {inserted_id}")
+                return None
+
+            response = await self.model_gemini_flash_lite.ainvoke(
+                [HumanMessage(content=instruction), HumanMessage(content=[payload])]
+            )
+            raw = getattr(response, "content", None)
+            if isinstance(raw, list):
+                parts = []
+                for block in raw:
+                    if isinstance(block, str):
+                        parts.append(block)
+                    elif isinstance(block, dict) and block.get("type") == "text":
+                        parts.append(block.get("text", ""))
+                description = "".join(parts).strip()
+            else:
+                description = (raw or "").strip()
+            if not description:
+                return None
+
+            await db_manager.update_document_auto_description(inserted_id, description)
+            logger.info(f"describe_file: generated auto_description for {inserted_id} ({file_type}): {description[:80]}")
+            return description
+        except Exception as e:
+            logger.error(f"describe_file failed for {inserted_id}: {e}", exc_info=True)
+            return None
     
     
 ai_service = AIService()

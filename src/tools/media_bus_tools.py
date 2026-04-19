@@ -94,13 +94,14 @@ def create_media_bus_tools(conversation_id: str, user_id: str, tool_registry = N
                     if object_ids:
                         cursor = db_manager.documents.find(
                             {"_id": {"$in": object_ids}},
-                            {"synced": 1, "last_sync_type": 1, "last_sync_at": 1},
+                            {"synced": 1, "last_sync_type": 1, "last_sync_at": 1, "auto_description": 1},
                         )
                         async for doc in cursor:
                             sync_by_inserted_id[str(doc["_id"])] = {
                                 "synced": bool(doc.get("synced", False)),
                                 "sync_type": doc.get("last_sync_type"),
                                 "synced_at": doc.get("last_sync_at"),
+                                "auto_description": doc.get("auto_description"),
                             }
                 except Exception as e:
                     logger.warning(f"Could not fetch sync state for media: {e}")
@@ -125,6 +126,9 @@ def create_media_bus_tools(conversation_id: str, user_id: str, tool_registry = N
                         )
                     else:
                         result += "   Praxos sync: NO (not yet synced to memory)\n"
+                    auto_desc = sync_info.get("auto_description") if sync_info else None
+                    if auto_desc:
+                        result += f"   About: {auto_desc}\n"
 
                 if i < len(refs):
                     result += "\n"

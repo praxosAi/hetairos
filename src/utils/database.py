@@ -384,6 +384,7 @@ class DatabaseManager:
         self.rate_limits = self.db["rate_limits"]
         self.agent_schedules = self.db["agent_schedules"]
         self.documents = self.db["documents"]
+        self.messages = self.db["messages"]
         self.agent_triggers = self.db["agent_triggers"]
         self.tool_monitor_collection = self.db["user_tool_monitor"]
     async def _create_index_if_not_exists(self, collection, keys, **kwargs):
@@ -634,6 +635,13 @@ class DatabaseManager:
         await self.documents.update_one(
             {"_id": ObjectId(document_id)},
             {"$set": {"source_id": source_id}}
+        )
+
+    async def update_document_auto_description(self, document_id: str, description: str):
+        """Set an auto-generated description/transcript on a document."""
+        await self.documents.update_one(
+            {"_id": ObjectId(document_id)},
+            {"$set": {"auto_description": description}}
         )
 
     async def mark_document_synced(self, document_id: str, sync_type: str, sync_ref: str = None):

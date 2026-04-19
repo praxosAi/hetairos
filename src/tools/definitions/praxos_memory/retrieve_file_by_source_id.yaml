@@ -1,0 +1,43 @@
+tool_id: retrieve_file_by_source_id
+category: praxos_memory
+display_name: retrieve_file_by_source_id
+short_description: Re-attach a previously uploaded file to the current conversation using its Praxos `source_id`. Downloads the file, adds it to the media bus, and loads it into context so you can see and reason about it.
+
+detailed_description: |
+  Given a Praxos `source_id` (e.g. from `search_uploaded_files` or
+  `list_recent_uploaded_files`), this tool:
+
+    1. Looks up the MongoDB document by `source_id`.
+    2. Downloads the file from blob storage and builds an LLM-compatible payload.
+    3. Adds a `MediaReference` to this conversation's media bus (so it appears in
+       `list_available_media` going forward).
+    4. Records a message in conversation history and makes the file visible in
+       the current turn's context — images are viewable, documents/audio/video
+       are decoded and fed to the model.
+
+  Use this when the user wants to work with a file they uploaded in a previous
+  conversation (or earlier in this one, after it rotated out of context).
+
+arguments:
+  - name: source_id
+    type: str
+    description: The Praxos source_id for the file. Obtain from `search_uploaded_files` or the `Source ID:` field of `list_recent_uploaded_files` / `list_available_media`.
+    required: true
+
+returns: File metadata (file_name, file_type, source_id, inserted_id) plus confirmation that the file is now loaded into the conversation context and media bus.
+
+examples:
+  - 'retrieve_file_by_source_id(source_id="src_abc123")'
+
+use_cases:
+  - User says "pull up the contract I uploaded last week" — after finding it with `search_uploaded_files` or `list_recent_uploaded_files`, load it with this tool.
+  - You need to re-read or analyze a file that was uploaded in an earlier conversation.
+  - A file rotated out of context and you need it back in the current turn.
+
+notes:
+  - Requires the file to have been ingested to Praxos (i.e. have a `source_id`). For files that only have an `InsertedId` but no `Source ID`, sync them first with `sync_file_for_semantic_search` or `sync_file_to_praxos_knowledge_graph`.
+  - After calling this, the file is in the current conversation's media bus — subsequent `list_available_media` calls will include it.
+  - The file becomes visible to you in-context on the NEXT planning/execution step.
+
+requires_integration: praxos
+requires_auth: true

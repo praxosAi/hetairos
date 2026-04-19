@@ -73,8 +73,7 @@ class LangGraphAgentRunner:
             api_key=settings.GEMINI_API_KEY,
             temperature=0.2,
             thinking_level = 'minimal',
-            include_thoughts=True,
-            )
+            include_thoughts=True)
         self.llm = self.media_llm
         
         # else:
@@ -275,7 +274,7 @@ class LangGraphAgentRunner:
             try:
                 user_integration_names = await integration_service.get_user_integration_names(user_context.user_id)
                 logger.info(f"User {user_context.user_id} has integrations: {user_integration_names}")
-                plan, required_tool_ids, plan_str = await ai_service.granular_planning(history, user_integration_names, stream_buffer=self.stream_buffer)
+                plan, required_tool_ids, plan_str = await ai_service.granular_planning(history, user_integration_names, source=source, stream_buffer=self.stream_buffer)
                 if plan and plan.query_type and plan.query_type == 'command':
                     conversational = False
             except Exception as e:
@@ -424,11 +423,6 @@ class LangGraphAgentRunner:
                 conversation_id=conversation_id,
                 user_id=user_context.user_id
             )
-
-            ### for now, we remove it.
-            # Always use streaming - buffer decides what to do with events
-            
-            # --- Cancellation Mechanism Setup ---
             cancel_event = asyncio.Event()
             
             async def watch_for_cancellation(conv_id: str):

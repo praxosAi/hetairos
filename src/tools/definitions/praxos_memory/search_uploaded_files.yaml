@@ -1,0 +1,65 @@
+tool_id: search_uploaded_files
+category: praxos_memory
+display_name: search_uploaded_files
+short_description: Semantic search over the user's previously uploaded files in Praxos memory (cross-conversation). Returns only files already synced; use its `Source ID` with `retrieve_file_by_source_id` to load one into context.
+
+detailed_description: |
+  Runs a semantic (`node_vec`) search against the user's Praxos memory and returns
+  matching files across ALL conversations — not just the current one. For each hit
+  the tool looks up the MongoDB document by `source_id` and returns file metadata.
+
+  Each result row includes:
+    - `Source ID:` — the Praxos source identifier. This is the argument to
+      `retrieve_file_by_source_id` when you want to reload the file into this
+      conversation's context.
+    - `file_name`, `file_type`, `platform`, `size`, and `uploaded_at`.
+    - `caption` if the user provided one at upload time.
+
+  Use this when:
+    - The user refers to a file by content ("the paper that discussed transformer
+      scaling", "the contract where we agreed to the NDA clause") rather than by
+      time.
+    - You want semantic match instead of a chronological scan.
+
+  Important limitation: this only finds files that have ALREADY been synced to
+  Praxos (via `sync_file_for_semantic_search` or
+  `sync_file_to_praxos_knowledge_graph`). Unsynced files will not appear — use
+  `list_recent_uploaded_files` instead for those.
+
+  Contrast with `list_available_media` (only CURRENT conversation, synced or not)
+  and `list_recent_uploaded_files` (ALL conversations, time-ordered, synced or not).
+
+arguments:
+  - name: query
+    type: str
+    description: Natural-language description of the file to find (e.g. "employment contract", "sunset photo from last week", "Q3 budget spreadsheet").
+    required: true
+  - name: file_type
+    type: str
+    description: Optional filter — one of 'image', 'video', 'audio', 'document', 'file'.
+    required: false
+  - name: top_k
+    type: int
+    description: Max number of results to return (default 5, max 20).
+    required: false
+    default: 5
+
+returns: Formatted string listing matched files with Source ID, file_name, file_type, platform, size, caption, and upload time. Pair each Source ID with `retrieve_file_by_source_id` to load the file.
+
+examples:
+  - 'search_uploaded_files(query="employment contract")'
+  - 'search_uploaded_files(query="sunset photo", file_type="image", top_k=3)'
+  - 'search_uploaded_files(query="Q3 budget spreadsheet", file_type="document")'
+
+use_cases:
+  - User refers to a previously uploaded file by its content rather than by upload time.
+  - You need a semantic lookup across all of the user's past uploads to find one that matches a description.
+  - Before re-attaching a file to the current conversation, find its `source_id`.
+
+notes:
+  - Only returns files that have been ingested to Praxos. For unsynced files, use `list_recent_uploaded_files`.
+  - The search runs against the user's entire Praxos memory — it is NOT scoped to the current conversation.
+  - Pair with `retrieve_file_by_source_id(source_id)` to load a match into the current conversation's context.
+
+requires_integration: praxos
+requires_auth: true

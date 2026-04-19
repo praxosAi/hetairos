@@ -1,34 +1,57 @@
 tool_id: list_available_media
 category: media_bus
 display_name: list_available_media
-short_description: List media items currently available in this conversation
+short_description: List media items (images, audio, video, documents) in the CURRENT conversation's media bus, with Praxos sync state and short descriptions.
 
 detailed_description: |
-  List media items currently available in this conversation.
-    This tool shows all media that has been generated or received during the current conversation.
-    Use this to see what media exists that you can reference or build upon.
+  Returns the media references currently attached to this conversation — both
+  items the user uploaded and items the assistant generated. This is the
+  in-conversation counterpart to `list_recent_uploaded_files` (which spans all
+  conversations).
+
+  Each row includes:
+    - `ID:` — the media bus `media_id`, used with `get_media_by_id` to (re)load
+      the item into the model's context in a subsequent step.
+    - `InsertedId:` — the MongoDB document id. Required by sync tools
+      (`sync_file_for_semantic_search`, `sync_file_to_praxos_knowledge_graph`).
+    - `Praxos sync:` — `YES (type=..., at=...)` if the file has been ingested to
+      Praxos memory, or `NO (not yet synced to memory)` otherwise.
+    - `About:` — short auto-generated description (or transcript for audio).
+      May be absent for very recent uploads while enrichment is still pending.
+    - `Description`, `File`, `Source` (upload channel / generator), and `Created`.
+
+  Use this to:
+    - Check what media exists before asking the user to re-upload.
+    - Decide whether a file still needs syncing (`Praxos sync: NO`) before
+      scheduling a sync tool.
+    - Get the `media_id` to pass to `get_media_by_id` for visual/audio reasoning.
 
 arguments:
   - name: media_type
     type: str
-    description: Optional filter by type - 'image', 'audio', 'video', or 'document'
+    description: Optional filter — one of 'image', 'audio', 'video', 'document'.
     required: false
   - name: limit
     type: int
-    description: Maximum number of items to return (default 10, max 50)
+    description: Max number of items to return (default 10, max 50).
     required: false
     default: 10
 
-returns: ToolExecutionResponse with formatted string describing available media
+returns: Formatted string listing each media item with media_id, InsertedId, Praxos sync status, About (auto-description), filename, source, and created timestamp.
 
 examples:
-  - 'list_available_media(media_type="image")'
   - 'list_available_media()'
+  - 'list_available_media(media_type="image", limit=5)'
 
 use_cases:
-  - Check what images were generated
-  - See all recent media
-  - Get specific media details
+  - Check what images or files were generated/received in this conversation.
+  - Decide whether a file needs to be synced to Praxos before the user asks about it later.
+  - Retrieve the `media_id` to load an item into context via `get_media_by_id`.
+
+notes:
+  - Scoped to the CURRENT conversation only. For cross-conversation history use `list_recent_uploaded_files`; for semantic lookup use `search_uploaded_files`.
+  - Files showing `Praxos sync: NO` can be synced with `sync_file_for_semantic_search` or `sync_file_to_praxos_knowledge_graph` (pass the `InsertedId`).
+  - The `About` field is generated in the background and may not appear on items uploaded in the current turn.
 
 requires_integration: media_bus
 requires_auth: false

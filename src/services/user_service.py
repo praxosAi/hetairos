@@ -134,6 +134,10 @@ class UserService:
 
         # Default to free tier
         return SubscriptionTier.PERSONAL
+    
+    def has_payment_method(self, user: dict) -> bool:
+        """Check if user has a payment method on file"""
+        return user.get('billing_setup_completed') and user.get('payment_status') in ['active']
 
     def can_have_access(self, user:dict=None, user_id=None):
         """
@@ -149,6 +153,9 @@ class UserService:
             if not user:
                 logger.error(f"Can't find user from {user_id} id")
                 return True
+
+        if self.has_payment_method(user):
+            return True
 
         # Get user's tier
         tier = self.get_user_tier(user)

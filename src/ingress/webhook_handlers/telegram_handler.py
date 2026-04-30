@@ -300,7 +300,7 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                         mime_type=mime_type,
                         caption=caption,
                         platform_file_id=file_unique_id,
-                        platform_message_id=str(chat_id),
+                        platform_message_id=str(message["message_id"]),
                         platform_type=key,  # Telegram type hint (photo, voice, video, etc.)
                         conversation_id=None,  # Not known at webhook time
                         auto_add_to_media_bus=False,  # Will be added later when conversation starts
@@ -323,7 +323,10 @@ async def handle_telegram_webhook(request: Request, background_tasks: Background
                             'forward_origin': forward_origin,
                             'timestamp': message.get("date"),
                             'active_output_channels': active_channels,
-                            'chat_context': chat_context
+                            'chat_context': chat_context,
+                            'context_boundary_id': f"telegram_{chat_id}" if is_group else None,
+                            'speaker_name': speaker_name,
+                            'trigger_agent': trigger_agent,
                         }
                     }
                     await event_queue.publish(event)

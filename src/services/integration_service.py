@@ -485,6 +485,55 @@ class IntegrationService:
             return (str(integ["user_id"]), integ.get("connected_account"))
         return None
 
+    async def get_user_by_airtable_webhook(self, base_id: str, webhook_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Find the Airtable integration record that owns a given (base_id, webhook_id).
+        Returns the full integration document so the handler can read mac_secret + cursor.
+        """
+        integ = await self.db_manager.db["integrations"].find_one(
+            {
+                "name": "airtable",
+                "webhook_info.airtable.webhooks": {
+                    "$elemMatch": {"base_id": base_id, "webhook_id": webhook_id}
+                },
+            }
+        )
+        return integ
+
+    async def get_airtable_webhook_cursor(self, integration_id: str, webhook_id: str) -> Optional[int]:
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"_id": ObjectId(integration_id)},
+            projection={"airtable_webhook_cursors": 1},
+        )
+        if not integ:
+            return None
+        return (integ.get("airtable_webhook_cursors") or {}).get(webhook_id)
+
+    async def set_airtable_webhook_cursor(self, integration_id: str, webhook_id: str, cursor: int) -> None:
+        await self.db_manager.db["integrations"].update_one(
+            {"_id": ObjectId(integration_id)},
+            {"$set": {
+                f"airtable_webhook_cursors.{webhook_id}": int(cursor),
+                "updated_at": datetime.now(timezone.utc),
+            }},
+        )
+
+    async def get_user_by_hubspot_portal_id(self, portal_id) -> Optional[tuple[str, str]]:
+        """Find user by HubSpot portal/hub id. Returns (user_id, connected_account)."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"name": "hubspot", "webhook_info.hubspot.hub_id": int(portal_id)},
+            projection={"user_id": 1, "connected_account": 1},
+        )
+        if not integ:
+            # Some HubSpot endpoints return hub_id as a string — match either shape.
+            integ = await self.db_manager.db["integrations"].find_one(
+                {"name": "hubspot", "webhook_info.hubspot.hub_id": str(portal_id)},
+                projection={"user_id": 1, "connected_account": 1},
+            )
+        if integ:
+            return str(integ["user_id"]), integ.get("connected_account")
+        return None
+
     async def get_user_by_notion_bot_id(self, bot_id: str) -> Optional[str]:
         """Find user by Notion bot_id."""
         integ = await self.db_manager.db["integrations"].find_one(

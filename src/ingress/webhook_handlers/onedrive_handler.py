@@ -84,7 +84,7 @@ async def handle_onedrive_webhook(request: Request):
             praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
 
             logger.info(f"Evaluating triggers for OneDrive notification")
-            event_eval_result = await praxos_client.eval_event(notification_data, 'file_change')
+            event_eval_result = await praxos_client.eval_event(notification_data, 'onedrive')
 
             if event_eval_result.get('trigger'):
                 logger.info(f"Trigger fired for OneDrive notification")

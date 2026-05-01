@@ -213,7 +213,7 @@ async def handle_dropbox_webhook(request: Request):
                     logger.info(f"Processing new file {file.get('id')}")
 
                     # Evaluate triggers for this file
-                    event_eval_result = await praxos_client.eval_event(file, 'file_change')
+                    event_eval_result = await praxos_client.eval_event(file, 'dropbox')
 
                     if event_eval_result.get('trigger'):
                         # Process triggered actions (following Gmail pattern)

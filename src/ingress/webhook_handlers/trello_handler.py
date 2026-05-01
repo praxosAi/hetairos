@@ -118,7 +118,7 @@ async def handle_trello_webhook(request: Request):
 
         # Evaluate triggers using the full action data
         logger.info(f"Evaluating triggers for Trello action {action_type}")
-        event_eval_result = await praxos_client.eval_event(action, 'trello_action')
+        event_eval_result = await praxos_client.eval_event(action, 'trello')
 
         if event_eval_result.get('trigger'):
             # Trigger fired - publish triggered event

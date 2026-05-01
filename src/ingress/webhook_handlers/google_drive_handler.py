@@ -118,7 +118,7 @@ async def handle_google_drive_webhook(request: Request):
             logger.info(f"Processing new file {file_data.get('id')}")
 
             # Evaluate triggers for this file
-            event_eval_result = await praxos_client.eval_event(file_data, 'file_change')
+            event_eval_result = await praxos_client.eval_event(file_data, 'gdrive')
 
             if event_eval_result.get('trigger'):
                 # Process triggered actions (following Gmail pattern)

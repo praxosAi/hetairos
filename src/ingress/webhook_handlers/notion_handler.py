@@ -138,7 +138,7 @@ async def handle_notion_webhook(request: Request):
 
         # Evaluate triggers using the full event data
         logger.info(f"Evaluating triggers for Notion event {event_type}")
-        event_eval_result = await praxos_client.eval_event(data, 'notion_event')
+        event_eval_result = await praxos_client.eval_event(data, 'notion')
 
         if event_eval_result.get('trigger'):
             # Trigger fired - publish triggered event

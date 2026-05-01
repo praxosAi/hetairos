@@ -123,7 +123,7 @@ async def handle_google_calendar_webhook(request: Request):
                 continue
 
             logger.info(f"Processing new calendar event {event.get('id')}")
-            event_eval_result = await praxos_client.eval_event(event, 'calendar_event')
+            event_eval_result = await praxos_client.eval_event(event, 'gcal')
 
             if event_eval_result.get('trigger'):
                 # Process triggered actions (following Gmail pattern)

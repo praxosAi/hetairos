@@ -103,7 +103,7 @@ async def handle_hubspot_webhook(request: Request):
                 praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
 
                 for event in portal_events:
-                    event_eval_result = await praxos_client.eval_event(event, "hubspot_event")
+                    event_eval_result = await praxos_client.eval_event(event, "hubspot")
 
                     if event_eval_result.get("trigger"):
                         for rule_id, action_data_list in event_eval_result.get("fired_rule_actions_details", {}).items():

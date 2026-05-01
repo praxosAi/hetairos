@@ -137,7 +137,7 @@ async def handle_airtable_webhook(request: Request):
                 "payload": payload,
             }
 
-            event_eval_result = await praxos_client.eval_event(event_for_eval, "airtable_event")
+            event_eval_result = await praxos_client.eval_event(event_for_eval, "airtable")
 
             if event_eval_result.get("trigger"):
                 for rule_id, action_data_list in event_eval_result.get("fired_rule_actions_details", {}).items():

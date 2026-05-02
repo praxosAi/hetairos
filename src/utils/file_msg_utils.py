@@ -802,11 +802,14 @@ def replace_media_with_placeholders(messages: List) -> List:
                     else:
                         new_content.append(item)
 
-                # Create new message with modified content (don't mutate original)
+                # Create new message with modified content (don't mutate original).
+                # Preserve tool_calls on AIMessage — otherwise the planner sees the
+                # text part of a tool-calling turn but loses which tools were used.
                 if isinstance(msg, HumanMessage):
                     msgs_with_placeholders.append(HumanMessage(content=new_content))
                 elif isinstance(msg, AIMessage):
-                    msgs_with_placeholders.append(AIMessage(content=new_content))
+                    tool_calls = getattr(msg, 'tool_calls', None) or []
+                    msgs_with_placeholders.append(AIMessage(content=new_content, tool_calls=tool_calls))
                 else:
                     msgs_with_placeholders.append(msg)
 
@@ -823,6 +826,43 @@ def replace_media_with_placeholders(messages: List) -> List:
 
     return msgs_with_placeholders
 
+
+def extract_recently_used_tool_ids(messages: List, max_turns: int = 8) -> List[str]:
+    """Walk history (newest-first) and collect tool function names used in the
+    most recent turns. Used by the planner to know what tools the user has been
+    interacting with, and by the tool factory to always reload them so the next
+    turn can keep referencing the same integrations without re-asking the user
+    to reconnect.
+
+    Looks at AIMessage.tool_calls[*].name and ToolMessage.name. Skips
+    `send_intermediate_message` since it is not user-facing tooling.
+    """
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    seen: List[str] = []
+    seen_set = set()
+    turns_scanned = 0
+
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage):
+            tool_calls = getattr(msg, 'tool_calls', None) or []
+            if tool_calls:
+                turns_scanned += 1
+                for tc in tool_calls:
+                    name = tc.get('name') if isinstance(tc, dict) else getattr(tc, 'name', None)
+                    if name and name not in seen_set and name != 'send_intermediate_message':
+                        seen_set.add(name)
+                        seen.append(name)
+        elif isinstance(msg, ToolMessage):
+            name = getattr(msg, 'name', None)
+            if name and name not in seen_set and name != 'send_intermediate_message':
+                seen_set.add(name)
+                seen.append(name)
+
+        if turns_scanned >= max_turns:
+            break
+
+    return seen
 
 
 async def update_history( conversation_manager: Any, new_messages: List[BaseMessage], conversation_id: str, user_context: UserContext, final_state: Dict[str, Any]):

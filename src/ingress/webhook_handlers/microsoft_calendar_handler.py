@@ -67,28 +67,52 @@ async def handle_microsoft_calendar_webhook(request: Request):
             # Extract event ID from resource path (e.g., "Users/{user_id}/Events/{event_id}")
             event_id = resource.split("/")[-1] if "/" in resource else None
 
-            # Fetch full event details from Microsoft Graph API
+            # Fetch full event details from Microsoft Graph API. The mscal
+            # adapter in trigger-ingestor expects the *raw* Graph Event
+            # resource (https://learn.microsoft.com/en-us/graph/api/resources/event),
+            # passed via adapter_kwargs['fetched_event']. The flattened
+            # version (event_data) is still kept for downstream metadata use.
+            raw_event = None
             event_data = None
+            graph_integration = None
             if event_id and change_type != "deleted":
                 try:
                     graph_integration = MicrosoftGraphIntegration(user_id)
                     if await graph_integration.authenticate():
-                        event_data = await graph_integration.get_event_by_id(event_id)
-                        logger.info(f"Fetched event details for {event_id}: {event_data.get('title') if event_data else 'None'}")
+                        raw_event = await graph_integration.get_event_by_id_raw(event_id)
+                        if raw_event:
+                            event_data = graph_integration._format_event(raw_event)
+                            logger.info(f"Fetched event details for {event_id}: {event_data.get('title') if event_data else 'None'}")
                     else:
                         logger.error(f"Failed to authenticate Microsoft Graph for user {user_id}")
                 except Exception as e:
                     logger.error(f"Error fetching event details for {event_id}: {e}", exc_info=True)
 
-            # Prepare notification data for trigger evaluation
+            # Build the change-notification envelope expected by the mscal
+            # adapter (Microsoft Graph subscription notification shape).
+            notification_envelope = {
+                "value": [
+                    {
+                        "subscriptionId": subscription_id,
+                        "clientState": client_state,
+                        "changeType": change_type,
+                        "resource": resource,
+                        "resourceData": {
+                            "@odata.type": "#Microsoft.Graph.Event",
+                            "id": event_id,
+                        },
+                    }
+                ]
+            }
+
+            # Local notification_data is still useful for COMMAND text /
+            # downstream payloads — keep it as a flat dict for that purpose.
             notification_data = {
                 "subscription_id": subscription_id,
                 "change_type": change_type,
                 "resource": resource,
-                "event_id": event_id
+                "event_id": event_id,
             }
-
-            # Add full event details if available
             if event_data:
                 notification_data.update(event_data)
 
@@ -97,7 +121,11 @@ async def handle_microsoft_calendar_webhook(request: Request):
             praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
 
             logger.info(f"Evaluating triggers for calendar event {event_id}")
-            event_eval_result = await praxos_client.eval_event(notification_data, 'mscal')
+            event_eval_result = await praxos_client.eval_event(
+                notification_envelope,
+                'mscal',
+                adapter_kwargs={"fetched_event": raw_event} if raw_event else None,
+            )
 
             if event_eval_result.get('trigger'):
                 logger.info(f"Trigger fired for calendar event {event_id}")

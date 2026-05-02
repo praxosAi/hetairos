@@ -60,11 +60,19 @@ async def process_notification_task(notification: Dict[str, Any]):
             webhook_logger.error(f"Outlook auth failed for user {user_id_str} (ms_id={ms_user_id})")
             return
 
+        # Fetch the raw Graph Message once; reuse for both normalization
+        # (downstream agent path) and trigger-ingestor evaluation (which
+        # expects the unmodified Microsoft Graph resource shape).
+        raw_msg = await outlook.get_message_with_attachments(
+            ms_user_id=ms_user_id, message_id=msg_id,
+        )
+
         normalized = await outlook.normalize_message_for_ingestion(
             user_record=user_record,
             ms_user_id=ms_user_id,
             message_id=msg_id,
             command_prefix="",
+            pre_fetched_msg=raw_msg,
         )
 
         # 4. Insert into Database
@@ -78,13 +86,12 @@ async def process_notification_task(notification: Dict[str, Any]):
 
         # 5. Evaluate and Finalize
         normalized["metadata"]["inserted_id"] = inserted_id
-        
+
         praxos_api_key = user_record.get("praxos_api_key")
         praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
-        
+
         webhook_logger.info(f"Submitting eval event for inserted message {inserted_id}")
-        eval_result = await praxos_client.eval_event(normalized, 'outlook')
-        webhook_logger.info(f"eval message was: {json.dumps(normalized, indent=2)}")
+        eval_result = await praxos_client.eval_event(raw_msg, 'outlook')
         webhook_logger.info(f"Eval result for message {inserted_id}: {eval_result}")
         webhook_logger.info(f"Successfully finished background task for resource: {resource}")
 

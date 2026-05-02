@@ -569,20 +569,23 @@ class PraxosClient:
             duration = time.time() - start_time
             praxos_logger.error(f"Error setting up trigger with condition {trigger_conditional_statement}: {e}")
             return {"error": str(e)}
-    async def eval_event(self,event_json, event_type: str = "email_received"):
-        """Evaluate an event against the triggers in Praxos memory. 
+    async def eval_event(self, event_json, event_type: str = "email_received",
+                         adapter_kwargs: dict = None):
+        """Evaluate an event against the triggers in Praxos memory.
         Args:
             event_json: The event to evaluate, in JSON format. it should contain all relevant information about the event.
-            event_type: The type of the event, e.g. "email_received", "calendar_event", etc.
+            event_type: The provider/source key, e.g. "gmail", "outlook", "mscal", "onedrive".
+            adapter_kwargs: Optional per-provider parse() knobs forwarded to
+                the trigger-ingestor adapter (e.g. mscal `fetched_event`,
+                onedrive `fetched_item` / `previous_name` / `shared_with_me`).
         """
         if not self.env:
             return {"error": "Environment not initialized"}
-        
+
         start_time = time.time()
-        
+
         try:
-            # Use direct search method as specified by user
-            result = self.env.evaluate_event(event_json,event_type)
+            result = self.env.evaluate_event(event_json, event_type, adapter_kwargs=adapter_kwargs)
             return result
         except Exception as e:
             duration = time.time() - start_time

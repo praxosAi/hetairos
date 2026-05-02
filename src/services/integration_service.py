@@ -450,21 +450,26 @@ class IntegrationService:
 
     async def get_user_by_subscription_id(self, subscription_id: str, integration_name: str) -> Optional[str]:
         """Find user by Microsoft Graph subscription_id (Outlook/Calendar/OneDrive)."""
-        # Check different metadata fields based on integration type
+        integ = await self.get_integration_by_subscription_id(subscription_id, integration_name)
+        return str(integ["user_id"]) if integ else None
+
+    async def get_integration_by_subscription_id(
+        self, subscription_id: str, integration_name: str,
+    ) -> Optional[dict]:
+        """Find the full integration record by Microsoft Graph subscription_id.
+        Used by webhook handlers that also need `connected_account` (for
+        per-account delta cursors) or other integration-level metadata.
+        """
         metadata_fields = [
             f"metadata.{integration_name}_webhook_subscription_id",
             "metadata.outlook_webhook_subscription_id",
             "metadata.calendar_webhook_subscription_id",
-            "metadata.onedrive_webhook_subscription_id"
+            "metadata.onedrive_webhook_subscription_id",
         ]
-
         for field in metadata_fields:
-            integ = await self.db_manager.db["integrations"].find_one(
-                {field: subscription_id},
-                projection={"user_id": 1}
-            )
+            integ = await self.db_manager.db["integrations"].find_one({field: subscription_id})
             if integ:
-                return str(integ["user_id"])
+                return integ
         return None
 
     async def get_user_by_trello_board_id(self, board_id: str) -> Optional[str]:

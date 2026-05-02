@@ -45,6 +45,7 @@ from src.tools.dropbox import create_dropbox_tools
 from src.tools.preference_tools import create_preference_tools
 from src.tools.integration_tools import create_integration_tools
 from src.tools.database_tools import create_database_access_tools
+from src.tools.archive_tools import create_archive_tools
 from src.tools.google_lens import create_google_lens_tools
 from src.tools.google_places import create_google_places_tools
 from src.tools.user_guide import create_user_guide_tool
@@ -237,6 +238,13 @@ class AgentToolsFactory:
                 tools.extend(create_database_access_tools(user_id, tool_registry))
             except Exception as e:
                 logger.error(f"Error creating database access tools: {e}", exc_info=True)
+
+        # Archive (zip) tools
+        if is_tool_required('extract_archive_contents'):
+            try:
+                tools.extend(create_archive_tools(user_id, conversation_id or None, tool_registry))
+            except Exception as e:
+                logger.error(f"Error creating archive tools: {e}", exc_info=True)
 
         # Google Places
         places_tool_names = ['google_places_text_search', 'google_places_nearby_search',

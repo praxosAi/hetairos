@@ -458,7 +458,16 @@ class MicrosoftGraphIntegration(BaseIntegration):
             return []
 
     async def get_event_by_id(self, event_id: str) -> Optional[Dict]:
-        """Fetch a single calendar event by ID."""
+        """Fetch a single calendar event by ID (returns flattened internal shape)."""
+        raw = await self.get_event_by_id_raw(event_id)
+        return self._format_event(raw) if raw else None
+
+    async def get_event_by_id_raw(self, event_id: str) -> Optional[Dict]:
+        """Fetch a single calendar event by ID and return the raw Microsoft
+        Graph Event resource (no flattening). Required by trigger-ingestor's
+        mscal adapter, which expects the unmodified Graph schema.
+        Reference: https://learn.microsoft.com/en-us/graph/api/resources/event
+        """
         if not self.access_token:
             logger.error("Not authenticated to fetch event")
             return None
@@ -469,10 +478,60 @@ class MicrosoftGraphIntegration(BaseIntegration):
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{self.graph_endpoint}/me/events/{event_id}", headers=headers) as response:
                     response.raise_for_status()
-                    event = await response.json()
-            return self._format_event(event)
+                    return await response.json()
         except Exception as e:
-            logger.error(f"Error fetching event {event_id}: {e}", exc_info=True)
+            logger.error(f"Error fetching raw event {event_id}: {e}", exc_info=True)
+            return None
+
+    async def get_drive_delta(self, delta_link: Optional[str] = None) -> Dict[str, Any]:
+        """Call the OneDrive Delta API to discover changed driveItems since
+        the last cursor.
+
+        If `delta_link` is None, the call starts from the current state (no
+        history). The handler should persist the returned `@odata.deltaLink`
+        for the next invocation, and follow `@odata.nextLink` for paging.
+
+        Returns the raw response dict containing `value` (list of driveItems
+        with optional `deleted` facet), `@odata.nextLink`, and on the final
+        page `@odata.deltaLink`.
+
+        Reference: https://learn.microsoft.com/en-us/graph/api/driveitem-delta
+        """
+        if not self.access_token:
+            logger.error("Not authenticated to call drive delta")
+            return {"value": []}
+
+        url = delta_link or f"{self.graph_endpoint}/me/drive/root/delta"
+        headers = {"Authorization": f"Bearer {self.access_token}", "Accept": "application/json"}
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    response.raise_for_status()
+                    return await response.json()
+        except Exception as e:
+            logger.error(f"Error calling OneDrive delta API: {e}", exc_info=True)
+            return {"value": []}
+
+    async def get_drive_item(self, item_id: str) -> Optional[Dict]:
+        """Fetch a single driveItem by ID and return the raw Graph resource
+        (no flattening). Required by trigger-ingestor's onedrive adapter,
+        which expects the unmodified driveItem schema.
+        Reference: https://learn.microsoft.com/en-us/graph/api/resources/driveitem
+        """
+        if not self.access_token:
+            logger.error("Not authenticated to fetch drive item")
+            return None
+
+        headers = {"Authorization": f"Bearer {self.access_token}", "Accept": "application/json"}
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.graph_endpoint}/me/drive/items/{item_id}", headers=headers,
+                ) as response:
+                    response.raise_for_status()
+                    return await response.json()
+        except Exception as e:
+            logger.error(f"Error fetching drive item {item_id}: {e}", exc_info=True)
             return None
 
     async def create_calendar_event(self, title: str, start_time: str, end_time: str, attendees: Optional[List[str]] = None, description: str = "", location: str = "") -> Dict:
@@ -1081,12 +1140,19 @@ class MicrosoftGraphIntegration(BaseIntegration):
         ms_user_id: str,
         message_id: str,
         command_prefix: str = "",
+        pre_fetched_msg: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Fetch + normalize an Outlook message into your standard shape:
           payload.text, payload.files[], and metadata.
+
+        If `pre_fetched_msg` is supplied, the network fetch is skipped — useful
+        when the caller already needs the raw Graph Message (e.g. trigger-
+        ingestor evaluation that expects the unmodified resource shape).
         """
-        msg = await self.get_message_with_attachments(ms_user_id=ms_user_id, message_id=message_id)
+        msg = pre_fetched_msg or await self.get_message_with_attachments(
+            ms_user_id=ms_user_id, message_id=message_id,
+        )
 
         headers_map = self._ms_headers_to_map(msg.get("internetMessageHeaders"))
 

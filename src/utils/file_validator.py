@@ -77,6 +77,17 @@ ALLOWED_FILE_TYPES = {
     }
 }
 
+# Office Open XML files are ZIP containers. libmagic on most systems returns
+# 'application/zip' for them, which would trip both the allow-list check below
+# and downstream MIME-based routing (file_processor, etc.). When we see a zip
+# whose filename matches one of these extensions, normalize the detected MIME
+# back to the proper OOXML type.
+OOXML_ZIP_MIME_BY_EXT = {
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+}
+
 # Dangerous file types to always block
 BLOCKED_FILE_TYPES = [
     # Executables
@@ -197,6 +208,14 @@ class FileValidator:
             except Exception as e:
                 logger.error(f"Magic detection failed for {filename}: {e}")
                 # Continue with other checks
+
+        # OOXML files (.docx/.xlsx/.pptx) are zip containers; libmagic typically
+        # reports them as application/zip. Normalize so allow-list and downstream
+        # MIME-based routing see the real Office MIME.
+        if actual_mime == 'application/zip' and ext in OOXML_ZIP_MIME_BY_EXT:
+            normalized = OOXML_ZIP_MIME_BY_EXT[ext]
+            logger.debug(f"Normalizing zip MIME to {normalized} for {filename}")
+            actual_mime = normalized
 
         # Step 4: Check against blocked MIME types
         if actual_mime and actual_mime in BLOCKED_FILE_TYPES:

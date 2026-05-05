@@ -154,24 +154,11 @@ class UserService:
         tier = self.get_user_tier(user)
         logger.info(f"User {str(user.get('_id'))} is on {tier} tier")
         
-        # Enforce memory usage cap
+        # Enforce memory usage cap. Both fields live on the mypraxos User doc, which is
+        # the canonical source — workers update usage_size on this same collection, so we
+        # no longer need an External-API round-trip to get the live numbers.
         usage_size = user.get("usage_size", 0)
-        memory_cap = user.get("memory_cap", 1024 * 1024 * 1024)  # Default 1 GB limit
-
-        # Fetch real-time usage from External-API if API key exists
-        praxos_api_key = user.get("praxos_api_key")
-        if praxos_api_key:
-            try:
-                from src.services.token_encryption import decrypt_token
-                import praxos_python
-                decrypted_key = decrypt_token(praxos_api_key)
-                client = praxos_python.SyncClient(api_key=decrypted_key, timeout=10)
-                usage_data = client.get_usage(breakdown=False)
-                if usage_data:
-                    usage_size = usage_data.get("usage_size", usage_size)
-                    memory_cap = usage_data.get("memory_cap", memory_cap)
-            except Exception as e:
-                logger.error(f"Failed to fetch usage from SyncClient for user {user.get('_id')}: {e}")
+        memory_cap = user.get("memory_cap", 1024)  # MB; default 1 GB
 
         if usage_size >= memory_cap:
             logger.warning(f"User {str(user.get('_id'))} exceeded memory cap ({usage_size} >= {memory_cap})")

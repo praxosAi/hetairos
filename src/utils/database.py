@@ -383,7 +383,10 @@ class DatabaseManager:
         self.integration_tokens = self.db["integration_tokens"]
         self.rate_limits = self.db["rate_limits"]
         self.agent_schedules = self.db["agent_schedules"]
-        self.documents = self.db["documents"]
+        self.sources = self.db["sources"]
+        # Legacy alias: hetairos historically called this `documents`. The collection
+        # is now the unified `sources` collection (mypraxos↔hetairos consolidation).
+        self.documents = self.sources
         self.messages = self.db["messages"]
         self.agent_triggers = self.db["agent_triggers"]
         self.tool_monitor_collection = self.db["user_tool_monitor"]
@@ -600,10 +603,70 @@ class DatabaseManager:
             {"$set": update_data}
         )
 
+    async def _resolve_default_environment_id(self, user_id: str) -> Optional[ObjectId]:
+        """Look up the user's first environment to use as the default for integration items.
+
+        Today every user has exactly one environment; this picks the oldest one.
+        Returns None if the user has no environments — caller should log/skip.
+        """
+        env = await self.db["environments"].find_one(
+            {"user_id": ObjectId(user_id)},
+            sort=[("created_at", 1)],
+            projection={"_id": 1},
+        )
+        return env["_id"] if env else None
+
+    async def _apply_source_defaults(
+        self,
+        doc: Dict,
+        user_id: str,
+        platform: Optional[str] = None,
+        item_kind: str = "item",
+        name: Optional[str] = None,
+    ) -> Dict:
+        """Fill in the unified Source schema fields that integration inserts don't set."""
+        doc.setdefault("status", "ingested")
+        doc.setdefault("synced", False)
+        doc.setdefault("sync_history", [])
+        if platform:
+            doc.setdefault("type", f"{platform}/{item_kind}")
+        if name is not None:
+            doc.setdefault("name", name)
+        if "environment_id" not in doc:
+            env_id = await self._resolve_default_environment_id(user_id)
+            if env_id:
+                doc["environment_id"] = env_id
+        if "created_at" not in doc:
+            doc["created_at"] = datetime.utcnow()
+        return doc
+
+    @staticmethod
+    def _platform_item_kind(platform: str) -> str:
+        """Map a platform name to the canonical item kind used in Source.type."""
+        return {
+            "gmail": "email",
+            "outlook": "email",
+            "google_calendar": "event",
+            "outlook_calendar": "event",
+            "google_drive": "file",
+            "dropbox": "file",
+            "notion": "page",
+            "trello": "card",
+        }.get(platform, "item")
+
+    @staticmethod
+    def _derive_item_name(item: Dict[str, Any], fallback: str) -> str:
+        """Pick a human-readable name from a raw integration item, with a safe fallback."""
+        for key in ("subject", "summary", "name", "title"):
+            value = item.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+        return fallback
+
     async def add_document(self, document_record: Dict) -> str:
-        """Adds a document record to the documents collection and returns the inserted _id as a string."""
+        """Adds a document record to the unified sources collection and returns the inserted _id as a string."""
         document_record['created_at'] = datetime.utcnow().isoformat()
-        result = await self.documents.insert_one(document_record)
+        result = await self.sources.insert_one(document_record)
         return str(result.inserted_id)
     async def get_document_by_id(self, document_id: str) -> Optional[Dict]:
         """Get a document by its ID."""
@@ -726,6 +789,11 @@ class DatabaseManager:
         seen_in_batch: set[str] = set()
         staged_docs: List[Dict[str, Any]] = []
 
+        # Resolve once for the whole batch — every item belongs to the same user.
+        default_environment_id = await self._resolve_default_environment_id(user_id)
+        item_kind = self._platform_item_kind(platform)
+        source_type = f"{platform}/{item_kind}"
+
         for item, pid in zip(items, extracted_ids):
             if not pid:
                 staged_docs.append(None)
@@ -742,6 +810,9 @@ class DatabaseManager:
                 continue
 
             seen_in_batch.add(pid)
+
+            # Derive name from the cleartext item before any encryption.
+            item_name = self._derive_item_name(item, fallback=str(pid))
 
             # Handle encryption
             payload_to_store = item
@@ -763,7 +834,16 @@ class DatabaseManager:
                 platform_id_field: pid,
                 "received_at": now,
                 "payload": payload_to_store,
+                # Unified Source schema fields:
+                "name": item_name,
+                "type": source_type,
+                "status": "ingested",
+                "synced": False,
+                "sync_history": [],
+                "created_at": now,
             }
+            if default_environment_id is not None:
+                doc["environment_id"] = default_environment_id
             ops.append(InsertOne(doc))
             attempt_pids.append(pid)
             staged_docs.append(doc)
@@ -831,22 +911,30 @@ class DatabaseManager:
     async def insert_new_outlook_email(self, email_record: Dict) -> str:
         """Insert a new Outlook email record."""
         ### check if the email already exists
-        existing = await self.documents.find_one({
+        existing = await self.sources.find_one({
             'platform': 'outlook',
             'platform_message_id': email_record['id'],
             'user_id': ObjectId(email_record['user_id'])
         })
         if existing:
             return None
+        normalized = email_record.get('normalized') or {}
         document = {
-            'payload': email_record['normalized'],
+            'payload': normalized,
             'received_at': datetime.utcnow(),
             'user_id': ObjectId(email_record['user_id']),
             'platform': 'outlook',
-            'platform_message_id': email_record['id']
+            'platform_message_id': email_record['id'],
         }
-    
-        result = await self.documents.insert_one(document)
+        await self._apply_source_defaults(
+            document,
+            user_id=email_record['user_id'],
+            platform='outlook',
+            item_kind='email',
+            name=self._derive_item_name(normalized, fallback=str(email_record['id'])),
+        )
+
+        result = await self.sources.insert_one(document)
         return str(result.inserted_id)
 
     async def insert_new_trigger(self, rule_id: str, conversation_id: str, trigger_text: str, user_id: str, is_one_time: bool) -> str:

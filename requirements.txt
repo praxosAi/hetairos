@@ -198,7 +198,6 @@ httpx[http2]==0.28.1
     #   notion-client
     #   openai
     #   portkey-ai
-    #   praxos-python
     #   python-telegram-bot
 httpx-aiohttp==0.1.12
     # via -r requirements.in
@@ -358,8 +357,6 @@ ply==3.11
     # via stone
 portkey-ai==2.0.0
     # via -r requirements.in
-praxos-python
-    # via -r requirements.in
 propcache==0.4.1
     # via
     #   aiohttp
@@ -399,7 +396,6 @@ pydantic==2.12.3
     #   langsmith
     #   openai
     #   portkey-ai
-    #   praxos-python
     #   pydantic-settings
 pydantic-core==2.41.4
     # via pydantic

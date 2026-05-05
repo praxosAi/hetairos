@@ -682,9 +682,13 @@ class IntegrationService:
             # Import here to avoid circular dependency
             if not praxos_client:
                 from src.core.praxos_client import PraxosClient
+                from src.services.user_service import user_service
+                user_record = user_service.get_user_by_id(user_id)
+                if not user_record or not user_record.get("environment_id"):
+                    return {"error": "user_record missing environment_id"}
                 praxos_client = PraxosClient(
-                    environment_name=f"user_{user_id}",
-                    api_key=settings.PRAXOS_API_KEY
+                    user_id=str(user_record["_id"]),
+                    environment_id=str(user_record["environment_id"]),
                 )
 
             # Check if integration entity already exists in KG
@@ -766,9 +770,13 @@ class IntegrationService:
         try:
             if not praxos_client:
                 from src.core.praxos_client import PraxosClient
+                from src.services.user_service import user_service
+                user_record = user_service.get_user_by_id(user_id)
+                if not user_record or not user_record.get("environment_id"):
+                    return {"error": "user_record missing environment_id"}
                 praxos_client = PraxosClient(
-                    environment_name=f"user_{user_id}",
-                    api_key=settings.PRAXOS_API_KEY
+                    user_id=str(user_record["_id"]),
+                    environment_id=str(user_record["environment_id"]),
                 )
 
             # Find the integration entity

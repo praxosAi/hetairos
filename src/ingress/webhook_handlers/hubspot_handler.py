@@ -99,8 +99,10 @@ async def handle_hubspot_webhook(request: Request):
                 user_id_var.set(user_id)
                 modality_var.set("hubspot_webhook")
 
-                praxos_api_key = user_record.get("praxos_api_key")
-                praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
+                praxos_client = PraxosClient(
+                    user_id=str(user_record["_id"]),
+                    environment_id=str(user_record["environment_id"]),
+                )
 
                 for event in portal_events:
                     event_eval_result = await praxos_client.eval_event(event, "hubspot")

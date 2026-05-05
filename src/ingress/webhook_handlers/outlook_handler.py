@@ -87,8 +87,10 @@ async def process_notification_task(notification: Dict[str, Any]):
         # 5. Evaluate and Finalize
         normalized["metadata"]["inserted_id"] = inserted_id
 
-        praxos_api_key = user_record.get("praxos_api_key")
-        praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
+        praxos_client = PraxosClient(
+            user_id=str(user_record["_id"]),
+            environment_id=str(user_record["environment_id"]),
+        )
 
         webhook_logger.info(f"Submitting eval event for inserted message {inserted_id}")
         eval_result = await praxos_client.eval_event(raw_msg, 'outlook')

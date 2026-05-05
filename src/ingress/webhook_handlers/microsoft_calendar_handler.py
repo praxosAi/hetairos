@@ -117,8 +117,10 @@ async def handle_microsoft_calendar_webhook(request: Request):
                 notification_data.update(event_data)
 
             # Evaluate triggers using PraxosClient
-            praxos_api_key = user_record.get("praxos_api_key")
-            praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
+            praxos_client = PraxosClient(
+                user_id=str(user_record["_id"]),
+                environment_id=str(user_record["environment_id"]),
+            )
 
             logger.info(f"Evaluating triggers for calendar event {event_id}")
             event_eval_result = await praxos_client.eval_event(

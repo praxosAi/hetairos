@@ -201,8 +201,10 @@ async def handle_dropbox_webhook(request: Request):
                 logger.info(f"Fetched {len(changed_files)} files; inserted {len(inserted)} for {connected_account}")
 
                 # Process only those actually inserted
-                praxos_api_key = user_record.get("praxos_api_key")
-                praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
+                praxos_client = PraxosClient(
+                    user_id=str(user_record["_id"]),
+                    environment_id=str(user_record["environment_id"]),
+                )
 
                 # Publish new files to event queue with trigger evaluation
                 for file, inserted_id in zip(changed_files, inserted_ids):

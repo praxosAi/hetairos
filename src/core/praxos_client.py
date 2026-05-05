@@ -1,26 +1,51 @@
-import praxos_python
-import asyncio
+"""Async HTTP client for the mypraxos-backend ``/internal/praxos/*`` bridge.
+
+All calls go through mypraxos-backend (subnet-trusted) which forwards to
+search-service or trigger-ingestor via its in-process ``PraxosGraphClient``.
+There is no API key — auth is handled by the Function App's network rules.
+
+Construction:
+    client = PraxosClient(user_id=..., environment_id=...)
+
+``user_id`` and ``environment_id`` are bound at construction so each method
+call automatically includes them in the request body / query string.
+"""
+
+import json
+import mimetypes
+import os
 import time
-from datetime import datetime
-from praxos_python.types.message import Message
-from typing import Dict, List, Optional, Any
-from src.services.token_encryption import decrypt_token
+import uuid
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional
+
+import httpx
+
+try:
+    from bson import ObjectId
+except ImportError:  # bson is a transitive dep but guard anyway
+    ObjectId = None  # type: ignore[assignment]
+
+
+class _PraxosJSONEncoder(json.JSONEncoder):
+    """Handles types httpx's default json= encoder rejects: datetime, ObjectId."""
+
+    def default(self, o: Any) -> Any:
+        if isinstance(o, (datetime, date)):
+            return o.isoformat()
+        if ObjectId is not None and isinstance(o, ObjectId):
+            return str(o)
+        return super().default(o)
+
 from src.config.settings import settings
 from src.utils.logging import (
     praxos_logger,
-    log_praxos_connection_start,
-    log_praxos_connection_success,
-    log_praxos_connection_failed,
-    log_praxos_environment_created,
     log_praxos_query_started,
     log_praxos_query_completed,
     log_praxos_query_failed,
     log_praxos_search_anchors_started,
     log_praxos_search_anchors_completed,
     log_praxos_search_anchors_failed,
-    log_praxos_add_message_started,
-    log_praxos_add_message_completed,
-    log_praxos_add_message_failed,
     log_praxos_add_integration_started,
     log_praxos_add_integration_completed,
     log_praxos_add_integration_failed,
@@ -32,260 +57,414 @@ from src.utils.logging import (
     log_praxos_get_integrations_failed,
     log_praxos_api_error,
     log_praxos_performance_warning,
-    log_praxos_context_details
+    log_praxos_context_details,
 )
 
+
+class PraxosBridgeError(Exception):
+    """Raised when the backend bridge returns a non-2xx response."""
+
+    def __init__(self, status_code: int, message: str, payload: Optional[dict] = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.message = message
+        self.payload = payload or {}
+
+
 class PraxosClient:
-    def __init__(self, environment_name: str = None, api_key: str = None):
-        self.api_key = decrypt_token(api_key)
-        self.environment_name = environment_name
-        self.client = None
-        self.env = None
-        try:
-            self.client = praxos_python.SyncClient(
-                api_key=self.api_key,
-                timeout=60,
+    """HTTP client that targets mypraxos-backend's ``/api/internal/praxos/*`` routes."""
+
+    def __init__(
+        self,
+        user_id: str,
+        environment_id: str,
+        base_url: Optional[str] = None,
+        timeout: float = 60.0,
+    ):
+        self.user_id = str(user_id)
+        self.environment_id = str(environment_id)
+        resolved = base_url or settings.MYPRAXOS_BACKEND_URL
+        if not resolved:
+            raise RuntimeError(
+                "MYPRAXOS_BACKEND_URL is not configured (set env var or pass base_url)"
             )
-        
-            # Get or create environment
+        self.base_url = resolved.rstrip("/")
+        self.timeout = timeout
+        self._client = httpx.AsyncClient(timeout=timeout)
+
+    # Compatibility shim — older callers expected a truthy `.env` to know
+    # the client was initialized. Kept so we don't have to touch every
+    # callsite that does `if praxos.env: ...`.
+    @property
+    def env(self) -> bool:
+        return True
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+    async def __aenter__(self) -> "PraxosClient":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.aclose()
+
+    # ------------------------------------------------------------------
+    # Internal HTTP helpers
+    # ------------------------------------------------------------------
+
+    def _url(self, path: str) -> str:
+        return f"{self.base_url}/api/internal/praxos/{path.lstrip('/')}"
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: Optional[dict] = None,
+        params: Optional[dict] = None,
+        files: Optional[dict] = None,
+        data: Optional[dict] = None,
+    ) -> Any:
+        kwargs: Dict[str, Any] = {}
+        if json_body is not None:
+            # httpx's default `json=` chokes on datetime/ObjectId. Pre-encode through
+            # our JSONEncoder so callers can pass these types straight through.
+            kwargs["content"] = json.dumps(json_body, cls=_PraxosJSONEncoder).encode("utf-8")
+            kwargs["headers"] = {"Content-Type": "application/json"}
+        if params is not None:
+            kwargs["params"] = params
+        if files is not None:
+            kwargs["files"] = files
+        if data is not None:
+            kwargs["data"] = data
+
+        resp = await self._client.request(method, self._url(path), **kwargs)
+        if resp.status_code >= 400:
             try:
-                self.env = self.client.get_environment(name=self.environment_name)
-                log_praxos_connection_success(self.environment_name)
-            except Exception as env_error:
-                # Environment doesn't exist, create it
-                log_praxos_environment_created(self.environment_name)
-                self.env = self.client.create_environment(
-                    name=self.environment_name,
-                    description="AI Personal Assistant Environment"
-                )
-                log_praxos_connection_success(self.environment_name)
-            
-            
-            
-        except Exception as e:
-            log_praxos_connection_failed(self.environment_name, e,0)
-            raise
-    
-    async def add_conversation(self, user_id: str, source: str, metadata: Dict = None, user_record: Dict[str, Any] = None, messages: List[Dict] = None, conversation_id: str = 'no_conversation_id'):
-        """Add a conversation to Praxos memory"""
-        if not self.env:
-            return {"error": "Environment not initialized"}
-        
-        start_time = time.time()
-        praxos_logger.info(f"Adding conversation for user {user_id} with source {source}")        
-        try:
-            reformatted_messages = []
-            for message in messages:
-                time_stamp_str = message['timestamp']
-                if not isinstance(time_stamp_str, str):
-                    time_stamp_str = time_stamp_str.isoformat()
-                if message['role'] == 'user':
-                    content_enriched = "Message sent at " + time_stamp_str + " by " + user_record.get('first_name', '') + " " + user_record.get('last_name', '') + ": " + str(message['content'])
-                else:
-                    content_enriched = "Message sent at " + time_stamp_str + " by Praxos Assistant: " + str(message['content'])
-                reformatted_messages.append(Message(content=content_enriched, role=message['role'], timestamp=message['timestamp']))
-            # Create unique name to avoid conflicts
-            import uuid
-            unique_name = f"Message_{user_id}_{source}_{uuid.uuid4().hex}"
-                     
-            result = self.env.add_conversation(
-                messages=reformatted_messages,
-                name=unique_name,
-                description='message from user with conversation id ' + conversation_id,
-                metadata=metadata
-            ) 
-            
-            duration = time.time() - start_time
-            # SyncSource object has .id attribute, not .get() method
-            message_id = getattr(result, 'id', None) if result else None
-            praxos_logger.info(f"Conversation added successfully for user {user_id} with source {source} in {duration:.2f}s")
-            
-            # Return consistent format
-            return {
-                "success": True,
-                "id": message_id,
-                "source": result
-            }
-            
-        except Exception as e:
-            duration = time.time() - start_time
-            praxos_logger.error(f"Error adding conversation for user {user_id} with source {source}: {e}",exc_info=True)
-            # Also log API error if it's a specific API error
-            if hasattr(e, 'status_code'):
-                praxos_logger.error(f"Error adding conversation for user {user_id} with source {source}: {e.status_code}",exc_info=True)
-            return {"error": str(e)}
-    
-    # Backwards compatibility alias
-    async def add_message(self, user_id: str, content: str, source: str, metadata: Dict = None, user_record: Dict[str, Any] = None):
-        """Backwards compatibility alias for add_conversation"""
-        return await self.add_conversation(user_id, content, source, metadata, user_record)
-    
-    async def add_email_conversation(self, messages: List, name: str, description: str, metadata: Dict = None, user_record: Dict[str, Any] = None):
-        """Add an email as a proper conversation using Message objects"""
-        if not self.env:
-            return {"error": "Environment not initialized"}
-        
-        start_time = time.time()
-        
-        try:
-            # Add UUID to name to avoid conflicts
-            import uuid
-            unique_name = f"{name}_{uuid.uuid4().hex[:8]}"
-            
-            # Use environment's add_conversation method directly with Message objects
-            result = self.env.add_conversation(
-                messages=messages,
-                name=unique_name,
-                description=description,
-                user_record=user_record
+                payload = resp.json()
+            except ValueError:
+                payload = {"error": resp.text}
+            raise PraxosBridgeError(
+                resp.status_code,
+                payload.get("error", "upstream error"),
+                payload,
             )
-            
-            duration = time.time() - start_time
-            # SyncSource object has .id attribute
-            source_id = getattr(result, 'id', None) if result else None
-            
-            praxos_logger.info(f"✅ Email conversation added successfully in {duration:.2f}s (ID: {source_id})")
-            
-            # Return consistent format
-            return {
-                "success": True,
-                "id": source_id,
-                "source": result
+        if not resp.content:
+            return None
+        try:
+            return resp.json()
+        except ValueError:
+            return resp.text
+
+    # ------------------------------------------------------------------
+    # Source creation: conversation / business-data / file
+    # ------------------------------------------------------------------
+
+    async def add_conversation(
+        self,
+        user_id: str,
+        source: str,
+        metadata: Dict = None,
+        user_record: Dict[str, Any] = None,
+        messages: List[Dict] = None,
+        conversation_id: str = "no_conversation_id",
+    ):
+        """Add a conversation to Praxos memory (POST /sources/conversation)."""
+        start_time = time.time()
+        praxos_logger.info(
+            f"Adding conversation for user {user_id} with source {source}"
+        )
+        try:
+            reformatted: List[Dict[str, Any]] = []
+            for message in messages or []:
+                ts = message["timestamp"]
+                if not isinstance(ts, str):
+                    ts = ts.isoformat()
+                if message["role"] == "user":
+                    first = (user_record or {}).get("first_name", "")
+                    last = (user_record or {}).get("last_name", "")
+                    content_enriched = (
+                        f"Message sent at {ts} by {first} {last}: {message['content']}"
+                    )
+                else:
+                    content_enriched = (
+                        f"Message sent at {ts} by Praxos Assistant: {message['content']}"
+                    )
+                reformatted.append(
+                    {
+                        "role": message["role"],
+                        "content": content_enriched,
+                        "timestamp": ts,
+                    }
+                )
+
+            unique_name = f"Message_{user_id}_{source}_{uuid.uuid4().hex}"
+            body = {
+                "user_id": self.user_id,
+                "environment_id": self.environment_id,
+                "messages": reformatted,
+                "name": unique_name,
+                "description": f"message from user with conversation id {conversation_id}",
+                "metadata": metadata or {},
             }
-            
-        except Exception as e:
+            result = await self._request("POST", "sources/conversation", json_body=body)
+
             duration = time.time() - start_time
-            praxos_logger.error(f"❌ Email conversation add failed: {e} (Duration: {duration:.2f}s)")
-            if hasattr(e, 'status_code'):
-                praxos_logger.error(f"   Status code: {e.status_code}")
+            praxos_logger.info(
+                f"Conversation added for user {user_id} with source {source} in {duration:.2f}s"
+            )
+            return {"success": True, "id": result.get("id") if result else None, "source": result}
+        except PraxosBridgeError as e:
+            praxos_logger.error(
+                f"Error adding conversation (status={e.status_code}): {e.message}"
+            )
+            return {"error": e.message}
+        except Exception as e:
+            praxos_logger.error(f"Error adding conversation: {e}", exc_info=True)
             return {"error": str(e)}
-    
-    async def add_integration_capability(self, user_id: str, integration_type: str, capabilities: List[str]):
-        """Add integration capability to Praxos memory as a schema:Integration node"""
-        if not self.env:
-            return {"error": "Environment not initialized"}
-        
+
+    # Backwards compatibility alias
+    async def add_message(
+        self,
+        user_id: str,
+        content: str,
+        source: str,
+        metadata: Dict = None,
+        user_record: Dict[str, Any] = None,
+    ):
+        return await self.add_conversation(user_id, content, source, metadata, user_record)
+
+    async def add_email_conversation(
+        self,
+        messages: List,
+        name: str,
+        description: str,
+        metadata: Dict = None,
+        user_record: Dict[str, Any] = None,
+    ):
+        """Add an email as a conversation (POST /sources/conversation)."""
+        start_time = time.time()
+        try:
+            normalized: List[Dict[str, Any]] = []
+            for m in messages or []:
+                if isinstance(m, dict):
+                    msg = dict(m)
+                else:
+                    ts = getattr(m, "timestamp", None)
+                    msg = {
+                        "role": getattr(m, "role", "user"),
+                        "content": getattr(m, "content", ""),
+                        "timestamp": ts,
+                    }
+                if msg.get("timestamp") and not isinstance(msg["timestamp"], str):
+                    msg["timestamp"] = msg["timestamp"].isoformat()
+                normalized.append(msg)
+
+            unique_name = f"{name}_{uuid.uuid4().hex[:8]}"
+            body = {
+                "user_id": self.user_id,
+                "environment_id": self.environment_id,
+                "messages": normalized,
+                "name": unique_name,
+                "description": description,
+                "metadata": metadata or {},
+            }
+            result = await self._request("POST", "sources/conversation", json_body=body)
+            duration = time.time() - start_time
+            source_id = result.get("id") if result else None
+            praxos_logger.info(
+                f"✅ Email conversation added in {duration:.2f}s (ID: {source_id})"
+            )
+            return {"success": True, "id": source_id, "source": result}
+        except PraxosBridgeError as e:
+            praxos_logger.error(f"❌ Email conversation add failed: {e.message}")
+            return {"error": e.message}
+        except Exception as e:
+            praxos_logger.error(f"❌ Email conversation add failed: {e}")
+            return {"error": str(e)}
+
+    async def add_integration_capability(
+        self, user_id: str, integration_type: str, capabilities: List[str]
+    ):
+        """Add integration as business-data (POST /sources/business-data)."""
         start_time = time.time()
         log_praxos_add_integration_started(user_id, integration_type, capabilities)
-        
         try:
-            # Add integration as a capability in the knowledge graph
             integration_data = {
                 "type": "schema:Integration",
                 "user_id": user_id,
                 "integration_type": integration_type,
                 "capabilities": capabilities,
                 "status": "active",
-                "added_at": datetime.utcnow().isoformat()
+                "added_at": datetime.utcnow().isoformat(),
             }
-            
-            # This would be added as a graph node
-            # Placeholder for actual SDK method
-            result = self.env.add_data(
-                data=integration_data,
-                name=f"{integration_type}_integration_{user_id}",
-                description=f"{integration_type.title()} integration for user {user_id}"
-            )
-            
+            body = {
+                "user_id": self.user_id,
+                "environment_id": self.environment_id,
+                "data": integration_data,
+                "name": f"{integration_type}_integration_{user_id}",
+                "description": f"{integration_type.title()} integration for user {user_id}",
+                "root_entity_type": "schema:Integration",
+            }
+            result = await self._request("POST", "sources/business-data", json_body=body)
             duration = time.time() - start_time
-            integration_id = result.get('id') if result else None
-            log_praxos_add_integration_completed(user_id, integration_type, integration_id, duration)
-            
+            integration_id = result.get("id") if result else None
+            log_praxos_add_integration_completed(
+                user_id, integration_type, integration_id, duration
+            )
             return result
-            
+        except PraxosBridgeError as e:
+            duration = time.time() - start_time
+            log_praxos_add_integration_failed(user_id, integration_type, e, duration)
+            log_praxos_api_error(
+                "add_integration_capability", e.status_code, e.message, e.payload
+            )
+            return {"error": e.message}
         except Exception as e:
             duration = time.time() - start_time
             log_praxos_add_integration_failed(user_id, integration_type, e, duration)
-            if hasattr(e, 'status_code'):
-                log_praxos_api_error("add_integration_capability", e.status_code, str(e), getattr(e, 'details', None))
             return {"error": str(e)}
-    
-    async def add_file(self, file_path: str, name: str, description: str = None, metadata: dict = None):
-        """Add a file to Praxos memory from file path"""
-        if not self.env:
-            return {"error": "Environment not initialized"}
-        
+
+    async def add_business_data(
+        self,
+        data: Dict[str, Any],
+        name: str = None,
+        description: str = None,
+        root_entity_type: str = "schema:Thing",
+        metadata: Dict[str, Any] = None,
+    ):
+        """Add business data (POST /sources/business-data)."""
         start_time = time.time()
-        log_praxos_file_upload_started(file_path, name, description)
-        
         try:
-            # Use Praxos SDK to add file by path
-            result = self.env.add_file(
-                path=file_path,
-                name=name,
-                description=description or f"File: {name}",
-                metadata=metadata
-            )
-            
+            body = {
+                "user_id": self.user_id,
+                "environment_id": self.environment_id,
+                "data": data,
+                "name": name,
+                "description": description,
+                "root_entity_type": root_entity_type,
+                "metadata": metadata or {},
+            }
+            result = await self._request("POST", "sources/business-data", json_body=body)
             duration = time.time() - start_time
-            # SyncSource object has id attribute, not .get() method
-            file_id = getattr(result, 'id', None) if result else None
-            log_praxos_file_upload_completed(file_path, name, file_id, duration)
-            
-            # Return a dictionary format for consistency with other methods
+            praxos_logger.info(f"✅ Business data added in {duration:.2f}s")
             return {
                 "success": True,
-                "id": file_id,
-                "source": result
+                "id": result.get("id") if result else None,
+                "source": result,
             }
-            
+        except PraxosBridgeError as e:
+            praxos_logger.error(f"❌ Business data add failed: {e.message}")
+            return {"error": e.message}
+        except Exception as e:
+            praxos_logger.error(f"❌ Business data add failed: {e}")
+            return {"error": str(e)}
+
+    async def _post_file(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        content_type: Optional[str] = None,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        metadata: Optional[dict] = None,
+    ) -> Any:
+        ct = content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        files = {"files": (filename, file_bytes, ct)}
+        form: Dict[str, Any] = {}
+        if name:
+            form["name"] = name
+        if description:
+            form["description"] = description
+        if metadata:
+            form["metadata"] = json.dumps(metadata)
+        params = {"user_id": self.user_id, "environment_id": self.environment_id}
+        return await self._request(
+            "POST", "sources/file", params=params, files=files, data=form
+        )
+
+    async def add_file(
+        self,
+        file_path: str,
+        name: str,
+        description: str = None,
+        metadata: dict = None,
+    ):
+        """Add a file from disk (POST /sources/file, multipart)."""
+        start_time = time.time()
+        log_praxos_file_upload_started(file_path, name, description)
+        try:
+            with open(file_path, "rb") as fh:
+                file_bytes = fh.read()
+            filename = os.path.basename(file_path)
+            result = await self._post_file(
+                file_bytes,
+                filename,
+                content_type=mimetypes.guess_type(filename)[0],
+                name=name,
+                description=description or f"File: {name}",
+                metadata=metadata,
+            )
+            duration = time.time() - start_time
+            file_id = result.get("id") if result else None
+            log_praxos_file_upload_completed(file_path, name, file_id, duration)
+            return {"success": True, "id": file_id, "source": result}
+        except PraxosBridgeError as e:
+            duration = time.time() - start_time
+            log_praxos_file_upload_failed(file_path, name, e, duration)
+            log_praxos_api_error("add_file", e.status_code, e.message, e.payload)
+            return {"error": f"File upload failed: {e.message}"}
         except Exception as e:
             duration = time.time() - start_time
             log_praxos_file_upload_failed(file_path, name, e, duration)
-            if hasattr(e, 'status_code'):
-                log_praxos_api_error("add_file", e.status_code, str(e), getattr(e, 'details', None))
             return {"error": f"File upload failed: {str(e)}"}
-    
-    async def add_file_content(self, file_data: bytes, filename: str, mimetype: str = None, description: str = None):
-        """Add file content directly to Praxos memory"""
-        if not self.env:
-            return {"error": "Environment not initialized"}
-        
+
+    async def add_file_content(
+        self,
+        file_data: bytes,
+        filename: str,
+        mimetype: str = None,
+        description: str = None,
+    ):
+        """Add file content directly (POST /sources/file, multipart)."""
         try:
-            # For files that support direct content ingestion
-            if mimetype and mimetype.startswith('text/'):
-                # Text files can be added as messages
+            if mimetype and mimetype.startswith("text/"):
                 try:
-                    content = file_data.decode('utf-8')
+                    content = file_data.decode("utf-8")
                     return await self.add_conversation(
                         user_id="system",
-                        content=f"File content from {filename}:\n{content}",
                         source="file_ingestion",
                         metadata={
                             "filename": filename,
                             "mimetype": mimetype,
                             "file_size": len(file_data),
-                            "content_type": "text_file"
-                        }
+                            "content_type": "text_file",
+                        },
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": f"File content from {filename}:\n{content}",
+                                "timestamp": datetime.utcnow().isoformat(),
+                            }
+                        ],
                     )
                 except UnicodeDecodeError:
                     pass
-            
-            # For other file types, save temporarily and use file upload
-            import tempfile
-            import os
-            
-            with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{filename}") as temp_file:
-                temp_file.write(file_data)
-                temp_file_path = temp_file.name
-            
+
             try:
-                # Upload using file path
-                result = await self.add_file(
-                    file_path=temp_file_path,
+                result = await self._post_file(
+                    file_data,
+                    filename,
+                    content_type=mimetype,
                     name=filename,
-                    description=description or f"Email attachment: {filename}"
+                    description=description or f"Email attachment: {filename}",
                 )
-                
-                # Clean up temp file
-                os.unlink(temp_file_path)
-                return result
-                
-            except Exception as upload_error:
-                # Clean up temp file even if upload fails
-                os.unlink(temp_file_path)
-                
-                # Fallback: add file metadata as data source
+                return {
+                    "success": True,
+                    "id": result.get("id") if result else None,
+                    "source": result,
+                }
+            except PraxosBridgeError as upload_error:
                 file_metadata = {
                     "type": "file_content",
                     "filename": filename,
@@ -293,344 +472,438 @@ class PraxosClient:
                     "file_size": len(file_data),
                     "description": description,
                     "added_at": datetime.utcnow().isoformat(),
-                    "status": "content_available_but_not_uploaded"
+                    "status": "content_available_but_not_uploaded",
+                    "upload_error": upload_error.message,
                 }
-                
-                return self.env.add_data(
+                return await self.add_business_data(
                     data=file_metadata,
                     name=f"file_content_{filename}",
-                    description=description or f"File content metadata: {filename}"
+                    description=description or f"File content metadata: {filename}",
                 )
-                
         except Exception as e:
             praxos_logger.error(f"Error adding file content to Praxos: {e}")
             return {"error": f"File content upload failed: {str(e)}"}
-    
-    async def search_from_anchors(self, user_id: str, query: str, max_hops: int = 3, top_k: int = 3, node_types: List[str] = None):
-        """Search using anchors to find relevant integrations and capabilities"""
-        if not self.env:
-            return {"error": "Environment not initialized"}
-        
+
+    # ------------------------------------------------------------------
+    # Search
+    # ------------------------------------------------------------------
+
+    async def search_from_anchors(
+        self,
+        user_id: str,
+        query: str,
+        max_hops: int = 3,
+        top_k: int = 3,
+        node_types: List[str] = None,
+    ):
+        """Anchor search via POST /search."""
         start_time = time.time()
-        
-        # Search using user identifiers as anchors
         anchors = [{"value": user_id}]
-        
-        # Add email anchor if available (from settings)
-        if hasattr(settings, 'TEST_EMAIL_LUCAS') and settings.TEST_EMAIL_LUCAS and settings.TEST_EMAIL_LUCAS.strip():
+        if (
+            hasattr(settings, "TEST_EMAIL_LUCAS")
+            and settings.TEST_EMAIL_LUCAS
+            and settings.TEST_EMAIL_LUCAS.strip()
+        ):
             anchors.append({"value": settings.TEST_EMAIL_LUCAS})
-        
-        # Use node_types if provided, otherwise default to schema:Capability
-        node_type = node_types[0] if node_types else 'schema:Capability'
-        
-        log_praxos_search_anchors_started(user_id, query, anchors, max_hops, top_k, node_types)
-        
+
+        node_type = node_types[0] if node_types else "schema:Capability"
+        log_praxos_search_anchors_started(
+            user_id, query, anchors, max_hops, top_k, node_types
+        )
         try:
-            results = self.env.search_from_anchors(
-                anchors=anchors,
-                query=query,
-                max_hops=max_hops,
-                node_type=node_type,
-                top_k=top_k
-            )
-            
-            duration = time.time() - start_time
-            # results is a list, not a dictionary
-            results_count = len(results) if results else 0
-            anchors_used = len(anchors)
-            
-            log_praxos_search_anchors_completed(user_id, query, results_count, duration, anchors_used)
-            
-            # Log detailed context for debugging
-            log_praxos_context_details(user_id, query, results)
-            
-            # Check for slow performance
-            if duration > 5.0:  # Log warning if search takes longer than 5 seconds
-                log_praxos_performance_warning("search_from_anchors", duration, 5.0)
-            
-            # Return in consistent format
-            return {
-                "success": True,
-                "results": results,
-                "count": results_count
+            search_query = {
+                "query": query,
+                "top_k": top_k,
+                "node_type": node_type,
+                "known_anchors": anchors,
+                "anchor_max_hops": max_hops,
             }
-            
+            body = {"search_query": search_query, "user_id": self.user_id}
+            results = await self._request("POST", "search", json_body=body)
+            results = results if isinstance(results, list) else (results or [])
+
+            duration = time.time() - start_time
+            results_count = len(results)
+            log_praxos_search_anchors_completed(
+                user_id, query, results_count, duration, len(anchors)
+            )
+            log_praxos_context_details(user_id, query, results)
+            if duration > 5.0:
+                log_praxos_performance_warning("search_from_anchors", duration, 5.0)
+            return {"success": True, "results": results, "count": results_count}
+        except PraxosBridgeError as e:
+            duration = time.time() - start_time
+            log_praxos_search_anchors_failed(user_id, query, e, duration)
+            log_praxos_api_error("search_from_anchors", e.status_code, e.message, e.payload)
+            return {"error": e.message}
         except Exception as e:
             duration = time.time() - start_time
             log_praxos_search_anchors_failed(user_id, query, e, duration)
-            
-            # Log API error details if available
-            if hasattr(e, 'status_code'):
-                log_praxos_api_error("search_from_anchors", e.status_code, str(e), getattr(e, 'details', None))
-            
             return {"error": str(e)}
-    
-    
+
     async def get_user_integrations(self, user_id: str):
-        """Get user's active integrations using anchor search"""
-        if not self.env:
-            return {"error": "Environment not initialized"}
-        
+        """Composite: anchor-search → fetch_graph_nodes."""
         start_time = time.time()
         log_praxos_get_integrations_started(user_id)
-        
         try:
-            # Search for integration nodes connected to this user
             results = await self.search_from_anchors(
                 user_id=user_id,
                 query="find all active integrations for this user",
                 max_hops=2,
-                top_k=10
+                top_k=10,
             )
-            
-            # Extract integration nodes
-            integration_nodes = []
+            integration_nodes: List[Any] = []
             nodes_to_id = set()
-            
-            if 'anchor_connections' in results:
-                for result in results:
-                    for conn in result.get('anchor_connections', []):
-                        for node in conn.get('path_nodes', []):
-                            if node.get('type') == 'schema:Integration':
-                                nodes_to_id.add(node['id'])
-            
-            # Fetch full integration details
+            raw = results.get("results") if isinstance(results, dict) else results
+            for result in raw or []:
+                for conn in result.get("anchor_connections", []) if isinstance(result, dict) else []:
+                    for node in conn.get("path_nodes", []):
+                        if node.get("type") == "schema:Integration":
+                            nodes_to_id.add(node["id"])
+
             if nodes_to_id:
-                graph_nodes = self.env.fetch_graph_nodes(list(nodes_to_id))
-                integration_nodes = graph_nodes
-            
+                fetch_body = {
+                    "node_ids": list(nodes_to_id),
+                    "user_id": self.user_id,
+                    "environment_id": self.environment_id,
+                }
+                integration_nodes = await self._request(
+                    "POST", "extract/fetch-graph-nodes", json_body=fetch_body
+                ) or []
+
             duration = time.time() - start_time
-            integrations_found = len(integration_nodes)
-            log_praxos_get_integrations_completed(user_id, integrations_found, duration)
-            
+            log_praxos_get_integrations_completed(user_id, len(integration_nodes), duration)
             return integration_nodes
-            
+        except PraxosBridgeError as e:
+            duration = time.time() - start_time
+            log_praxos_get_integrations_failed(user_id, e, duration)
+            log_praxos_api_error("get_user_integrations", e.status_code, e.message, e.payload)
+            return {"error": e.message}
         except Exception as e:
             duration = time.time() - start_time
             log_praxos_get_integrations_failed(user_id, e, duration)
-            if hasattr(e, 'status_code'):
-                log_praxos_api_error("get_user_integrations", e.status_code, str(e), getattr(e, 'details', None))
             return {"error": str(e)}
-    
+
     async def query_memory(self, user_id: str, query: str, context_type: str = None):
-        """Query memory using anchor-based search"""
         start_time = time.time()
         log_praxos_query_started(user_id, query, "query_memory")
-        
         try:
             result = await self.search_from_anchors(user_id, query)
-            
             duration = time.time() - start_time
-            results_count = len(result.get('results', [])) if result else 0
+            results_count = len(result.get("results", [])) if isinstance(result, dict) else 0
             log_praxos_query_completed(user_id, query, results_count, duration, "query_memory")
-            
             return result
-            
         except Exception as e:
             duration = time.time() - start_time
             log_praxos_query_failed(user_id, query, e, duration, "query_memory")
             raise
-    
-    async def search_memory(self, query: str, top_k: int = 5, search_modality: str = "node_vec", exclude_seen: List[str] = None):
-        """Direct search using Praxos search method with score filtering and sentence extraction"""
-        if not self.env:
-            return {"error": "Environment not initialized"}
 
+    async def search_memory(
+        self,
+        query: str,
+        top_k: int = 5,
+        search_modality: str = "node_vec",
+        exclude_seen: List[str] = None,
+    ):
+        """Direct search via POST /search with score filtering."""
         start_time = time.time()
         log_praxos_query_started("system", query, "search_memory")
-
         try:
-            # Use direct search method as specified by user
-            results = self.env.search(query=query, top_k=top_k, search_modality=search_modality, exclude_nodes=exclude_seen)
-
+            search_query = {
+                "query": query,
+                "top_k": top_k,
+                "search_modality": search_modality,
+                "exclude_nodes": exclude_seen or [],
+            }
+            body = {"search_query": search_query, "user_id": self.user_id}
+            results = await self._request("POST", "search", json_body=body)
             duration = time.time() - start_time
 
-            # Filter results by score > 0.8 and extract sentences
-            qualified_results = []
-            extracted_sentences = []
-            source_ids = set()
-            if results and isinstance(results, list):
+            qualified_results: List[Dict[str, Any]] = []
+            extracted_sentences: List[str] = []
+            source_ids: set = set()
+            if isinstance(results, list):
                 for result in results:
-                    # Check if result has a score > 0.8
-                    score = result.get('score', 0)
+                    score = result.get("score", 0)
                     if score > 0.7:
-                        qualified_results.append({'text': result.get('sentence', ''), 'node_id': result.get('node_id')})
-                        # Extract sentence field if available
-                        sentence = result.get('sentence', '')
-                        source_ids.add(result.get('source_id', ''))
+                        qualified_results.append(
+                            {
+                                "text": result.get("sentence", ""),
+                                "node_id": result.get("node_id"),
+                            }
+                        )
+                        sentence = result.get("sentence", "")
+                        source_ids.add(result.get("source_id", ""))
                         if sentence:
                             extracted_sentences.append(sentence)
 
-            results_count = len(qualified_results)
-            sentences_count = len(extracted_sentences)
-
-            log_praxos_query_completed("system", query, results_count, duration, "search_memory")
-
-            # Return formatted results with extracted sentences for LLM processing
+            log_praxos_query_completed(
+                "system", query, len(qualified_results), duration, "search_memory"
+            )
             return {
                 "success": True,
                 "source_ids": source_ids,
                 "results": qualified_results,
                 "sentences": extracted_sentences,
-                "count": results_count,
-                "sentences_count": sentences_count,
-                "raw_results": results  # Keep original results for debugging
+                "count": len(qualified_results),
+                "sentences_count": len(extracted_sentences),
+                "raw_results": results,
             }
-
+        except PraxosBridgeError as e:
+            duration = time.time() - start_time
+            log_praxos_query_failed("system", query, e, duration, "search_memory")
+            log_praxos_api_error("search_memory", e.status_code, e.message, e.payload)
+            return {"error": e.message}
         except Exception as e:
             duration = time.time() - start_time
             log_praxos_query_failed("system", query, e, duration, "search_memory")
-            if hasattr(e, 'status_code'):
-                log_praxos_api_error("search_memory", e.status_code, str(e), getattr(e, 'details', None))
             return {"error": str(e)}
 
-    async def extract_intelligent(self, query: str, strategy: str = 'entity_extraction', max_results: int = 20):
-        """Extract entities or literals using intelligent extraction with forced strategy"""
-        if not self.env:
-            return {"error": "Environment not initialized"}
+    async def file_search(
+        self,
+        query: str,
+        top_k: int = 10,
+        source_id: Optional[str] = None,
+    ):
+        """Semantic search over file content chunks (the embedding-only path).
 
+        Hits the per-user ``{user_id}_files`` Qdrant collection populated by
+        ``sync_file_for_semantic_search``. Returns chunk-level matches grouped
+        by source_id so the caller can pick a file to retrieve.
+        """
         start_time = time.time()
-        praxos_logger.info(f"Starting intelligent extraction: query='{query}', strategy={strategy}")
-
+        log_praxos_query_started("system", query, "file_search")
         try:
-            result = self.env.extract_intelligent(
-                query=query,
-                strategy=strategy,
-                max_results=max_results
-            )
-
+            body: Dict[str, Any] = {
+                "query": query,
+                "user_id": self.user_id,
+                "top_k": top_k,
+            }
+            if source_id:
+                body["source_id"] = source_id
+            if self.environment_id:
+                body["environment_id"] = self.environment_id
+            hits = await self._request("POST", "search/file", json_body=body)
             duration = time.time() - start_time
-            hits_count = len(result.get('hits', []))
 
-            praxos_logger.info(f"Intelligent extraction completed in {duration:.2f}s, found {hits_count} items")
+            if not isinstance(hits, list):
+                hits = []
 
-            return result
+            grouped: Dict[str, Dict[str, Any]] = {}
+            for hit in hits:
+                src = hit.get("source_id") or ""
+                existing = grouped.get(src)
+                if existing is None or hit.get("score", 0) > existing.get("top_score", 0):
+                    grouped[src] = {
+                        "source_id": src or None,
+                        "file_name": hit.get("file_name"),
+                        "description": hit.get("description"),
+                        "top_score": hit.get("score", 0),
+                        "best_snippet": hit.get("text_snippet"),
+                        "best_chunk_index": hit.get("chunk_index"),
+                        "total_chunks": hit.get("total_chunks"),
+                        "environment_id": hit.get("environment_id"),
+                        "timestamp": hit.get("timestamp"),
+                    }
+                grouped[src].setdefault("chunks", []).append(
+                    {
+                        "score": hit.get("score"),
+                        "chunk_index": hit.get("chunk_index"),
+                        "text_snippet": hit.get("text_snippet"),
+                    }
+                )
 
+            files = sorted(
+                grouped.values(), key=lambda f: f.get("top_score", 0), reverse=True
+            )
+            log_praxos_query_completed(
+                "system", query, len(files), duration, "file_search"
+            )
+            return {
+                "success": True,
+                "files": files,
+                "raw_hits": hits,
+                "count": len(files),
+                "hit_count": len(hits),
+            }
+        except PraxosBridgeError as e:
+            duration = time.time() - start_time
+            log_praxos_query_failed("system", query, e, duration, "file_search")
+            log_praxos_api_error("file_search", e.status_code, e.message, e.payload)
+            return {"error": e.message}
         except Exception as e:
             duration = time.time() - start_time
-            praxos_logger.error(f"Intelligent extraction failed: {e} (Duration: {duration:.2f}s)")
+            log_praxos_query_failed("system", query, e, duration, "file_search")
             return {"error": str(e)}
 
-    async def get_nodes_by_type(self, type_name: str, include_literals: bool = True, max_results: int = 100):
-        """Get all nodes of a specific type"""
-        if not self.env:
-            return {"error": "Environment not initialized"}
+    async def extract_intelligent(
+        self,
+        query: str,
+        strategy: str = "entity_extraction",
+        max_results: int = 20,
+    ):
+        start_time = time.time()
+        praxos_logger.info(
+            f"Starting intelligent extraction: query='{query}', strategy={strategy}"
+        )
+        try:
+            body = {
+                "query": query,
+                "user_id": self.user_id,
+                "environment_id": self.environment_id,
+                "strategy": strategy,
+                "max_results": max_results,
+            }
+            result = await self._request("POST", "extract/intelligent", json_body=body)
+            duration = time.time() - start_time
+            hits_count = len(result.get("hits", [])) if isinstance(result, dict) else 0
+            praxos_logger.info(
+                f"Intelligent extraction completed in {duration:.2f}s, found {hits_count} items"
+            )
+            return result
+        except PraxosBridgeError as e:
+            praxos_logger.error(f"Intelligent extraction failed: {e.message}")
+            return {"error": e.message}
+        except Exception as e:
+            praxos_logger.error(f"Intelligent extraction failed: {e}")
+            return {"error": str(e)}
 
+    async def get_nodes_by_type(
+        self,
+        type_name: str,
+        include_literals: bool = True,
+        max_results: int = 100,
+    ):
+        """List nodes of a given type via POST /search/type."""
         start_time = time.time()
         praxos_logger.info(f"Getting nodes by type: {type_name}")
-
         try:
-            results = self.env.get_nodes_by_type(
-                type_name=type_name,
-                include_literals=include_literals,
-                max_results=max_results
+            body = {
+                "description": type_name,
+                "user_id": self.user_id,
+                "environment_id": self.environment_id,
+                "limit": max_results,
+                "kind": "literal" if include_literals else "entity",
+            }
+            results = await self._request("POST", "search/type", json_body=body)
+            duration = time.time() - start_time
+            count = len(results) if isinstance(results, list) else 0
+            praxos_logger.info(
+                f"Found {count} nodes of type {type_name} in {duration:.2f}s"
             )
-
-            duration = time.time() - start_time
-            praxos_logger.info(f"Found {len(results)} nodes of type {type_name} in {duration:.2f}s")
-
             return results
-
+        except PraxosBridgeError as e:
+            praxos_logger.error(f"Get nodes by type failed: {e.message}")
+            return {"error": e.message}
         except Exception as e:
-            duration = time.time() - start_time
-            praxos_logger.error(f"Get nodes by type failed: {e} (Duration: {duration:.2f}s)")
+            praxos_logger.error(f"Get nodes by type failed: {e}")
             return {"error": str(e)}
-        
+
     async def enrich_nodes(self, node_ids: list, k_hops: int = 2):
-        """Direct search using Praxos search method with score filtering and sentence extraction"""
-        if not self.env:
-            return {"error": "Environment not initialized"}
-        
-        start_time = time.time()
-        
         try:
-            # Use direct search method as specified by user
-            results = self.env.enrich_nodes(node_ids=node_ids, k=k_hops)
-            return results
+            body = {
+                "node_ids": node_ids,
+                "user_id": self.user_id,
+                "k": k_hops,
+            }
+            return await self._request("POST", "enrich", json_body=body)
         except Exception as e:
-            duration = time.time() - start_time
             praxos_logger.error(f"Error enriching nodes {node_ids}: {e}")
             return {}
-    async def setup_trigger(self,trigger_conditional_statement):
-        """Setup a trigger in Praxos memory. a trigger is a conditional statement, of form "If I receive an email from X, then do Y"
-        Args:
-            trigger_conditional_statement: The conditional statement to setup as a trigger. it should be complete and descriptive, in plain english. 
-        """
-        if not self.env:
-            return {"error": "Environment not initialized"}
-        
-        start_time = time.time()
-        
-        try:
-            # Use direct search method as specified by user
-            result = self.env.ingest_trigger(trigger_conditional_statement)
-            return result
-        except Exception as e:
-            duration = time.time() - start_time
-            praxos_logger.error(f"Error setting up trigger with condition {trigger_conditional_statement}: {e}")
-            return {"error": str(e)}
-    async def eval_event(self, event_json, event_type: str = "email_received",
-                         adapter_kwargs: dict = None):
-        """Evaluate an event against the triggers in Praxos memory.
-        Args:
-            event_json: The event to evaluate, in JSON format. it should contain all relevant information about the event.
-            event_type: The provider/source key, e.g. "gmail", "outlook", "mscal", "onedrive".
-            adapter_kwargs: Optional per-provider parse() knobs forwarded to
-                the trigger-ingestor adapter (e.g. mscal `fetched_event`,
-                onedrive `fetched_item` / `previous_name` / `shared_with_me`).
-        """
-        if not self.env:
-            return {"error": "Environment not initialized"}
 
-        start_time = time.time()
+    # ------------------------------------------------------------------
+    # Trigger / habit
+    # ------------------------------------------------------------------
 
+    async def setup_trigger(self, trigger_conditional_statement: str):
         try:
-            result = self.env.evaluate_event(event_json, event_type, adapter_kwargs=adapter_kwargs)
-            return result
+            body = {
+                "text": trigger_conditional_statement,
+                "user_id": self.user_id,
+                "environment_id": self.environment_id,
+            }
+            return await self._request("POST", "triggers/ingest", json_body=body)
+        except PraxosBridgeError as e:
+            praxos_logger.error(f"Error setting up trigger: {e.message}")
+            return {"error": e.message}
         except Exception as e:
-            duration = time.time() - start_time
-            praxos_logger.error(f"Error evaluating event {event_json} of type {event_type}: {e}")
+            praxos_logger.error(
+                f"Error setting up trigger with condition {trigger_conditional_statement}: {e}"
+            )
             return {"error": str(e)}
 
-    async def evaluate_user_message(self, message_json, source: str,
-                                    output_type: str = None, output_chat_id: str = None):
-        """Evaluate a user message against habits and triggers in Praxos memory.
-        Args:
-            message_json: The user message payload (CanonUserMessage format).
-            source: The source platform (e.g., 'whatsapp', 'telegram', 'slack').
-            output_type: Optional output platform for dispatch routing.
-            output_chat_id: Optional chat/phone ID for dispatch routing.
-        """
-        if not self.env:
-            return {"error": "Environment not initialized"}
-
-        start_time = time.time()
-
+    async def eval_event(
+        self,
+        event_json,
+        event_type: str = "email_received",
+        adapter_kwargs: dict = None,
+    ):
         try:
-            result = self.env.evaluate_user_message(message_json, source, output_type, output_chat_id)
-            return result
+            body = {
+                "event_json": event_json,
+                "user_id": self.user_id,
+                "environment_id": self.environment_id,
+                "provider": event_type,
+                "adapter_kwargs": adapter_kwargs,
+            }
+            return await self._request("POST", "triggers/evaluate-event", json_body=body)
+        except PraxosBridgeError as e:
+            praxos_logger.error(f"Error evaluating event ({event_type}): {e.message}")
+            return {"error": e.message}
         except Exception as e:
-            duration = time.time() - start_time
+            praxos_logger.error(
+                f"Error evaluating event {event_json} of type {event_type}: {e}"
+            )
+            return {"error": str(e)}
+
+    async def evaluate_user_message(
+        self,
+        message_json,
+        source: str,
+        output_type: str = None,
+        output_chat_id: str = None,
+    ):
+        try:
+            body = {
+                "message_json": message_json,
+                "user_id": self.user_id,
+                "environment_id": self.environment_id,
+                "source": source,
+                "output_type": output_type,
+                "output_chat_id": output_chat_id,
+            }
+            return await self._request(
+                "POST", "triggers/evaluate-user-message", json_body=body
+            )
+        except PraxosBridgeError as e:
+            praxos_logger.error(
+                f"Error evaluating user message from {source}: {e.message}"
+            )
+            return {"error": e.message}
+        except Exception as e:
             praxos_logger.error(f"Error evaluating user message from {source}: {e}")
             return {"error": str(e)}
 
     async def setup_habit(self, habit_conditional_statement: str):
-        """Setup a habit pattern in Praxos memory.
-        Args:
-            habit_conditional_statement: The habit pattern to setup, in plain English.
-        """
-        if not self.env:
-            return {"error": "Environment not initialized"}
-
-        start_time = time.time()
-
         try:
-            result = self.env.ingest_habit(habit_conditional_statement)
-            return result
+            body = {
+                "text": habit_conditional_statement,
+                "user_id": self.user_id,
+                "environment_id": self.environment_id,
+            }
+            return await self._request("POST", "habits/ingest", json_body=body)
+        except PraxosBridgeError as e:
+            praxos_logger.error(f"Error setting up habit: {e.message}")
+            return {"error": e.message}
         except Exception as e:
-            duration = time.time() - start_time
-            praxos_logger.error(f"Error setting up habit with statement {habit_conditional_statement}: {e}")
+            praxos_logger.error(
+                f"Error setting up habit with statement {habit_conditional_statement}: {e}"
+            )
             return {"error": str(e)}
+
+    # ------------------------------------------------------------------
+    # File sync helpers
+    # ------------------------------------------------------------------
 
     async def sync_file_to_knowledge_graph(
         self,
@@ -641,48 +914,40 @@ class PraxosClient:
         metadata: dict = None,
         container_name: str = None,
     ) -> dict:
-        """
-        Sync a file from Azure Blob Storage into Praxos memory via the structured
-        ingestion path (add_file → Praxolex → Neo4j + fact embeddings). Best for
-        data-oriented or structured queries (invoices, contracts, JSON, Excel, etc.).
-        """
-        if not self.env:
-            return {"error": "Environment not initialized"}
-
-        import os
-        import tempfile
+        """Pull file bytes from blob, then upload via /sources/file."""
         from src.utils.blob_utils import download_from_blob_storage
 
         start_time = time.time()
         log_praxos_file_upload_started(blob_path, file_name, description)
-        tmp_path = None
         try:
-            data = await download_from_blob_storage(blob_path, container_name=container_name)
-            extension = os.path.splitext(file_name)[1] or ""
-            with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as tmp:
-                tmp.write(data)
-                tmp_path = tmp.name
-
-            result = self.env.add_file(
-                path=tmp_path,
+            data = await download_from_blob_storage(
+                blob_path, container_name=container_name
+            )
+            result = await self._post_file(
+                data,
+                file_name,
+                content_type=mime_type,
                 name=file_name,
-                description=description or f"File synced to knowledge graph: {file_name}",
+                description=description
+                or f"File synced to knowledge graph: {file_name}",
                 metadata=metadata,
             )
-            source_id = getattr(result, "id", None)
+            source_id = result.get("id") if isinstance(result, dict) else None
             duration = time.time() - start_time
             log_praxos_file_upload_completed(blob_path, file_name, source_id, duration)
-            return {"success": True, "sync_type": "knowledge_graph", "source_id": source_id}
+            return {
+                "success": True,
+                "sync_type": "knowledge_graph",
+                "source_id": source_id,
+            }
+        except PraxosBridgeError as e:
+            duration = time.time() - start_time
+            log_praxos_file_upload_failed(blob_path, file_name, e, duration)
+            return {"error": f"Knowledge-graph sync failed: {e.message}"}
         except Exception as e:
             duration = time.time() - start_time
             log_praxos_file_upload_failed(blob_path, file_name, e, duration)
             return {"error": f"Knowledge-graph sync failed: {str(e)}"}
-        finally:
-            if tmp_path:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
 
     async def sync_file_for_semantic_search(
         self,
@@ -693,241 +958,233 @@ class PraxosClient:
         metadata: dict = None,
         container_name: str = None,
     ) -> dict:
-        """
-        Sync a file into Praxos memory via the embedding-only path (chunk + embed
-        → Qdrant, no Praxolex/KG extraction). Best for qualitative queries over
-        long-form docs (research papers, manuals, prose).
-
-        Requires the SDK's add_file_for_semantic_search method, which posts to the
-        External-API /ingest-file-embedding route and then to the search service.
-        """
-        if not self.env:
-            return {"error": "Environment not initialized"}
-
-        if not hasattr(self.env, "add_file_for_semantic_search"):
-            return {"error": "SDK does not expose add_file_for_semantic_search — update Praxos-python"}
-
-        import os
-        import tempfile
+        """Pull bytes from blob, forward to /sources/file-embedding (Qdrant only)."""
         from src.utils.blob_utils import download_from_blob_storage
 
         start_time = time.time()
-        tmp_path = None
         try:
-            data = await download_from_blob_storage(blob_path, container_name=container_name)
-            extension = os.path.splitext(file_name)[1] or ""
-            with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as tmp:
-                tmp.write(data)
-                tmp_path = tmp.name
-
-            result = self.env.add_file_for_semantic_search(
-                path=tmp_path,
-                name=file_name,
-                description=description or f"File synced for semantic search: {file_name}",
-                metadata=metadata,
+            data = await download_from_blob_storage(
+                blob_path, container_name=container_name
+            )
+            files = {
+                "files": (
+                    file_name,
+                    data,
+                    mime_type or mimetypes.guess_type(file_name)[0] or "application/octet-stream",
+                )
+            }
+            form: Dict[str, Any] = {}
+            if file_name:
+                form["name"] = file_name
+            if description:
+                form["description"] = description or f"File synced for semantic search: {file_name}"
+            if metadata:
+                form["metadata"] = json.dumps(metadata)
+            params = {"user_id": self.user_id, "environment_id": self.environment_id}
+            result = await self._request(
+                "POST",
+                "sources/file-embedding",
+                params=params,
+                files=files,
+                data=form,
             )
             duration = time.time() - start_time
             sync_ref = None
             if isinstance(result, dict):
-                sync_ref = result.get("id") or result.get("point_id") or result.get("collection")
+                sync_ref = (
+                    result.get("sync_ref")
+                    or result.get("id")
+                    or result.get("collection")
+                )
             praxos_logger.info(
                 f"Semantic sync of '{file_name}' done in {duration:.2f}s (ref={sync_ref})"
             )
-            return {"success": True, "sync_type": "embedding", "sync_ref": sync_ref, "raw": result}
-        except Exception as e:
-            duration = time.time() - start_time
-            praxos_logger.error(f"Semantic sync failed for '{file_name}' after {duration:.2f}s: {e}")
-            return {"error": f"Semantic sync failed: {str(e)}"}
-        finally:
-            if tmp_path:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-
-    async def create_entity_in_kg(self, entity_type: str, label: str, properties: List[Dict[str, Any]], nested_entities: Dict = None):
-        """Create a new entity in the knowledge graph"""
-        if not self.env:
-            return {"error": "Environment not initialized"}
-
-        start_time = time.time()
-        praxos_logger.info(f"Creating entity in KG: type={entity_type}, label={label}")
-
-        try:
-            result = self.env.create_entity(
-                entity_type=entity_type,
-                label=label,
-                properties=properties,
-                nested_entities=nested_entities,
-                auto_type=True
-            )
-
-            duration = time.time() - start_time
-            nodes_created = result.get('nodes_created', 0)
-            praxos_logger.info(f"Created entity '{label}' with {nodes_created} nodes in {duration:.2f}s")
-
-            return result
-
-        except Exception as e:
-            duration = time.time() - start_time
-            praxos_logger.error(f"Failed to create entity: {e} (Duration: {duration:.2f}s)")
-            return {"error": str(e)}
-
-    async def update_literal_value(self, node_id: str, new_value: Any, new_type: str = None):
-        """Update a literal value in the knowledge graph"""
-        if not self.env:
-            return {"error": "Environment not initialized"}
-
-        start_time = time.time()
-        praxos_logger.info(f"Updating literal {node_id} to value: {new_value}")
-
-        try:
-            result = self.env.update_literal(node_id, new_value, new_type)
-
-            duration = time.time() - start_time
-            praxos_logger.info(f"Updated literal {node_id} in {duration:.2f}s")
-
-            return result
-
-        except Exception as e:
-            duration = time.time() - start_time
-            praxos_logger.error(f"Failed to update literal: {e} (Duration: {duration:.2f}s)")
-            return {"error": str(e)}
-
-    async def update_entity_properties(self, node_id: str, properties: List[Dict[str, Any]], replace_all: bool = False):
-        """Update an entity's properties in the knowledge graph"""
-        if not self.env:
-            return {"error": "Environment not initialized"}
-
-        start_time = time.time()
-        praxos_logger.info(f"Updating entity {node_id} with {len(properties)} properties (replace_all={replace_all})")
-
-        try:
-            result = self.env.update_entity_properties(node_id, properties, replace_all)
-
-            duration = time.time() - start_time
-            nodes_modified = result.get('nodes_modified', 0)
-            praxos_logger.info(f"Updated entity {node_id}, modified {nodes_modified} nodes in {duration:.2f}s")
-
-            return result
-
-        except Exception as e:
-            duration = time.time() - start_time
-            praxos_logger.error(f"Failed to update entity: {e} (Duration: {duration:.2f}s)")
-            return {"error": str(e)}
-
-    async def delete_node_from_kg(self, node_id: str, cascade: bool = True, force: bool = False):
-        """Delete a node from the knowledge graph"""
-        if not self.env:
-            return {"error": "Environment not initialized"}
-
-        start_time = time.time()
-        praxos_logger.info(f"Deleting node {node_id} (cascade={cascade}, force={force})")
-
-        try:
-            result = self.env.delete_node(node_id, cascade, force)
-
-            duration = time.time() - start_time
-            nodes_deleted = result.get('nodes_deleted', 0)
-            praxos_logger.info(f"Deleted node {node_id}, removed {nodes_deleted} nodes in {duration:.2f}s")
-
-            return result
-
-        except Exception as e:
-            duration = time.time() - start_time
-            praxos_logger.error(f"Failed to delete node: {e} (Duration: {duration:.2f}s)")
-            return {"error": str(e)}
-    async def add_business_data(self, data: Dict[str, Any], name: str = None, description: str = None, root_entity_type: str = "schema:Thing", metadata: Dict[str, Any] = None):
-      
-      """Add business data to Praxos memory using add_business_data method"""
-      
-      if not self.env:
-          return {"error": "Environment not initialized"}
-
-      start_time = time.time()
-
-      try:
-          # Use the SDK's add_business_data method directly
-          result = self.env.add_business_data(
-              data=data,
-              name=name,
-              description=description,
-              root_entity_type=root_entity_type,
-              metadata=metadata
-          )
-
-          duration = time.time() - start_time
-
-          # Log success (you can add specific logging if needed)
-          praxos_logger.info(f"✅ Business data added successfully in {duration:.2f}s")
-
-          # Return consistent format
-          return {
-              "success": True,
-              "id": getattr(result, 'id', None) if result else None,
-              "source": result
-          }
-
-      except Exception as e:
-          duration = time.time() - start_time
-          praxos_logger.error(f"❌ Business data add failed: {e} (Duration: {duration:.2f}s)")
-          if hasattr(e, 'status_code'):
-              praxos_logger.error(f"   Status code: {e.status_code}")
-          return {"error": str(e)}
-
-    async def add_knowledge_chunk(self, text: str, source: str, metadata: Dict[str, Any] = None):
-        """
-        Add a chunk of text to Praxos Memory by treating it as a small text file.
-        This adapts the file ingestion pipeline to serve as a vector store for text chunks.
-        """
-        if not self.env:
-            return {"error": "Environment not initialized"}
-
-        start_time = time.time()
-        
-        # We wrap the chunk in a temporary file to use the existing 'add_file' modality
-        # which guarantees text embedding and vectorization.
-        import tempfile
-        import os
-        
-        # Create a descriptive filename for the chunk
-        chunk_id = hash(text)
-        safe_source = "".join([c for c in source if c.isalnum() or c in (' ', '_', '-')]).strip()
-        filename = f"chunk_{safe_source}_{chunk_id}.txt"
-        
-        # Add metadata as a header in the text file so it's part of the context
-        content_to_upload = text
-        if metadata:
-            meta_header = "Metadata:\n" + "\n".join([f"{k}: {v}" for k, v in metadata.items()]) + "\n\n"
-            content_to_upload = meta_header + text
-
-        temp_path = None
-        try:
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt") as temp_file:
-                temp_file.write(content_to_upload)
-                temp_path = temp_file.name
-
-            # Upload using the standard file ingestion
-            result = self.env.add_file(
-                path=temp_path,
-                name=filename,
-                description=f"Knowledge chunk from {source}"
-            )
-
-            duration = time.time() - start_time
-            praxos_logger.info(f"Ingested knowledge chunk from {source} (via file) in {duration:.2f}s")
-            
             return {
                 "success": True,
-                "id": getattr(result, 'id', None) if result else None
+                "sync_type": "embedding",
+                "sync_ref": sync_ref,
+                "raw": result,
             }
+        except PraxosBridgeError as e:
+            duration = time.time() - start_time
+            praxos_logger.error(
+                f"Semantic sync failed for '{file_name}' after {duration:.2f}s: {e.message}"
+            )
+            return {"error": f"Semantic sync failed: {e.message}"}
+        except Exception as e:
+            duration = time.time() - start_time
+            praxos_logger.error(
+                f"Semantic sync failed for '{file_name}' after {duration:.2f}s: {e}"
+            )
+            return {"error": f"Semantic sync failed: {str(e)}"}
 
+    # ------------------------------------------------------------------
+    # Graph CRUD
+    # ------------------------------------------------------------------
+
+    async def create_entity_in_kg(
+        self,
+        entity_type: str,
+        label: str,
+        properties: List[Dict[str, Any]],
+        nested_entities: Dict = None,
+    ):
+        start_time = time.time()
+        praxos_logger.info(f"Creating entity in KG: type={entity_type}, label={label}")
+        try:
+            body = {
+                "entity_type": entity_type,
+                "label": label,
+                "properties": properties,
+                "user_id": self.user_id,
+                "environment_id": self.environment_id,
+                "nested_entities": nested_entities,
+                "auto_type": True,
+            }
+            result = await self._request("POST", "graph/entity", json_body=body)
+            duration = time.time() - start_time
+            nodes_created = (
+                result.get("nodes_created", 0) if isinstance(result, dict) else 0
+            )
+            praxos_logger.info(
+                f"Created entity '{label}' with {nodes_created} nodes in {duration:.2f}s"
+            )
+            return result
+        except PraxosBridgeError as e:
+            praxos_logger.error(f"Failed to create entity: {e.message}")
+            return {"error": e.message}
+        except Exception as e:
+            praxos_logger.error(f"Failed to create entity: {e}")
+            return {"error": str(e)}
+
+    async def update_literal_value(
+        self, node_id: str, new_value: Any, new_type: str = None
+    ):
+        start_time = time.time()
+        praxos_logger.info(f"Updating literal {node_id} to value: {new_value}")
+        try:
+            body = {
+                "value": new_value,
+                "user_id": self.user_id,
+                "new_type": new_type,
+            }
+            result = await self._request(
+                "PUT", f"graph/nodes/{node_id}/literal", json_body=body
+            )
+            duration = time.time() - start_time
+            praxos_logger.info(f"Updated literal {node_id} in {duration:.2f}s")
+            return result
+        except PraxosBridgeError as e:
+            praxos_logger.error(f"Failed to update literal: {e.message}")
+            return {"error": e.message}
+        except Exception as e:
+            praxos_logger.error(f"Failed to update literal: {e}")
+            return {"error": str(e)}
+
+    async def update_entity_properties(
+        self,
+        node_id: str,
+        properties: List[Dict[str, Any]],
+        replace_all: bool = False,
+    ):
+        start_time = time.time()
+        praxos_logger.info(
+            f"Updating entity {node_id} with {len(properties)} properties (replace_all={replace_all})"
+        )
+        try:
+            body = {
+                "properties": properties,
+                "user_id": self.user_id,
+                "environment_id": self.environment_id,
+                "replace_all": replace_all,
+            }
+            result = await self._request(
+                "PUT", f"graph/nodes/{node_id}/entity", json_body=body
+            )
+            duration = time.time() - start_time
+            nodes_modified = (
+                result.get("nodes_modified", 0) if isinstance(result, dict) else 0
+            )
+            praxos_logger.info(
+                f"Updated entity {node_id}, modified {nodes_modified} nodes in {duration:.2f}s"
+            )
+            return result
+        except PraxosBridgeError as e:
+            praxos_logger.error(f"Failed to update entity: {e.message}")
+            return {"error": e.message}
+        except Exception as e:
+            praxos_logger.error(f"Failed to update entity: {e}")
+            return {"error": str(e)}
+
+    async def delete_node_from_kg(
+        self, node_id: str, cascade: bool = True, force: bool = False
+    ):
+        start_time = time.time()
+        praxos_logger.info(
+            f"Deleting node {node_id} (cascade={cascade}, force={force})"
+        )
+        try:
+            params = {
+                "user_id": self.user_id,
+                "cascade": "true" if cascade else "false",
+                "force": "true" if force else "false",
+            }
+            result = await self._request(
+                "DELETE", f"graph/nodes/{node_id}", params=params
+            )
+            duration = time.time() - start_time
+            nodes_deleted = (
+                result.get("nodes_deleted", 0) if isinstance(result, dict) else 0
+            )
+            praxos_logger.info(
+                f"Deleted node {node_id}, removed {nodes_deleted} nodes in {duration:.2f}s"
+            )
+            return result
+        except PraxosBridgeError as e:
+            praxos_logger.error(f"Failed to delete node: {e.message}")
+            return {"error": e.message}
+        except Exception as e:
+            praxos_logger.error(f"Failed to delete node: {e}")
+            return {"error": str(e)}
+
+    async def add_knowledge_chunk(
+        self,
+        text: str,
+        source: str,
+        metadata: Dict[str, Any] = None,
+    ):
+        """Add a chunk of text via /sources/business-data.
+
+        The previous implementation wrote a temp .txt file and posted via
+        add_file. The new bridge restricts /sources/file to pdf/doc/docx/json,
+        so chunks now ride the business-data path: the chunk text + source +
+        metadata are wrapped as a JSON document and run through graph-creator.
+        """
+        start_time = time.time()
+        try:
+            data = {
+                "type": "knowledge_chunk",
+                "text": text,
+                "source": source,
+                "metadata": metadata or {},
+            }
+            safe_source = "".join(
+                c for c in source if c.isalnum() or c in (" ", "_", "-")
+            ).strip()
+            chunk_id = abs(hash(text))
+            name = f"chunk_{safe_source}_{chunk_id}"
+            result = await self.add_business_data(
+                data=data,
+                name=name,
+                description=f"Knowledge chunk from {source}",
+                root_entity_type="schema:Thing",
+                metadata=metadata,
+            )
+            duration = time.time() - start_time
+            praxos_logger.info(
+                f"Ingested knowledge chunk from {source} in {duration:.2f}s"
+            )
+            return result
         except Exception as e:
             praxos_logger.error(f"Failed to ingest knowledge chunk: {e}")
             return {"error": str(e)}
-        finally:
-            # Clean up
-            if temp_path and os.path.exists(temp_path):
-                os.unlink(temp_path)
-      
-          

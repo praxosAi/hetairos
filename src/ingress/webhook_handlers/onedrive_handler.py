@@ -53,8 +53,10 @@ async def _evaluate_drive_item(
     if previous_name:
         adapter_kwargs["previous_name"] = previous_name
 
-    praxos_api_key = user_record.get("praxos_api_key")
-    praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
+    praxos_client = PraxosClient(
+        user_id=str(user_record["_id"]),
+        environment_id=str(user_record["environment_id"]),
+    )
 
     logger.info(f"Evaluating triggers for OneDrive item {item_id}")
     event_eval_result = await praxos_client.eval_event(

@@ -133,8 +133,10 @@ async def handle_notion_webhook(request: Request):
         data_source_id = data.get("data_source_id")
 
         # Create PraxosClient for trigger evaluation
-        praxos_api_key = user_record.get("praxos_api_key")
-        praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
+        praxos_client = PraxosClient(
+            user_id=str(user_record["_id"]),
+            environment_id=str(user_record["environment_id"]),
+        )
 
         # Evaluate triggers using the full event data
         logger.info(f"Evaluating triggers for Notion event {event_type}")

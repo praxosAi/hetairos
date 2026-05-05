@@ -106,8 +106,10 @@ async def handle_google_drive_webhook(request: Request):
         logger.info(f"Fetched {len(changed_files)} files; inserted {len(inserted)} for {connected_account}")
 
         # Process only those actually inserted
-        praxos_api_key = user_record.get("praxos_api_key")
-        praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
+        praxos_client = PraxosClient(
+            user_id=str(user_record["_id"]),
+            environment_id=str(user_record["environment_id"]),
+        )
 
         # For each new file: evaluate triggers and publish to event queue
         for file_data, inserted_id in zip(changed_files, inserted_ids):

@@ -16,7 +16,6 @@ azure-servicebus
 azure-keyvault-secrets
 aiohttp
 notion-client
-Praxos-python
 python-magic
 PyPDF2
 python-docx

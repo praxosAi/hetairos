@@ -114,8 +114,10 @@ async def handle_google_calendar_webhook(request: Request):
         logger.info(f"Fetched {len(events)} events; inserted {len(inserted)} for {connected_account}")
 
         # Process only those actually inserted
-        praxos_api_key = user_record.get("praxos_api_key")
-        praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
+        praxos_client = PraxosClient(
+            user_id=str(user_record["_id"]),
+            environment_id=str(user_record["environment_id"]),
+        )
 
         for event, inserted_id in zip(events, inserted_ids):
             if not inserted_id:

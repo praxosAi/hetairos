@@ -127,8 +127,10 @@ async def handle_airtable_webhook(request: Request):
             logger.info(f"Airtable ping for webhook {webhook_id} but no new payloads")
             return {"status": "ok"}
 
-        praxos_api_key = user_record.get("praxos_api_key")
-        praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
+        praxos_client = PraxosClient(
+            user_id=str(user_record["_id"]),
+            environment_id=str(user_record["environment_id"]),
+        )
 
         for payload in payloads_collected:
             event_for_eval = {

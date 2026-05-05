@@ -8,6 +8,7 @@ class Settings:
     PRAXOS_API_KEY = os.getenv("PRAXOS_API_KEY")
     PRAXOS_BASE_URL = os.getenv("PRAXOS_BASE_URL", "https://api.mypraxos.com")  # Allow override for local dev
     PRAXOS_ENVIRONMENT_NAME = os.getenv("PRAXOS_ENVIRONMENT_NAME")
+    MYPRAXOS_BACKEND_URL = os.getenv("MYPRAXOS_BACKEND_URL")
     PORTKEY_API_KEY = os.getenv("PORTKEY_API_KEY")
 
     # Operating Mode: 'cloud' for production, 'local' for open-source

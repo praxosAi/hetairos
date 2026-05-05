@@ -425,9 +425,13 @@ class UserService:
         try:
             from src.core.praxos_client import PraxosClient
 
+            user_record = self.get_user_by_id(user_id)
+            if not user_record or not user_record.get("environment_id"):
+                logger.error(f"Cannot initialize KG: user {user_id} has no environment_id")
+                return None
             praxos_client = PraxosClient(
-                environment_name=f"user_{user_id}",
-                api_key=settings.PRAXOS_API_KEY
+                user_id=str(user_record["_id"]),
+                environment_id=str(user_record["environment_id"]),
             )
 
             # Build user profile properties

@@ -22,6 +22,7 @@ def create_praxos_memory_tool(praxos_client: PraxosClient, user_id: str, convers
         Args:
             query: Search query for the knowledge base
             top_k: Number of results to return
+            search_modality options are {"fast", "node_vec", "vec_edge", "type_vec", "intelligent"}. do not use other options
             exclude_seen_node_ids: Optional list of node IDs to exclude from results (useful for iterative searches)
         """
         try:

@@ -76,10 +76,48 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                         phone_number = message["from"]
                         message_text = message.get("text", {}).get("body", "")
 
+                        group_id = message.get("group_id")
+                        is_group = bool(group_id)
+                        chat_name = f"Group {group_id}" if is_group else "Direct Message"
+                        chat_context = f"Message received in {'Group Chat: ' + chat_name if is_group else 'Direct Message'} (ID: {group_id or phone_number})."
+
+                        mention_text = message_text or ""
+                        if not mention_text:
+                            for _mt in ('image', 'video', 'document', 'audio', 'voice'):
+                                cap = message.get(_mt, {}).get("caption", "") if isinstance(message.get(_mt), dict) else ""
+                                if cap:
+                                    mention_text = cap
+                                    break
+
+                        bot_mention_keyword = "praxos"
+                        is_mentioned = bot_mention_keyword in mention_text.lower() if mention_text else False
+                        is_reply = "context" in message
+                        trigger_agent = (not is_group) or is_mentioned or is_reply
+
+                        contacts = value.get("contacts", [])
+                        speaker_name = phone_number
+                        if contacts:
+                            speaker_name = contacts[0].get("profile", {}).get("name", phone_number)
+
+                        output_reference = str(group_id) if is_group else phone_number
+                        active_channels = []
+
                         if str(receiving_phone_id) == str(settings.WHATSAPP_PHONE_NUMBER_ID):
                             modality = 'whatsapp'
                             whatsapp_client = WhatsAppClient()
                             integration_record = await integration_service.is_authorized_user('whatsapp',phone_number)
+
+                            if not integration_record and is_group:
+                                group_integration = await integration_service.get_integration_by_active_channel("whatsapp", str(group_id))
+                                if group_integration:
+                                    integration_record = group_integration
+                                    trigger_agent = False
+                                    active_channels = group_integration.get("active_output_channels", [])
+                                    user_id_var.set(str(integration_record["user_id"]))
+                                else:
+                                    webhook_logger.info(f"Group {group_id} is not tracked by any active Praxos member. Dropping message.")
+                                    return {"status": "ok"}
+
                             if not integration_record:
                                 try:
                                     integration_record_new,user_record = await integration_service.is_authorizable_user('whatsapp',phone_number,message_text)
@@ -124,6 +162,15 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                 phone_number_id=receiving_phone_id
                             )
 
+                        if is_group and modality == 'whatsapp':
+                            if not active_channels:
+                                active_channels = integration_record.get("active_output_channels", [])
+                            channel_exists = any(str(ch.get("reference")) == str(group_id) for ch in active_channels)
+                            if not channel_exists:
+                                active_channels.append({"reference": str(group_id), "name": chat_name})
+                                integration_record["active_output_channels"] = active_channels
+                                await integration_service.update_integration(integration_record["_id"], integration_record)
+
                         webhook_logger.info(f"Marking message as read on webhook with base url {whatsapp_client.base_url}")
                         await whatsapp_client.mark_as_read(message["id"])
                         ### check if message is forwarded.
@@ -141,11 +188,24 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                             event = {
                                 "user_id": str(user_record["_id"]),
                                 'output_type': modality,
-                                'output_phone_number': phone_number,
+                                'output_phone_number': output_reference,
                                 "source": modality,
                                 "payload": {"text": message_text},
                                 "logging_context": {'user_id': str(user_record["_id"]), 'request_id': str(request_id_var.get()), 'modality': modality_var.get() },
-                                "metadata": {"message_id": message["id"],'source': modality,'forwarded':forwarded, 'timestamp': message.get('timestamp'), 'integration_id': str(integration_record['_id']) if modality == 'whatsapp_business' else None}
+                                "metadata": {
+                                    "message_id": message["id"],
+                                    'source': modality,
+                                    'forwarded': forwarded,
+                                    'timestamp': message.get('timestamp'),
+                                    'integration_id': str(integration_record['_id']) if modality == 'whatsapp_business' else None,
+                                    'is_group': is_group,
+                                    'group_id': str(group_id) if is_group else None,
+                                    'active_output_channels': active_channels if is_group else None,
+                                    'chat_context': chat_context,
+                                    'context_boundary_id': f"whatsapp_{group_id}" if is_group else None,
+                                    'speaker_name': speaker_name,
+                                    'trigger_agent': trigger_agent,
+                                }
                             }
                             await event_queue.publish(event)
                         
@@ -188,7 +248,7 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                         event = {
                                             "user_id": str(user_record["_id"]),
                                             'output_type': modality,
-                                            'output_phone_number': phone_number,
+                                            'output_phone_number': output_reference,
                                             "source": modality,
                                             "logging_context": {'user_id': str(user_record["_id"]), 'request_id': str(request_id_var.get()), 'modality': modality_var.get() },
                                             "payload": {"files": [file_result.to_event_file_entry()]},
@@ -196,8 +256,15 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                                 "message_id": message["id"],
                                                 'source': modality,
                                                 'forwarded': forwarded,
-                                                'timestamp': message.get('timestamp')
-                                            , 'integration_id': str(integration_record['_id']) if modality == 'whatsapp_business' else None}
+                                                'timestamp': message.get('timestamp'),
+                                                'integration_id': str(integration_record['_id']) if modality == 'whatsapp_business' else None,
+                                                'is_group': is_group,
+                                                'group_id': str(group_id) if is_group else None,
+                                                'active_output_channels': active_channels if is_group else None,
+                                                'chat_context': chat_context,
+                                                'context_boundary_id': f"whatsapp_{group_id}" if is_group else None,
+                                                'speaker_name': speaker_name,
+                                            }
                                         }
 
                                         await event_queue.publish(event)
@@ -238,7 +305,7 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                             event = {
                                 "user_id": str(user_record["_id"]),
                                 'output_type': modality,
-                                'output_phone_number': phone_number,
+                                'output_phone_number': output_reference,
                                 "source": modality,
                                 "logging_context": {'user_id': str(user_record["_id"]), 'request_id': str(request_id_var.get()), 'modality': modality_var.get()},
                                 "payload": {"text": location_text},
@@ -247,6 +314,12 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
                                     'source': modality,
                                     'timestamp': message.get('timestamp'),
                                     'type': 'text',
+                                    'is_group': is_group,
+                                    'group_id': str(group_id) if is_group else None,
+                                    'active_output_channels': active_channels if is_group else None,
+                                    'chat_context': chat_context,
+                                    'context_boundary_id': f"whatsapp_{group_id}" if is_group else None,
+                                    'speaker_name': speaker_name,
                                     'location': {
                                         "latitude": latitude,
                                         "longitude": longitude,

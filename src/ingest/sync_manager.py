@@ -39,16 +39,10 @@ class SyncManager:
             integration = integration_class(user_id)
             user_record = user_service.get_user_by_id(user_id)
 
-            from src.config.settings import settings
-            if settings.OPERATING_MODE == "local":
-                praxos_api_key = settings.PRAXOS_API_KEY
-            else:
-                praxos_api_key = user_record.get("praxos_api_key")
-
-            if not praxos_api_key:
-                raise ValueError("Praxos API key not found.")
-
-            praxos_client = PraxosClient(f"env_for_{user_record['email']}", api_key=praxos_api_key)
+            praxos_client = PraxosClient(
+                user_id=str(user_record["_id"]),
+                environment_id=str(user_record["environment_id"]),
+            )
             # Perform sync
             ###TODO:Currently broken.
             return 0

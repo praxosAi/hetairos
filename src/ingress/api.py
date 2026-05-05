@@ -18,6 +18,8 @@ from src.ingress.webhook_handlers import trello_handler
 from src.ingress.webhook_handlers import dropbox_handler
 from src.ingress.webhook_handlers import slack_handler
 from src.ingress.webhook_handlers import discord_handler
+from src.ingress.webhook_handlers import airtable_handler
+from src.ingress.webhook_handlers import hubspot_handler
 from src.ingress.webhook_handlers import mcp_handler
 from src.ingress.webhook_handlers import internal_handler
 from src.core import suspended_event_queue
@@ -25,6 +27,7 @@ from src.utils.logging.base_logger import request_id_var, user_id_var, modality_
 from src.utils.redis_client import subscribe_to_channel
 from src.utils.logging import setup_logger
 from src.ingress.webhook_handlers.telegram_handler import set_telegram_webhook, telegram_scheduler
+from src.services.webhook_renewal import webhook_renewal_service
 from apscheduler.triggers.cron import CronTrigger
 from src.services.jwt_validation import validate_jwt_with_backend, extract_user_id
 
@@ -92,6 +95,10 @@ if os.getenv("ENV_NAME","production") != "test":
     # Productivity
     app.include_router(notion_handler.router, prefix="/webhooks")
     app.include_router(trello_handler.router, prefix="/webhooks")
+    app.include_router(airtable_handler.router, prefix="/webhooks")
+
+    # CRM
+    app.include_router(hubspot_handler.router, prefix="/webhooks")
 
     # General HTTP ingress
     app.include_router(http_handler.router, prefix="/ingress")
@@ -123,11 +130,15 @@ async def start_telegram_webhook_scheduler():
     telegram_scheduler.start()
     logger.info("Telegram webhook scheduler started")
 
+    webhook_renewal_service.start()
+
 @app.on_event("shutdown")
 async def shutdown_telegram_scheduler():
     """Shutdown the Telegram webhook scheduler gracefully."""
     telegram_scheduler.shutdown()
     logger.info("Telegram webhook scheduler stopped")
+
+    webhook_renewal_service.shutdown()
 
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Cookie

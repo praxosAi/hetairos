@@ -1,0 +1,62 @@
+tool_id: search_file_contents
+category: praxos_memory
+display_name: Search File Contents
+short_description: Semantic search over the *contents* of files synced via sync_file_for_semantic_search. Use for qualitative questions about long-form documents (papers, manuals, contracts).
+
+detailed_description: |
+  Searches the per-user file-chunk Qdrant collection populated by
+  sync_file_for_semantic_search. Each upload is split into chunks, embedded,
+  and stored — this tool runs a vector search over those chunks and returns
+  the matching files with snippets.
+
+  Use this when the user asks about what's INSIDE a long-form document:
+    - "What does the paper say about transformer scaling?"
+    - "Summarize the section on retry policies in the manual."
+    - "Find where the contract talks about confidentiality."
+
+  Contrast with the other search tools:
+    - query_praxos_memory → searches the knowledge graph (structured facts
+      extracted by Praxolex). Use for entity/relationship questions.
+    - search_uploaded_files → graph-aware lookup that finds files that have
+      been knowledge-graph-synced; returns file metadata, not content snippets.
+    - search_file_contents (this tool) → searches the embedding-only chunks;
+      returns content snippets ranked by semantic similarity.
+
+  Each result row carries a Source ID. Pair it with retrieve_file_by_source_id
+  to load the matching file into the current conversation's context for
+  visual or full-content analysis.
+
+arguments:
+  - name: query
+    type: str
+    description: Natural-language description of the content to find. Be specific — "the section discussing dropout regularization", not just "dropout".
+    required: true
+  - name: top_k
+    type: int
+    description: Max chunk hits to retrieve from Qdrant. Multiple chunks from the same file are aggregated into one row. Default 5, max 50.
+    required: false
+    default: 5
+  - name: source_id
+    type: str
+    description: Optional — restrict the search to a single previously-synced file's chunks. Use when you already know which file to dig into.
+    required: false
+
+returns: Formatted string listing matched files with file_name, Source ID, top score, best matching snippet, and chunk-match counts. Source IDs pair with retrieve_file_by_source_id.
+
+examples:
+  - 'search_file_contents(query="how does the author define attention")'
+  - 'search_file_contents(query="retry policy section", top_k=3)'
+  - 'search_file_contents(query="confidentiality clause", source_id="src_abc123")'
+
+use_cases:
+  - User asks a qualitative or summarization question about a long document they uploaded.
+  - You need to ground a response in specific passages from a research paper, contract, or manual.
+  - You want to find the relevant section of a long document before retrieving it in full.
+
+notes:
+  - Only finds files synced via sync_file_for_semantic_search. Files synced only via sync_file_to_praxos_knowledge_graph live in Neo4j and are reached via query_praxos_memory.
+  - If a file produced N chunks and several match, the tool aggregates them into one row per file and returns the best snippet.
+  - For loading a matched file into context, follow up with retrieve_file_by_source_id.
+
+requires_integration: praxos
+requires_auth: true

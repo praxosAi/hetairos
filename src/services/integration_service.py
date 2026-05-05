@@ -450,21 +450,26 @@ class IntegrationService:
 
     async def get_user_by_subscription_id(self, subscription_id: str, integration_name: str) -> Optional[str]:
         """Find user by Microsoft Graph subscription_id (Outlook/Calendar/OneDrive)."""
-        # Check different metadata fields based on integration type
+        integ = await self.get_integration_by_subscription_id(subscription_id, integration_name)
+        return str(integ["user_id"]) if integ else None
+
+    async def get_integration_by_subscription_id(
+        self, subscription_id: str, integration_name: str,
+    ) -> Optional[dict]:
+        """Find the full integration record by Microsoft Graph subscription_id.
+        Used by webhook handlers that also need `connected_account` (for
+        per-account delta cursors) or other integration-level metadata.
+        """
         metadata_fields = [
             f"metadata.{integration_name}_webhook_subscription_id",
             "metadata.outlook_webhook_subscription_id",
             "metadata.calendar_webhook_subscription_id",
-            "metadata.onedrive_webhook_subscription_id"
+            "metadata.onedrive_webhook_subscription_id",
         ]
-
         for field in metadata_fields:
-            integ = await self.db_manager.db["integrations"].find_one(
-                {field: subscription_id},
-                projection={"user_id": 1}
-            )
+            integ = await self.db_manager.db["integrations"].find_one({field: subscription_id})
             if integ:
-                return str(integ["user_id"])
+                return integ
         return None
 
     async def get_user_by_trello_board_id(self, board_id: str) -> Optional[str]:
@@ -483,6 +488,55 @@ class IntegrationService:
         )
         if integ:
             return (str(integ["user_id"]), integ.get("connected_account"))
+        return None
+
+    async def get_user_by_airtable_webhook(self, base_id: str, webhook_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Find the Airtable integration record that owns a given (base_id, webhook_id).
+        Returns the full integration document so the handler can read mac_secret + cursor.
+        """
+        integ = await self.db_manager.db["integrations"].find_one(
+            {
+                "name": "airtable",
+                "webhook_info.airtable.webhooks": {
+                    "$elemMatch": {"base_id": base_id, "webhook_id": webhook_id}
+                },
+            }
+        )
+        return integ
+
+    async def get_airtable_webhook_cursor(self, integration_id: str, webhook_id: str) -> Optional[int]:
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"_id": ObjectId(integration_id)},
+            projection={"airtable_webhook_cursors": 1},
+        )
+        if not integ:
+            return None
+        return (integ.get("airtable_webhook_cursors") or {}).get(webhook_id)
+
+    async def set_airtable_webhook_cursor(self, integration_id: str, webhook_id: str, cursor: int) -> None:
+        await self.db_manager.db["integrations"].update_one(
+            {"_id": ObjectId(integration_id)},
+            {"$set": {
+                f"airtable_webhook_cursors.{webhook_id}": int(cursor),
+                "updated_at": datetime.now(timezone.utc),
+            }},
+        )
+
+    async def get_user_by_hubspot_portal_id(self, portal_id) -> Optional[tuple[str, str]]:
+        """Find user by HubSpot portal/hub id. Returns (user_id, connected_account)."""
+        integ = await self.db_manager.db["integrations"].find_one(
+            {"name": "hubspot", "webhook_info.hubspot.hub_id": int(portal_id)},
+            projection={"user_id": 1, "connected_account": 1},
+        )
+        if not integ:
+            # Some HubSpot endpoints return hub_id as a string — match either shape.
+            integ = await self.db_manager.db["integrations"].find_one(
+                {"name": "hubspot", "webhook_info.hubspot.hub_id": str(portal_id)},
+                projection={"user_id": 1, "connected_account": 1},
+            )
+        if integ:
+            return str(integ["user_id"]), integ.get("connected_account")
         return None
 
     async def get_user_by_notion_bot_id(self, bot_id: str) -> Optional[str]:
@@ -628,9 +682,13 @@ class IntegrationService:
             # Import here to avoid circular dependency
             if not praxos_client:
                 from src.core.praxos_client import PraxosClient
+                from src.services.user_service import user_service
+                user_record = user_service.get_user_by_id(user_id)
+                if not user_record or not user_record.get("environment_id"):
+                    return {"error": "user_record missing environment_id"}
                 praxos_client = PraxosClient(
-                    environment_name=f"user_{user_id}",
-                    api_key=settings.PRAXOS_API_KEY
+                    user_id=str(user_record["_id"]),
+                    environment_id=str(user_record["environment_id"]),
                 )
 
             # Check if integration entity already exists in KG
@@ -712,9 +770,13 @@ class IntegrationService:
         try:
             if not praxos_client:
                 from src.core.praxos_client import PraxosClient
+                from src.services.user_service import user_service
+                user_record = user_service.get_user_by_id(user_id)
+                if not user_record or not user_record.get("environment_id"):
+                    return {"error": "user_record missing environment_id"}
                 praxos_client = PraxosClient(
-                    environment_name=f"user_{user_id}",
-                    api_key=settings.PRAXOS_API_KEY
+                    user_id=str(user_record["_id"]),
+                    environment_id=str(user_record["environment_id"]),
                 )
 
             # Find the integration entity

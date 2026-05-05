@@ -280,6 +280,25 @@ class LangGraphAgentRunner:
             except Exception as e:
                 logger.error(f"Error during granular planning call: {e}", exc_info=True)
                 required_tool_ids = None  # Fallback to loading all tools
+
+            # Always reload tools that were used in recent turns of this conversation,
+            # even if the planner did not explicitly select them. The planner can lose
+            # sight of them when intermediate AIMessages have been stripped of their
+            # tool_calls or when the user's follow-up is terse ("send it", "do the same").
+            # This prevents the model from telling users to reconnect integrations they
+            # were just using.
+            if required_tool_ids is not None:
+                try:
+                    from src.utils.file_msg_utils import extract_recently_used_tool_ids
+                    recently_used = extract_recently_used_tool_ids(history)
+                    if recently_used:
+                        existing = set(required_tool_ids)
+                        added = [tid for tid in recently_used if tid not in existing]
+                        if added:
+                            required_tool_ids = list(required_tool_ids) + added
+                            logger.info(f"Augmented required_tool_ids with recently-used tools: {added}")
+                except Exception as e:
+                    logger.error(f"Error computing recently-used tools: {e}", exc_info=True)
             if plan_str:
                 await self.stream_buffer.write({
                     "type": "thinking_token",

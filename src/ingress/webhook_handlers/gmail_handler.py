@@ -98,8 +98,10 @@ async def process_gmail_notification_task(parsed_message: Dict[str, Any]):
         logger.info(f"Fetched {len(new_messages)}; inserted {len(inserted)} for {user_email}")
 
         # Process only those actually inserted
-        praxos_api_key = user_record.get("praxos_api_key")
-        praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
+        praxos_client = PraxosClient(
+            user_id=str(user_record["_id"]),
+            environment_id=str(user_record["environment_id"]),
+        )
 
         for message, inserted_id in zip(new_messages, inserted_ids):
             if not inserted_id:

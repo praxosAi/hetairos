@@ -78,7 +78,12 @@ class AIService:
 
 
 
-        from src.utils.file_msg_utils import replace_media_with_placeholders
+        from src.utils.file_msg_utils import replace_media_with_placeholders, extract_recently_used_tool_ids
+
+        # Compute recently-used tool IDs from the original (un-stripped) history,
+        # before placeholders flatten things out — so the planner is told exactly
+        # which tools the user has been touching this conversation.
+        recently_used_tool_ids = extract_recently_used_tool_ids(context)
 
         # Replace media with placeholders
         msgs_with_placeholders = replace_media_with_placeholders(context)
@@ -86,6 +91,16 @@ class AIService:
         # messages = [sys_message] + msgs_with_placeholders
         messages = msgs_with_placeholders
         messages.append(HumanMessage(content='We know that the user has the following tools available to them: \n' + '\n'.join(list(user_integration_names))))
+        if recently_used_tool_ids:
+            messages.append(HumanMessage(content=(
+                "[PRAXOS SYSTEM NOTIFICATION]: In recent turns of this conversation, the following tools were "
+                "actually invoked: " + ", ".join(recently_used_tool_ids) + ". "
+                "If the user's current message is a follow-up to that recent activity (e.g. 'send it', "
+                "'do the same for X', 'update that one', 'now also forward it'), include the relevant "
+                "tools from this list in `required_tools` even if the current message alone does not "
+                "obviously call for them. Do NOT tell the user to reconnect an integration that appears "
+                "in this list — it is already connected and was just used."
+            )))
         if source:
             if source == 'websocket':
                 source_note = (

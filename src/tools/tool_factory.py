@@ -45,6 +45,7 @@ from src.tools.dropbox import create_dropbox_tools
 from src.tools.preference_tools import create_preference_tools
 from src.tools.integration_tools import create_integration_tools
 from src.tools.database_tools import create_database_access_tools
+from src.tools.archive_tools import create_archive_tools
 from src.tools.google_lens import create_google_lens_tools
 from src.tools.google_places import create_google_places_tools
 from src.tools.user_guide import create_user_guide_tool
@@ -237,6 +238,13 @@ class AgentToolsFactory:
                 tools.extend(create_database_access_tools(user_id, tool_registry))
             except Exception as e:
                 logger.error(f"Error creating database access tools: {e}", exc_info=True)
+
+        # Archive (zip) tools
+        if is_tool_required('extract_archive_contents'):
+            try:
+                tools.extend(create_archive_tools(user_id, conversation_id or None, tool_registry))
+            except Exception as e:
+                logger.error(f"Error creating archive tools: {e}", exc_info=True)
 
         # Google Places
         places_tool_names = ['google_places_text_search', 'google_places_nearby_search',
@@ -555,14 +563,12 @@ class AgentToolsFactory:
             'update_entity_properties_in_knowledge_graph',
             'delete_from_knowledge_graph',
         ]):
-            from src.config.settings import settings
-            if settings.OPERATING_MODE == "local":
-                praxos_api_key = settings.PRAXOS_API_KEY
-            else:
-                praxos_api_key = user_context.user_record.get("praxos_api_key")
-
-            if praxos_api_key:
-                praxos_client = PraxosClient(f"env_for_{user_email}", api_key=praxos_api_key)
+            environment_id = user_context.user_record.get("environment_id") if user_context.user_record else None
+            if environment_id:
+                praxos_client = PraxosClient(
+                    user_id=user_id,
+                    environment_id=str(environment_id),
+                )
                 tools.extend(create_praxos_memory_tool(praxos_client, user_id, str(metadata.get('conversation_id')), tool_registry))
                 logger.info("Praxos memory tools loaded")
 
@@ -570,7 +576,7 @@ class AgentToolsFactory:
                 tools.extend(create_file_retrieval_tools(praxos_client, user_id, str(metadata.get('conversation_id')), tool_registry))
                 logger.info("File retrieval tools loaded")
             else:
-                logger.warning("Praxos API key not found, memory tools will be unavailable.")
+                logger.warning("user_record missing environment_id, memory tools will be unavailable.")
 
         # --- Google Lens Tools (Product/Brand Recognition via SerpAPI) ---
 

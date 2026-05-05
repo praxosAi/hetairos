@@ -113,12 +113,14 @@ async def handle_trello_webhook(request: Request):
         modality_var.set("trello_webhook")
 
         # Create PraxosClient for trigger evaluation
-        praxos_api_key = user_record.get("praxos_api_key")
-        praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
+        praxos_client = PraxosClient(
+            user_id=str(user_record["_id"]),
+            environment_id=str(user_record["environment_id"]),
+        )
 
         # Evaluate triggers using the full action data
         logger.info(f"Evaluating triggers for Trello action {action_type}")
-        event_eval_result = await praxos_client.eval_event(action, 'trello_action')
+        event_eval_result = await praxos_client.eval_event(action, 'trello')
 
         if event_eval_result.get('trigger'):
             # Trigger fired - publish triggered event

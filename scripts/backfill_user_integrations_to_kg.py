@@ -50,9 +50,14 @@ async def backfill_user_integrations(user_id: str, dry_run: bool = False):
             return {"user_id": user_id, "integrations_found": len(integrations), "dry_run": True}
 
         # Create praxos client for this user
+        from src.services.user_service import user_service
+        user_record = user_service.get_user_by_id(user_id)
+        if not user_record or not user_record.get("environment_id"):
+            logger.error(f"User {user_id} has no environment_id; skipping")
+            return {"user_id": user_id, "error": "missing environment_id"}
         praxos_client = PraxosClient(
-            environment_name=f"user_{user_id}",
-            api_key=settings.PRAXOS_API_KEY
+            user_id=str(user_record["_id"]),
+            environment_id=str(user_record["environment_id"]),
         )
 
         # Sync each integration to KG

@@ -353,16 +353,15 @@ class ExecutionWorker:
     async def evaluate_message_habits(self, event: dict, user_context):
         """Evaluate incoming user message against habits and triggers via trigger-ingestor."""
         from src.core.praxos_client import PraxosClient
-        from src.config.settings import settings
 
         user_record = user_context.user_record
-        email = user_record.get("email", "")
-        api_key = user_record.get("praxos_api_key") or settings.PRAXOS_API_KEY
-        if not email or not api_key:
-            logger.info("Skipping habit evaluation: no email or API key for user")
+        user_id = str(user_record.get("_id")) if user_record else None
+        environment_id = user_record.get("environment_id") if user_record else None
+        if not user_id or not environment_id:
+            logger.info("Skipping habit evaluation: missing user_id or environment_id")
             return
 
-        praxos_client = PraxosClient(f"env_for_{email}", api_key=api_key)
+        praxos_client = PraxosClient(user_id=user_id, environment_id=str(environment_id))
 
         source = event.get("source", "user")
         message_json = self.build_user_message_json(event, user_context)

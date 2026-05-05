@@ -10,7 +10,6 @@ from src.utils.blob_utils import upload_to_blob_storage,upload_bytes_to_blob_sto
 from src.utils.logging.base_logger import setup_logger
 from src.utils.rate_limiter import rate_limiter
 from src.utils.circuit_breaker import gmail_auth_breaker, gmail_api_breaker
-from praxos_python.types.message import Message
 from src.integrations.base_integration import BaseIntegration
 from src.utils.database import db_manager
 from src.config.settings import settings

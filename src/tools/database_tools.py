@@ -16,9 +16,21 @@ def create_database_access_tools(user_id: str, tool_registry) -> list:
         Fetches the latest messages for the user. do not use this for long term memory, use it if you are confused about most recent messages, or a message feels like it was part of a conversation recently.
         """
         try:
-            # Placeholder for actual database fetching logic
             messages = await conversation_db.get_recent_messages(user_id=user_id, limit=limit)
-            return ToolExecutionResponse(status="success", result=messages)
+            slim = []
+            for m in messages:
+                content = m.get("content")
+                if not isinstance(content, str):
+                    content = str(content) if content is not None else ""
+                if len(content) > 2000:
+                    content = content[:2000] + "...[truncated]"
+                ts = m.get("timestamp")
+                slim.append({
+                    "role": m.get("role"),
+                    "content": content,
+                    "timestamp": ts.isoformat() if hasattr(ts, "isoformat") else ts,
+                })
+            return ToolExecutionResponse(status="success", result=slim)
         except Exception as e:
             logger.error(f"Error fetching latest messages for user {user_id}: {e}", exc_info=True)
             return ErrorResponseBuilder.from_exception(

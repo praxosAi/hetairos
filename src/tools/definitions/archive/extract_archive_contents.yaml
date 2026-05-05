@@ -1,0 +1,43 @@
+tool_id: extract_archive_contents
+category: archive
+display_name: extract_archive_contents
+
+short_description: Inspect or extract entries from an uploaded ZIP archive
+
+detailed_description: |
+  Operates on a previously uploaded ZIP file (referenced by its MongoDB
+  inserted_id). With no `entries` argument, the tool returns a listing of the
+  archive's contents — name, size, and whether each entry is safe to extract.
+  Pass an explicit list of entry names (or the literal "all") to extract those
+  entries; each one is re-ingested through the standard file pipeline so it
+  becomes a first-class uploaded file with its own inserted_id, retrievable
+  via the usual file tools and attachable to replies.
+
+arguments:
+  - name: inserted_id
+    type: str
+    description: MongoDB inserted_id of the uploaded ZIP archive.
+    required: true
+
+  - name: entries
+    type: list
+    description: |
+      Names of entries to extract (must match exactly the names returned by a
+      prior listing call). Pass "all" to extract every entry. Omit to only
+      list contents without extracting.
+    required: false
+
+returns: |
+  Listing mode: { archive_name, entry_count, entries: [{name, size, extractable}], ... }.
+  Extraction mode: { archive_name, extracted: [{inserted_id, file_name, file_type, size, ...}], skipped: [...] }.
+
+use_cases:
+  - User uploaded a .zip and wants to know what is inside
+  - User wants to act on a specific file inside an uploaded archive (e.g. "open the resume from the bundle")
+  - Splitting an archive into individual files so each can be ingested or forwarded
+
+notes:
+  - Always list first, then extract — agents should not blind-extract with "all" unless the user asked to.
+  - Entries with unsafe paths (absolute, ../) are skipped automatically.
+  - Per-entry cap is 50 MB, total per call is 200 MB, max 25 entries per extract call.
+  - Extracted entries pass through the same validation as freshly uploaded files; some may be rejected.

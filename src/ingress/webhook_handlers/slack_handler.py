@@ -132,10 +132,12 @@ async def handle_slack_events(request: Request):
             logger.info(f"Processing Slack message from user {user_slack_id} in channel {channel}")
 
             # Evaluate triggers
-            praxos_api_key = user_record.get("praxos_api_key")
-            praxos_client = PraxosClient(f"env_for_{user_record.get('email')}", api_key=praxos_api_key)
+            praxos_client = PraxosClient(
+                user_id=str(user_record["_id"]),
+                environment_id=str(user_record["environment_id"]),
+            )
 
-            event_eval_result = await praxos_client.eval_event(event, 'slack_message')
+            event_eval_result = await praxos_client.eval_event(event, 'slack')
 
             if event_eval_result.get('trigger'):
                 # Process triggered actions

@@ -447,8 +447,115 @@ def create_file_retrieval_tools(
                 integration="file_retrieval"
             )
 
+    @tool
+    async def search_file_contents(
+        query: str,
+        top_k: int = 5,
+        source_id: Optional[str] = None,
+    ) -> ToolExecutionResponse:
+        """
+        Semantic search over the *contents* of files synced via
+        sync_file_for_semantic_search (the embedding-only path).
+
+        Use this when the user asks about what's INSIDE a long-form document
+        (research paper, manual, contract prose) — i.e. qualitative queries
+        like "what does this paper say about X" or "summarize the section on Y".
+
+        For STRUCTURED facts (entities/relationships extracted by Praxolex),
+        use query_praxos_memory instead — that path searches the knowledge
+        graph, which is populated by sync_file_to_praxos_knowledge_graph.
+
+        Args:
+            query: Natural-language description of the content to find.
+            top_k: Max chunk hits to return from Qdrant (default 5).
+            source_id: Optional — restrict search to a single file's chunks.
+
+        Returns:
+            Files ranked by best matching chunk, each with file_name, source_id,
+            best snippet, and per-chunk scores. Pair source_id with
+            retrieve_file_by_source_id to load the file into context.
+        """
+        try:
+            if not query or not query.strip():
+                return ErrorResponseBuilder.invalid_parameter(
+                    operation="search_file_contents",
+                    param_name="query",
+                    param_value=query,
+                    expected_format="Non-empty query string",
+                )
+            if top_k < 1 or top_k > 50:
+                return ErrorResponseBuilder.invalid_parameter(
+                    operation="search_file_contents",
+                    param_name="top_k",
+                    param_value=top_k,
+                    expected_format="Integer between 1 and 50",
+                )
+
+            logger.info(
+                f"search_file_contents: query='{query}' top_k={top_k} source_id={source_id}"
+            )
+            result = await praxos_client.file_search(
+                query=query,
+                top_k=top_k,
+                source_id=source_id,
+            )
+
+            if "error" in result:
+                return ErrorResponseBuilder.from_exception(
+                    operation="search_file_contents",
+                    exception=Exception(result["error"]),
+                    integration="praxos_files",
+                )
+
+            files = result.get("files", [])
+            if not files:
+                return ToolExecutionResponse(
+                    status="success",
+                    result=(
+                        "No file content matched this query. The file must have been "
+                        "synced via sync_file_for_semantic_search to be searchable here."
+                    ),
+                )
+
+            lines = [f"Found {len(files)} file(s) with matching content for '{query}':\n"]
+            for i, f in enumerate(files, 1):
+                lines.append(f"{i}. {f.get('file_name') or '(unnamed)'}")
+                if f.get("source_id"):
+                    lines.append(f"   Source ID: {f['source_id']}")
+                    lines.append(
+                        f"   Use: retrieve_file_by_source_id('{f['source_id']}')"
+                    )
+                else:
+                    lines.append("   Source ID: (missing — file may not be sync-tracked)")
+                lines.append(f"   Top score: {f.get('top_score', 0):.3f}")
+                if f.get("total_chunks"):
+                    lines.append(
+                        f"   Chunks matched: {len(f.get('chunks', []))} / {f['total_chunks']}"
+                    )
+                if f.get("description"):
+                    lines.append(f"   Description: {f['description']}")
+                snippet = f.get("best_snippet")
+                if snippet:
+                    lines.append(f"   Snippet: {snippet}")
+                lines.append("")
+
+            return ToolExecutionResponse(status="success", result="\n".join(lines))
+
+        except Exception as e:
+            logger.error(f"Error in search_file_contents: {e}", exc_info=True)
+            return ErrorResponseBuilder.from_exception(
+                operation="search_file_contents",
+                exception=e,
+                integration="praxos_files",
+            )
+
     logger.info(f"Created file retrieval tools for conversation {conversation_id}")
-    all_tools = [search_uploaded_files, retrieve_file_by_source_id, list_recent_uploaded_files]
+    all_tools = [
+        search_uploaded_files,
+        retrieve_file_by_source_id,
+        list_recent_uploaded_files,
+        search_file_contents,
+    ]
     if tool_registry:
         tool_registry.apply_descriptions_to_tools(all_tools)
     return all_tools
